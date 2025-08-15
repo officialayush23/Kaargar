@@ -1,0 +1,104 @@
+
+
+
+
+.listings {
+    text-decoration: none;
+    color: white;
+    list-style: none;
+    padding: 5px;
+    margin: 30px;
+    font-family: 'Truculenta',sans-serif;
+    font-size: 24px;
+    cursor: pointer;
+    border: 2px solid var(--accent);
+    border-radius: 12px;
+}
+
+.listingsa {
+    text-decoration: none;
+    color: white;
+    list-style: none;
+}
+
+
+.overlay{
+  position: fixed; 
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 999; 
+  width: 100%;
+  height: 100%;
+  background-color: rgba(9, 11, 13, 0.1); 
+  backdrop-filter: blur(10px);
+}
+
+.Hamburger-parent {
+    position: fixed;
+    top: 0;
+    right: 0px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    height: 100vh;
+    max-width:300px;
+    width:100%;
+    
+    /* display:none; */
+}
+
+
+
+
+.hamburger-list {
+    background-color: rgba(26, 38, 56, 0.1);
+    backdrop-filter: blur(10px);
+    padding: 1rem;
+    border:none;
+    height:100%;
+    max-width:100%;
+    box-shadow: 0px 0px 12px 2px var(--accent);
+
+}
+
+.list-feature {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    align-items:center;
+    justify-items: center;
+    justify-content: center;
+    gap: 1rem;
+    width:100%;
+    
+}
+
+.listings a {
+    /* Apply styles directly to the anchor tag */
+    text-decoration: none;
+    color: var(--text-color);
+    font-size: 1.2rem;
+    padding: 0.5rem 1rem;
+    display: block;
+    
+    border-radius: 8px;
+    transition: background-color 0.2s ease-in-out;
+}
+
+.listings a:hover {
+    box-shadow: 0px 0px 12px 2px var(--accent);
+    color: rgb(34, 125, 216);
+}
+
+.Cross {
+    cursor: pointer;
+    width: 40px;
+    height: 40px;
+    
+
+}

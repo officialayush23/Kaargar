@@ -1,0 +1,49 @@
+@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Permanent+Marker&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Permanent+Marker&family=Rampart+One&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
+
+
+
+
+:root {
+  /* Primary brand colors */
+  --color-primary: #5B5FEF; /* main blue-purple */
+  --color-primary-dark: #474BCE; /* darker variant */
+  --color-primary-light: #787CFA; /* lighter variant */
+
+  /* Accent colors */
+  --color-accent: #9B5DE5; /* vibrant purple accent */
+  --color-accent-light: #B985F0;
+  --color-accent-dark: #7E3BCC;
+
+  /* Background colors */
+  --color-bg: #F8F9FB; /* light gray background */
+  --color-bg-dark: #1A1A1D; /* dark mode bg */
+  --color-bg-card: #FFFFFF; /* card background */
+
+  /* Text colors */
+  --color-text: #1F1F1F; /* main text */
+  --color-text-light: #6C6C6C; /* secondary text */
+  --color-text-on-primary: #FFFFFF; /* text on primary color */
+
+  /* Borders & shadows */
+  --color-border: #E0E0E0;
+  --shadow-card: 0 4px 12px rgba(0, 0, 0, 0.08);
+  --shadow-hover: 0 6px 18px rgba(0, 0, 0, 0.12);
+
+  /* Transitions */
+  --transition-speed: 0.3s ease;
+}
+
+
+
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var( --color-bg-dark);
+    box-sizing: border-box;
+}
+
+html {
+    scroll-behavior: smooth;
+}

@@ -1,0 +1,256 @@
+/*  font-family: "Truculenta", sans-serif; */
+/* .rampart-one-regular {
+  font-family: "Rampart One", sans-serif; */
+
+  /*   font-family: "Cinzel Decorative", serif; */
+
+
+/* Center the container fullscreen */
+.container {
+
+    inset: 0;
+    font-family: "Truculenta", sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background:transparent;
+
+
+    /* dark overlay */
+    /* backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px); */
+    z-index: 1000;
+}
+
+/* Glassmorphic box */
+.box {
+    max-width: 500px;
+    width: 90%;
+    margin:12px;
+    padding: 28px 24px;
+    border-radius: 20px;
+    background: transparent;
+    /* translucent dark */
+    backdrop-filter: blur(3px) saturate(90%);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+    box-shadow:
+        0 0px 30px rgb(24, 134, 197),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    color: #e9edf3;
+    text-align: center;
+    animation: pop-in 2s cubic-bezier(.2, .8, .2, 1) forwards;
+    transform: translateY(8px) scale(0.98);
+    opacity: 0;
+}
+
+/* Headings & text */
+.head {
+    margin: 0 0 10px;
+    font-size: 3rem;
+    font-weight: 700;
+}
+
+.info {
+    margin: 0 0 16px;
+    font-size: 1rem;
+    color: #b9c2cf;
+}
+
+.ques {
+    margin: 0 0 20px;
+    font-size: 1.9rem;
+    font-weight: 600;
+}
+
+/* Buttons */
+.buttons {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+button {
+    padding: 12px 28px;
+    border-radius: 12px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    font-size: 1rem;
+    border: none;
+    cursor: pointer;
+    transition: transform 120ms ease, background 120ms ease, box-shadow 120ms ease;
+}
+
+/* Hire (primary) */
+.hire {
+    background: linear-gradient(135deg, rgba(43, 129, 194, 0.9), rgba(4, 43, 239, 0.629));
+    color: white;
+
+}
+
+.hire:hover {
+    transform: translateY(-1px);
+    background: rgba(255, 255, 255, 0.10);
+    box-shadow: 0 8px 18px rgba(80, 120, 255, 0.25);
+}
+
+canvas.stars-bg {
+    position: fixed;
+    /* Stays in place when scrolling */
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: -1;
+    /* Sends it behind your popup */
+    background: black;
+    /* fallback color */
+}
+
+.hire:active {
+    transform: translateY(0);
+}
+
+.gethired-txt,.hire-txt{
+    text-decoration: none;
+    color:white;
+}
+
+/* Work (ghost) */
+.gethired {
+    background: linear-gradient(135deg, rgba(43, 129, 194, 0.9), rgba(4, 43, 239, 0.629));
+    color: #e9edf3;
+}
+
+.gethired:hover {
+    background: rgba(255, 255, 255, 0.10);
+    transform: translateY(-1px);
+}
+
+.gethired:active {
+    transform: translateY(0);
+}
+/*title  */
+
+.title{
+    display:flex;
+    justify-self: center;
+    font-family: "Cinzel Decorative", serif; 
+    font-size: 6rem;
+    color:rgba(199, 146, 30, 0.818);
+}
+
+
+
+
+
+
+
+/* Animation */
+@keyframes pop-in {
+    to {
+        transform: translateY(0) scale(1) ;
+        opacity: 1;
+    }
+}
+
+/* Accessibility: reduce motion */
+@media (prefers-reduced-motion: reduce) {
+
+    .box,
+    .container,
+    button {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+
+/* Base styles remain the same */
+
+/* Responsive adjustments */
+@media (max-width: 1024px) {
+    .head {
+        font-size: 2.5rem;
+    }
+
+    .ques {
+        font-size: 1.5rem;
+    }
+
+    .title {
+        font-size: 4.5rem;
+    }
+
+    button {
+        padding: 10px 24px;
+        font-size: 0.95rem;
+    }
+}
+
+@media (max-width: 768px) {
+    .box {
+       
+        padding: 20px 16px;
+    }
+
+    .head {
+        font-size: 2rem;
+    }
+
+    .info {
+        font-size: 0.95rem;
+    }
+
+    .ques {
+        font-size: 1.3rem;
+    }
+
+    .title {
+        font-size: 3.5rem;
+    }
+
+    button {
+        padding: 10px 20px;
+        font-size: 0.9rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .container {
+        padding: 10px;
+    }
+
+    .box {
+        padding: 16px 12px;
+        border-radius: 14px;
+    }
+
+    .head {
+        font-size: 1.6rem;
+    }
+
+    .info {
+        font-size: 0.85rem;
+    }
+
+    .ques {
+        font-size: 1.1rem;
+    }
+
+    .title {
+        font-size: 2.5rem;
+        text-align: center;
+    }
+
+    .buttons {
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    button {
+        width: 100%;
+        padding: 10px;
+        font-size: 0.85rem;
+    }
+}

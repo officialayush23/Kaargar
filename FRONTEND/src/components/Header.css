@@ -1,0 +1,126 @@
+.navbar {
+
+    position: sticky;
+    margin-top:12px;
+    max-width:600px;
+    width:100%;
+    justify-self: center;
+    z-index: 100;
+    display: flex;
+    color: white;
+    flex-direction: row;
+    justify-content: space-between;
+    justify-items: center;
+    align-items: center;
+    background: transparent;
+    backdrop-filter: blur(3px) saturate(90%);
+    -webkit-backdrop-filter: blur(14px) saturate(120%);
+    /* border: 2px solid white; */
+    border-radius: 45px;
+    box-shadow:
+        0 0px 30px rgb(24, 134, 197),
+        inset 0 1px 0 rgba(255, 255, 255, 0.06);
+
+}
+
+.Title h1 {
+    font-family: 'Truculenta', sans-serif;
+    margin-left: 12px;
+    color:white;
+    text-decoration: none;
+
+}
+
+.nav-txt{
+        text-decoration: none;
+}
+
+.option-txt {
+
+    text-decoration: none;
+    font-family: 'Truculenta', sans-serif;
+    color: white;
+    font-size: 1.2rem;
+
+}
+
+.nav-container {
+    color: white;
+    text-decoration: none;
+    display: flex;
+    flex-direction: row;
+    gap: 12px;
+    margin: 12px;
+
+}
+
+.nav-text {
+    color: white;
+    text-decoration: none;
+    font-family: 'Truculenta', sans-serif;
+    font-size: 1.2rem;
+}
+
+
+.nav-text:hover,.option-txt:hover{
+    color:rgb(13, 142, 228);
+}
+
+
+/* Hide mobile hamburger on desktop */
+.mobile-nav {
+    display: none;
+    margin:12px;
+}
+
+.hamburger-icon {
+    width: 28px;
+    height: 28px;
+    cursor: pointer;
+}
+
+/* Desktop nav visible only on large screens */
+.desktop-nav {
+    display: flex;
+    gap: 12px;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .desktop-nav {
+        display: none;
+    }
+
+    .mobile-nav {
+        display: block;
+    }
+}
+
+
+/* Sidebar base style */
+.sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 250px;
+  background: rgba(30, 30, 60, 0.85);
+  backdrop-filter: blur(10px);
+  transform: translateX(0);
+  transition: transform 0.3s ease;
+}
+
+/* Hidden state */
+.sidebar.hidden {
+  transform: translateX(-100%);
+}
+
+/* Always hidden on mobile unless opened */
+@media (max-width: 768px) {
+  .sidebar {
+    transform: translateX(-100%);
+  }
+  .sidebar.show {
+    transform: translateX(0);
+  }
+}
