@@ -1,29 +1,52 @@
 @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Permanent+Marker&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Permanent+Marker&family=Rampart+One&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Permanent+Marker&family=Rampart+One&family=Sansation:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
 
+@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Fredericka+the+Great&family=Permanent+Marker&family=Rampart+One&family=Sansation:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
 
+/* .fredericka-the-great-regular {
+  font-family: "Fredericka the Great", serif;
+  font-weight: 400;
+  font-style: normal;
+} */
+/*  font-family: "Truculenta", sans-serif; */
+/* .rampart-one-regular {
+  font-family: "Rampart One", sans-serif; */
 
+/*   font-family: "Cinzel Decorative", serif; */
+/* .sansation-light {
+  font-family: "Sansation", sans-serif; */
 
 :root {
   /* Primary brand colors */
-  --color-primary: #5B5FEF; /* main blue-purple */
-  --color-primary-dark: #474BCE; /* darker variant */
-  --color-primary-light: #787CFA; /* lighter variant */
+  --color-primary: #5B5FEF;
+  /* main blue-purple */
+  --color-primary-dark: #474BCE;
+  /* darker variant */
+  --color-primary-light: #787CFA;
+  /* lighter variant */
 
   /* Accent colors */
-  --color-accent: #9B5DE5; /* vibrant purple accent */
+  --color-accent: #9B5DE5;
+  /* vibrant purple accent */
   --color-accent-light: #B985F0;
   --color-accent-dark: #7E3BCC;
 
   /* Background colors */
-  --color-bg: #F8F9FB; /* light gray background */
-  --color-bg-dark: #1A1A1D; /* dark mode bg */
-  --color-bg-card: #FFFFFF; /* card background */
+  --color-bg: #F8F9FB;
+  /* light gray background */
+  --color-bg-dark: #1A1A1D;
+  /* dark mode bg */
+  --color-bg-card: #FFFFFF;
+  /* card background */
 
   /* Text colors */
-  --color-text: #1F1F1F; /* main text */
-  --color-text-light: #6C6C6C; /* secondary text */
-  --color-text-on-primary: #FFFFFF; /* text on primary color */
+  --color-text: #1F1F1F;
+  /* main text */
+  --color-text-light: #6C6C6C;
+  /* secondary text */
+  --color-text-on-primary: #FFFFFF;
+  /* text on primary color */
 
   /* Borders & shadows */
   --color-border: #E0E0E0;
@@ -38,12 +61,12 @@
 
 
 body {
-    margin: 0;
-    padding: 0;
-    background: var( --color-bg-dark);
-    box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  background: rgb(11, 11, 11);
+  box-sizing: border-box;
 }
 
 html {
-    scroll-behavior: smooth;
+  scroll-behavior: smooth;
 }

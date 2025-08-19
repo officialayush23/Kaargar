@@ -11,24 +11,43 @@ import Job_display from './pages/Job_display'
 import U_register from './pages/U_register'
 import W_register from './pages/W_register'
 import SideBar from './components/side_bar'
+import  { useEffect } from 'react';
+import Lenis from 'lenis'
+
 const App = () => {
+
+  useEffect(() => {
+    // Initialize Lenis
+    const lenis = new Lenis();
+
+    // Use requestAnimationFrame to continuously update the scroll
+    function raf(time) {
+      lenis.raf(time);
+      requestAnimationFrame(raf);
+    }
+
+    requestAnimationFrame(raf);
+
+
+  }, [])
+
 
 
 
   return (
     <>
       <div>
-        
+
         <Routes>
-          <Route path='/' element={<LogPop/>}/>
-          <Route path='/worker' element={<Worker/>}/>
-          <Route path='/User' element={<User/>}/>
-          <Route path='/U_register' element={<U_register/>}/>
-          <Route path='/W_register' element={<W_register/>}/>
-          <Route path='/U_login' element={<U_login/>}/>
-          <Route path='/W_login' element={< W_login/>}/>
-          <Route path='/Worker_display' element={<Worker_display/>}/>
-          <Route path='/Job_display' element={<Job_display/>}/>
+          <Route path='/' element={<LogPop />} />
+          <Route path='/worker' element={<Worker />} />
+          <Route path='/User' element={<User />} />
+          <Route path='/U_register' element={<U_register />} />
+          <Route path='/W_register' element={<W_register />} />
+          <Route path='/U_login' element={<U_login />} />
+          <Route path='/W_login' element={< W_login />} />
+          <Route path='/Worker_display' element={<Worker_display />} />
+          <Route path='/Job_display' element={<Job_display />} />
         </Routes>
       </div>
     </>

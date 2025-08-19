@@ -1,9 +1,9 @@
 .navbar {
 
-    position: sticky;
-    margin-top:12px;
-    max-width:600px;
-    width:100%;
+    position: fixed;
+    margin-top: 12px;
+    max-width: 800px;
+    width: 100%;
     justify-self: center;
     z-index: 100;
     display: flex;
@@ -20,21 +20,37 @@
     box-shadow:
         0 0px 30px rgb(24, 134, 197),
         inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    transition: transform 0.3s ease-in-out;
 
+}
+
+/* When hidden, slide up */
+.navbar.hidden {
+    transform: translate(-50%, -150%);
+    /* move off-screen */
+}
+
+/* When visible, reset position */
+.navbar.visible {
+    transform: translate(-50%, 0);
 }
 
 .Title h1 {
     font-family: 'Truculenta', sans-serif;
     margin-left: 12px;
-    color:white;
+    color: white;
     text-decoration: none;
 
 }
 
-.nav-txt{
-        text-decoration: none;
+.nav-txt {
+    text-decoration: none;
 }
 
+.option{
+    display:flex;
+    gap:28px;
+}
 .option-txt {
 
     text-decoration: none;
@@ -62,15 +78,16 @@
 }
 
 
-.nav-text:hover,.option-txt:hover{
-    color:rgb(13, 142, 228);
+.nav-text:hover,
+.option-txt:hover {
+    color: rgb(13, 142, 228);
 }
 
 
 /* Hide mobile hamburger on desktop */
 .mobile-nav {
     display: none;
-    margin:12px;
+    margin: 12px;
 }
 
 .hamburger-icon {
@@ -80,10 +97,7 @@
 }
 
 /* Desktop nav visible only on large screens */
-.desktop-nav {
-    display: flex;
-    gap: 12px;
-}
+
 
 /* Responsive */
 @media (max-width: 768px) {
@@ -99,28 +113,29 @@
 
 /* Sidebar base style */
 .sidebar {
-  position: fixed;
-  top: 0;
-  left: 0;
-  height: 100%;
-  width: 250px;
-  background: rgba(30, 30, 60, 0.85);
-  backdrop-filter: blur(10px);
-  transform: translateX(0);
-  transition: transform 0.3s ease;
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100%;
+    width: 250px;
+    background: rgba(30, 30, 60, 0.85);
+    backdrop-filter: blur(10px);
+    transform: translateX(0);
+    transition: transform 0.3s ease;
 }
 
 /* Hidden state */
 .sidebar.hidden {
-  transform: translateX(-100%);
+    transform: translateX(-100%);
 }
 
 /* Always hidden on mobile unless opened */
 @media (max-width: 768px) {
-  .sidebar {
-    transform: translateX(-100%);
-  }
-  .sidebar.show {
-    transform: translateX(0);
-  }
+    .sidebar {
+        transform: translateX(-100%);
+    }
+
+    .sidebar.show {
+        transform: translateX(0);
+    }
 }

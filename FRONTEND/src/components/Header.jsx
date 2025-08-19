@@ -9,8 +9,12 @@ import ham from "../assets/images/ham.svg";
 
 const Header = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+
     const titleRef = useRef();
     const headRef = useRef([]);
+
+
+
     useEffect(() => {
         const handleResize = () => {
             if (window.innerWidth > 768) {
@@ -20,7 +24,7 @@ const Header = () => {
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
     }, []);
-    
+
     useGSAP(() => {
         gsap.from(titleRef.current, {
             y: 20,
@@ -57,6 +61,9 @@ const Header = () => {
                 <div className="option desktop-nav">
                     <Link ref={addToRefs} className="option-txt" to="/User">
                         Want To Hire?
+                    </Link>
+                    <Link ref={addToRefs} className="option-txt" to="/Worker">
+                        Want To Work?
                     </Link>
                 </div>
 
