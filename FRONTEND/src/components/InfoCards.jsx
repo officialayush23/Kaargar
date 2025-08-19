@@ -11,4 +11,3 @@ const InfoCards = () => {
 }
 
 export default InfoCards
-s
