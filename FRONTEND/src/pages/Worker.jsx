@@ -52,6 +52,7 @@ const Worker = () => {
           trigger: infoSection,
           start: "top top", // animation starts when section is centered
           end: () => "+=" + infoSection.offsetHeight, // pin for full section height
+         
           pin: true,
           scrub: true,
           toggleActions: "play none none reverse",
@@ -209,8 +210,9 @@ const Worker = () => {
             </span>
           ))}
         </h1>
-        <InfoCards />
+        
       </section>
+      <InfoCards />
 
 
 

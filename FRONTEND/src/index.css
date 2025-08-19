@@ -1,9 +1,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Permanent+Marker&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Permanent+Marker&family=Rampart+One&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Permanent+Marker&family=Rampart+One&family=Sansation:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
-
+@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Fredericka+the+Great&family=Permanent+Marker&family=Rampart+One&family=Sansation:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&family=Truculenta:opsz,wght@12..72,100..900&family=Voces&display=swap');
 @import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Fredericka+the+Great&family=Permanent+Marker&family=Rampart+One&family=Sansation:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&family=Truculenta:opsz,wght@12..72,100..900&display=swap');
-
+@import url('https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@400;700;900&family=Fredericka+the+Great&family=Permanent+Marker&family=Rampart+One&family=Sansation:ital,wght@0,300;0,400;0,700;1,300;1,400;1,700&family=Space+Mono:ital,wght@0,400;0,700;1,400;1,700&family=Truculenta:opsz,wght@12..72,100..900&family=Voces&display=swap');
 /* .fredericka-the-great-regular {
   font-family: "Fredericka the Great", serif;
   font-weight: 400;
@@ -16,6 +16,19 @@
 /*   font-family: "Cinzel Decorative", serif; */
 /* .sansation-light {
   font-family: "Sansation", sans-serif; */
+
+
+  /* .voces-regular {
+  font-family: "Voces", sans-serif;
+  font-weight: 400;
+  font-style: normal;
+} */
+
+/* .space-mono-regular {
+  font-family: "Space Mono", monospace;
+  font-weight: 400;
+  font-style: normal;
+} */
 
 :root {
   /* Primary brand colors */

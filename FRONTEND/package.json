@@ -18,7 +18,9 @@
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
     "react-router-dom": "^7.8.0",
-    "react-scroll": "^1.9.3"
+    "react-scroll": "^1.9.3",
+    "simplex-noise": "^4.0.3",
+    "swiper": "^11.2.10"
   },
   "devDependencies": {
     "@eslint/js": "^9.33.0",
