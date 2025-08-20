@@ -2,6 +2,7 @@
 .title {
     font-family: "Space Mono", monospace;
     color: white;
+    text-align:center;
     font-size: clamp(1rem, 6vw, 3rem);
 }
 

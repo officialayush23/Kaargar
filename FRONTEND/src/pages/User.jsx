@@ -39,15 +39,17 @@ const User = () => {
     "with Kaargar"
   ];
 
+  const infoSectionRef = useRef(null);
 
   const title = ["K", "A", "A", "R", "G", "A", "R"];
 
   // animation for KAARGAr
 
-    useEffect(() => {
+  useEffect(() => {
+    titleRef.current = [];
     const ctx = gsap.context(() => {
       const letters = titleRef.current;
-      const infoSection = document.querySelector(".main-container");
+      const infoSection = infoSectionRef.current;
       if (!letters?.length || !infoSection) return;
 
       gsap.fromTo(
@@ -71,12 +73,15 @@ const User = () => {
       );
     });
 
-    return () => ctx.revert(); 
+
+
+    return () => ctx.revert();
+
   }, [location.pathname]);
 
 
   // the entry about animation
-useEffect(() => {
+  useEffect(() => {
     const words_h1 = ["as a Plumber", "as a Tutor", "as You Want", "with Kaargar"];
     const ctx = gsap.context(() => {
       const cursorTween = gsap.to(".cursor", {
@@ -174,7 +179,7 @@ useEffect(() => {
         }
       }
 
-      animationId=requestAnimationFrame(animateStars);
+      animationId = requestAnimationFrame(animateStars);
     }
 
     animateStars();
@@ -185,6 +190,9 @@ useEffect(() => {
     };
 
   }, [location.pathname]);
+
+
+
 
   return (
     <>
@@ -204,7 +212,7 @@ useEffect(() => {
               <Link className='btn-mi' to='/U_register'> <button className="btn-m">Hire Now! </button></Link>
 
 
-                <a href="#info" className="scroll">   <button className="btn">Learn More ⬇︎         </button></a>
+              <a href="#info" className="scroll">   <button className="btn">Learn More ⬇︎         </button></a>
 
             </div>
           </div>
@@ -213,7 +221,7 @@ useEffect(() => {
           </div> */}
         </div>
       </main>
-      <section id="info" className='main-container'>
+      <section ref={infoSectionRef} id="info" className='main-container'>
         <h1 className="atitle ">
           {title.map((letter, index) => (
             <span

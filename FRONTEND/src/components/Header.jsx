@@ -69,7 +69,7 @@ const Header = () => {
     return (
         <>
             <motion.nav
-                style={{ position: "relative" }}
+    
                 role="navigation"
                 aria-label="Main Navigation"
                 variants={{

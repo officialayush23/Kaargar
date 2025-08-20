@@ -71,6 +71,7 @@ canvas.stars-bg {
 
 .h2-txt {
   text-align: center;
+  color:white;
   margin-bottom: 38px;
 }
 
@@ -85,7 +86,12 @@ canvas.stars-bg {
 .btn-m {
 
   cursor: pointer;
-
+  padding: 15px 18px;
+  font-family: monospace;
+  font-size: 1rem;
+  border:none;
+  font-weight: bold;
+  border-radius:12px;
   transition: transform 0.3s ease, background-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
 }
 

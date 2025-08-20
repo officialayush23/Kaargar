@@ -41,6 +41,7 @@ const Worker = () => {
   // animation for KAARGAr
 
   useEffect(() => {
+      titleRef.current = [];
     const ctx = gsap.context(() => {
       const letters = titleRef.current;
       const infoSection = document.querySelector(".main-container");
@@ -67,11 +68,14 @@ const Worker = () => {
       );
     });
 
-    return () => ctx.revert(); // kills triggers/tweens created above
+
+    return () => ctx.revert();
+
   }, [location.pathname]);
 
+
   // the entry about animation
-useEffect(() => {
+  useEffect(() => {
     const words_h1 = ["as a Plumber", "as a Tutor", "as You Want", "with Kaargar"];
     const ctx = gsap.context(() => {
       const cursorTween = gsap.to(".cursor", {
@@ -169,7 +173,7 @@ useEffect(() => {
         }
       }
 
-      animationId=requestAnimationFrame(animateStars);
+      animationId = requestAnimationFrame(animateStars);
     }
 
     animateStars();
@@ -180,6 +184,8 @@ useEffect(() => {
     };
 
   }, [location.pathname]);
+
+
   return (
     <>
       <main className='wrapper'>

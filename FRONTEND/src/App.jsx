@@ -1,5 +1,3 @@
-
-
 import './App.css'
 import Worker from './pages/Worker'
 import User from './pages/User'
@@ -10,7 +8,6 @@ import Job_display from './pages/Job_display'
 import U_register from './pages/U_register'
 import W_register from './pages/W_register'
 import SideBar from './components/side_bar'
-
 import React, { useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import Lenis from 'lenis'
