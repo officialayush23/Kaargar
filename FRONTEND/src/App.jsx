@@ -1,5 +1,5 @@
 
-import LogPop from './components/LogPop'
+
 import './App.css'
 import Worker from './pages/Worker'
 import User from './pages/User'
