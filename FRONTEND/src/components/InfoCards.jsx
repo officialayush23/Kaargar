@@ -16,12 +16,30 @@ import { Autoplay, EffectCoverflow, Pagination } from "swiper/modules";
 import "swiper/css";
 import "swiper/css/effect-coverflow";
 import "swiper/css/pagination";
+import { motion, useScroll, useTransform } from 'motion/react';
 
 import AuroraBackground from './auroraback'
 import { Link } from 'react-router-dom'
 
 const InfoCards = () => {
- 
+  const titleRef = useRef(null);
+  const sectionRef = useRef(null);
+
+  const { scrollYProgress: titleProgress } = useScroll({
+    target: titleRef,
+    offset: ["start end", "end start"]
+  });
+  const { scrollYProgress: sectionProgress } = useScroll({
+    target: sectionRef,
+    offset: ["start end", "end start"]
+  });
+
+
+  const titleOpacity = useTransform(titleProgress, [0, 0.5], [0, 1]);
+  const titleY = useTransform(titleProgress, [0, 0.5], [50, 0]);
+
+  const sectionOpacity = useTransform(sectionProgress, [0, 0.5], [0, 1]);
+  const sectionY = useTransform(sectionProgress, [0, 0.5], [50, 0]);
 
 
   const professions = [
@@ -38,11 +56,16 @@ const InfoCards = () => {
 
   return (
     <>
-      <div className="title-container">
-        <h1 className="title">All Professions Supported</h1>
-      </div>
+      <motion.div id="about" ref={titleRef}
+       style={{ opacity: titleOpacity, y: titleY, willChange: "opacity, transform" }} className="title-container">
+        <h1
 
-      <section className='services'>
+          className="title">All Professions Supported</h1>
+      </motion.div>
+
+      <section ref={sectionRef}
+        style={{ opacity: sectionOpacity, y: sectionY, willChange: "opacity, transform" }}
+  className='services'>
         <AuroraBackground />
         <div className="container">
           <Swiper
@@ -61,10 +84,10 @@ const InfoCards = () => {
               modifier: 1,
               slideShadows: true,
             }}
-            touchRatio={2}  
-            threshold={5} 
+            touchRatio={2}
+            threshold={5}
             autoplay={{
-              delay: 300,       
+              delay: 300,
               disableOnInteraction: false,
               pauseOnMouseEnter: true,
             }}
@@ -72,17 +95,17 @@ const InfoCards = () => {
             onTouchEnd={(swiper) => swiper.autoplay.start()}  // resume after touch
 
             slideToClickedSlide
-           
+
             pagination={{ el: ".swiper-pagination", clickable: true }}
-            modules={[EffectCoverflow, Pagination,Autoplay]}
+            modules={[EffectCoverflow, Pagination, Autoplay]}
             className="swiper-container"
             breakpoints={{
-              320: {  spaceBetween: 20 }, 
-              640: {  spaceBetween: 30 }, 
-              1024: { spaceBetween: 40 }, 
+              320: { spaceBetween: 20 },
+              640: { spaceBetween: 30 },
+              1024: { spaceBetween: 40 },
             }}
           >
-        
+
             {professions.map((prof, index) => (
               <SwiperSlide className="element" key={index}>
                 <div className="holder">

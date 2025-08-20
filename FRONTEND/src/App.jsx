@@ -13,6 +13,7 @@ import W_register from './pages/W_register'
 import SideBar from './components/side_bar'
 import  { useEffect } from 'react';
 import Lenis from 'lenis'
+import Footer from './components/Footer'
 
 const App = () => {
 
@@ -50,6 +51,7 @@ const App = () => {
           <Route path='/Job_display' element={<Job_display />} />
         </Routes>
       </div>
+     
     </>
   )
 }

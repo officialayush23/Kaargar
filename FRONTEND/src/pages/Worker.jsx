@@ -9,6 +9,9 @@ import { TextPlugin, RoughEase } from "gsap/all";
 import { Link } from 'react-router-dom';
 import { Link as ScrollLink } from "react-scroll";
 import InfoCards from '../components/InfoCards';
+import Join from '../components/join';
+import FAQ from '../components/faq';
+import Footer from '../components/Footer';
 
 
 
@@ -52,7 +55,7 @@ const Worker = () => {
           trigger: infoSection,
           start: "top top", // animation starts when section is centered
           end: () => "+=" + infoSection.offsetHeight, // pin for full section height
-         
+
           pin: true,
           scrub: true,
           toggleActions: "play none none reverse",
@@ -210,9 +213,12 @@ const Worker = () => {
             </span>
           ))}
         </h1>
-        
+
       </section>
       <InfoCards />
+      <Join />
+      <FAQ />
+      <Footer />
 
 
 

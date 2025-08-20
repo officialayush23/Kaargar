@@ -1,0 +1,84 @@
+/* Footer container */
+.footer {
+  background: transparent; /* dark bluish transparent */
+  backdrop-filter: blur(10px); /* glass effect */
+  color: #d7f7ff;
+  padding: 3rem 1rem 1rem;
+  font-family: 'Poppins', sans-serif;
+}
+
+/* Main flex container */
+.footer-container {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+/* Brand section */
+.footer-brand h2 {
+  font-size: 1.8rem;
+  margin-bottom: 0.5rem;
+}
+
+.footer-brand p {
+  font-size: 0.95rem;
+  color: #a0c4ff;
+}
+
+/* Links section */
+.footer-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2rem;
+  margin-top: 1rem;
+}
+
+.footer-column h4 {
+  font-size: 1rem;
+  margin-bottom: 0.5rem;
+  color: #7ec8ff;
+}
+
+/* Links styling */
+.footer-column a, .footer-column a:visited {
+  display: block;
+  text-decoration: none;
+  color: #d7f7ff;
+  margin: 0.3rem 0;
+  transition: color 0.3s, transform 0.2s;
+}
+
+.footer-column a:hover {
+  color: #00bfff;
+  transform: translateX(3px);
+}
+
+/* Footer bottom */
+.footer-bottom {
+  text-align: center;
+  margin-top: 2rem;
+  font-size: 0.85rem;
+  color: #bdc6ce;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  padding-top: 1rem;
+}
+
+/* Responsive for tablets and mobiles */
+@media (max-width: 768px) {
+  .footer-container {
+    flex-direction: column;
+    gap: 2rem;
+    text-align: center;
+  }
+
+  .footer-links {
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .footer-column a {
+    margin: 0.2rem 0;
+  }
+}

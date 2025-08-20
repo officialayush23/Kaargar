@@ -5,6 +5,7 @@ import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
 import SideBar from './side_bar'; // Make sure path is correct
 import ham from "../assets/images/ham.svg";
+import { motion, useScroll, useMotionValueEvent } from 'motion/react'
 // Add your hamburger icon here
 
 const Header = () => {
@@ -48,9 +49,38 @@ const Header = () => {
         }
     };
 
+    const [hidden, sethidden] = useState(false); // Move this to top
+
+    const { scrollY } = useScroll();
+    useMotionValueEvent(scrollY, "change", (latest) => {
+        const previous = scrollY.getPrevious(); // add parentheses
+        if (latest > previous && latest > 150) {
+            sethidden(true);
+        } else {
+            sethidden(false);
+        }
+    });
+
+
     return (
         <>
-            <nav ref={titleRef} className="navbar">
+            <motion.nav
+
+                variants={{
+                    visible: { y: 0 },
+
+                    hidden: { y: "-150%" },
+                }}
+
+                animate={hidden ? "hidden" : "visible"}
+
+                transition={{
+                    duration: 0.35, ease: "easeInOut"
+                }}
+
+
+
+                ref={titleRef} className="navbar">
                 <div className="Title">
                     <Link className="nav-txt" to="/">
                         <h1 ref={addToRefs}>Kaargar</h1>
@@ -85,7 +115,7 @@ const Header = () => {
                         onClick={() => setIsSidebarOpen(true)}
                     />
                 </div>
-            </nav>
+            </motion.nav>
 
             {/* Sidebar */}
             {isSidebarOpen && <SideBar close={() => setIsSidebarOpen(false)} />}
