@@ -91,7 +91,7 @@
 .name {
     position: absolute;
     left: 50%;
-    top:85%;
+    top:80%;
     transform: translateX(-50%);
     bottom: 10px;
     background: rgba(46, 39, 39, 0.3);
@@ -136,9 +136,9 @@
     opacity: 1;
 }
 
-.name span {
+/* .name span {
     padding: 24px;
-}
+} */
 
 
 

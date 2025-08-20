@@ -26,25 +26,25 @@ const Header = () => {
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
 
-        useGSAP(() => {
-            gsap.from(titleRef.current, {
-                y: 20,
-                opacity: 0,
-                duration: 1.3,
-                ease: "power2.out",
-            });
 
-            gsap.from(headRef.current, {
-                y: -20,
-                opacity: 0,
-                duration: 1,
-                delay: 1,
-                stagger: 0.6,
-            });
-        }, []);
-        
+
     }, []);
+    useGSAP(() => {
+        gsap.from(titleRef.current, {
+            y: 20,
+            opacity: 0,
+            duration: 1.3,
+            ease: "power2.out",
+        });
 
+        gsap.from(headRef.current, {
+            y: -20,
+            opacity: 0,
+            duration: 1,
+            delay: 1,
+            stagger: 0.6,
+        });
+    }, []);
 
 
     const addToRefs = (el) => {
@@ -69,7 +69,9 @@ const Header = () => {
     return (
         <>
             <motion.nav
-
+                style={{ position: "relative" }}
+                role="navigation"
+                aria-label="Main Navigation"
                 variants={{
                     visible: { y: 0 },
 
@@ -92,8 +94,10 @@ const Header = () => {
                 </div>
 
                 {/* Desktop Navigation */}
-                <div className="option desktop-nav">
+                <div style={{ position: "relative" }} className="option desktop-nav">
                     <NavLink
+                        aria-label="Hire workers"
+
                         ref={addToRefs}
                         className={({ isActive }) => isActive ? "option-txt active" : "option-txt"}
                         to="/User"
@@ -101,7 +105,9 @@ const Header = () => {
                         Want To Hire?
                     </NavLink>
                     <NavLink
+                        aria-label="Find work opportunities"
                         ref={addToRefs}
+
                         className={({ isActive }) => isActive ? "option-txt active" : "option-txt"}
                         to="/Worker"
                     >
@@ -111,10 +117,10 @@ const Header = () => {
 
 
                 <div className="nav-container desktop-nav">
-                    <Link ref={addToRefs} className="nav-text" to="/U_login">
+                    <Link aria-label="Login to your account" ref={addToRefs} className="nav-text" to="/U_login">
                         Login
                     </Link>
-                    <Link ref={addToRefs} className="nav-text" to="/U_register">
+                    <Link aria-label="Sign up for a new account" ref={addToRefs} className="nav-text" to="/U_register">
                         SignUp
                     </Link>
                 </div>
@@ -122,6 +128,8 @@ const Header = () => {
                 {/* Mobile Hamburger */}
                 <div className="mobile-nav">
                     <img
+                        aria-label="Open navigation menu"
+                        aria-controls="sidebar-menu"
                         src={ham}
                         alt="menu"
                         className="hamburger-icon"

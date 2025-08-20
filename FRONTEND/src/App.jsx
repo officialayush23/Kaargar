@@ -1,7 +1,6 @@
-import React from 'react'
+
 import LogPop from './components/LogPop'
 import './App.css'
-import { Route, Router, Routes } from 'react-router-dom'
 import Worker from './pages/Worker'
 import User from './pages/User'
 import U_login from './pages/U_login'
@@ -11,28 +10,43 @@ import Job_display from './pages/Job_display'
 import U_register from './pages/U_register'
 import W_register from './pages/W_register'
 import SideBar from './components/side_bar'
-import { useEffect } from 'react';
+
+import React, { useEffect } from 'react'
+import { Route, Routes, useLocation } from 'react-router-dom'
 import Lenis from 'lenis'
-import { useLocation } from 'react-router-dom';
-import Footer from './components/Footer'
+import gsap from 'gsap'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import ScrollToTop from './components/ScrollToTop'
+import Footer from './components/Footer'
+
+
+gsap.registerPlugin(ScrollTrigger);
 
 const App = () => {
+  const location = useLocation();
 
   useEffect(() => {
-    // Initialize Lenis
     const lenis = new Lenis();
 
-    // Use requestAnimationFrame to continuously update the scroll
     function raf(time) {
       lenis.raf(time);
+      ScrollTrigger.update();       // <-- CRUCIAL for Lenis + ScrollTrigger
       requestAnimationFrame(raf);
     }
-
     requestAnimationFrame(raf);
 
+    return () => {
+      lenis.destroy();
+    };
+  }, []);
 
-  }, [])
+  // When the route changes: refresh ScrollTrigger after layout settles
+  useEffect(() => {
+    // give React a tick to mount the new page, then refresh
+    requestAnimationFrame(() => {
+      ScrollTrigger.refresh();
+    });
+  }, [location.pathname]);
 
 
 
@@ -42,7 +56,7 @@ const App = () => {
       <div>
         <ScrollToTop />
         <Routes location={location} key={location.pathname}>
-          <Route path='/' element={<LogPop />} />
+          <Route path='/' element={<User />} />
           <Route path='/worker' element={<Worker />} />
           <Route path='/User' element={<User />} />
           <Route path='/U_register' element={<U_register />} />

@@ -44,77 +44,75 @@ const User = () => {
 
   // animation for KAARGAr
 
-  useEffect(() => {
-    const letters = titleRef.current;
+    useEffect(() => {
+    const ctx = gsap.context(() => {
+      const letters = titleRef.current;
+      const infoSection = document.querySelector(".main-container");
+      if (!letters?.length || !infoSection) return;
 
-    if (!letters || letters.length === 0) return;
+      gsap.fromTo(
+        letters,
+        { opacity: 0, y: 50 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          ease: "power3.out",
+          stagger: 0.3,
+          scrollTrigger: {
+            trigger: infoSection,
+            start: "top top",
+            end: () => "+=" + infoSection.offsetHeight,
+            pin: true,
+            scrub: true,
+            toggleActions: "play none none reverse",
+          },
+        }
+      );
+    });
 
-    const infoSection = document.querySelector(".main-container");
-    if (!infoSection) return;
-
-    gsap.fromTo(
-      letters,
-      { opacity: 0, y: 50 },
-      {
-        opacity: 1,
-        y: 0,
-        duration: 0.6,
-        ease: "power3.out",
-        stagger: 0.3,
-        scrollTrigger: {
-          trigger: infoSection,
-          start: "top top", // animation starts when section is centered
-          end: () => "+=" + infoSection.offsetHeight, // pin for full section height
-
-          pin: true,
-          scrub: true,
-          toggleActions: "play none none reverse",
-        },
-      }
-    );
-
-    return () => {
-      ScrollTrigger.getAll().forEach(trigger => trigger.kill());
-    };
+    return () => ctx.revert(); 
   }, [location.pathname]);
 
 
   // the entry about animation
-  useGSAP(() => {
-    gsap.to(".cursor", {
-      opacity: 0,
-      ease: "power2.inOut",
-      repeat: -1,
+useEffect(() => {
+    const words_h1 = ["as a Plumber", "as a Tutor", "as You Want", "with Kaargar"];
+    const ctx = gsap.context(() => {
+      const cursorTween = gsap.to(".cursor", {
+        opacity: 0,
+        ease: "power2.inOut",
+        repeat: -1,
+      });
+
+      const Boxtl = gsap.timeline();
+      const masterTl = gsap.timeline({ repeat: -1 }).pause();
+
+      Boxtl.to(".box-txt", { duration: 1, width: "fit-content", ease: "power4.inOut" })
+        .from(".here", {
+          duration: 1,
+          y: 2,
+          opacity: 0,
+          ease: "power3.out",
+          onComplete: () => masterTl.play(),
+        })
+        .to(".here", {
+          duration: 2,
+          autoAlpha: 0.5,
+          yoyo: true,
+          repeat: -1,
+          ease: "power1.inOut",
+        });
+
+      words_h1.forEach((el) => {
+        let tl = gsap.timeline({ repeat: 1, yoyo: true, repeatDelay: 1 });
+        tl.to(".text", { duration: 1, text: el });
+        masterTl.add(tl);
+      });
     });
 
-
-    const Boxtl = gsap.timeline()
-
-    Boxtl.to('.box-txt', {
-      duration: 1, width: "fit-content", ease: "power4.inOut"
-    })
-      .from('.here', {
-        duration: 1,
-        y: 2,
-        opacity: 0,
-        ease: "power3.out", onComplete: () => {
-          masterTl.play()
-        },
-      })
-      .to('.here', {
-        duration: 2, autoAlpha: 0.5, yoyo: true, repeat: -1, ease: "power1.inOut",
-      });
-    const masterTl = gsap.timeline({ repeat: -1 }).pause()
-
-    words_h1.forEach(el => {
-      let tl = gsap.timeline({ repeat: 1, yoyo: true, repeatDelay: 1 })
-      tl.to('.text', {
-        duration: 1, text: el
-      })
-      masterTl.add(tl)
-    })
-
-  });
+    return () => ctx.revert();
+  }, [location.pathname]);
 
 
 
@@ -137,6 +135,7 @@ const User = () => {
 
     let stars = [];
     const numStars = 100;
+    let animationId;
 
     function resizeCanvas() {
       canvas.width = window.innerWidth;
@@ -175,14 +174,16 @@ const User = () => {
         }
       }
 
-      requestAnimationFrame(animateStars);
+      animationId=requestAnimationFrame(animateStars);
     }
 
     animateStars();
 
     return () => {
       window.removeEventListener("resize", resizeCanvas);
+      cancelAnimationFrame(animationId);
     };
+
   }, [location.pathname]);
 
   return (
@@ -203,7 +204,7 @@ const User = () => {
               <Link className='btn-mi' to='/U_register'> <button className="btn-m">Hire Now! </button></Link>
 
 
-              <ScrollLink to="info" smooth={true} duration={500} className="scroll">  <button className="btn">Learn More ⬇︎         </button></ScrollLink>
+                <a href="#info" className="scroll">   <button className="btn">Learn More ⬇︎         </button></a>
 
             </div>
           </div>

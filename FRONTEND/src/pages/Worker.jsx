@@ -41,76 +41,73 @@ const Worker = () => {
   // animation for KAARGAr
 
   useEffect(() => {
-    const letters = titleRef.current;
+    const ctx = gsap.context(() => {
+      const letters = titleRef.current;
+      const infoSection = document.querySelector(".main-container");
+      if (!letters?.length || !infoSection) return;
 
-    if (!letters || letters.length === 0) return;
-
-    const infoSection = document.querySelector(".main-container");
-    if (!infoSection) return;
-
-    gsap.fromTo(
-      letters,
-      { opacity: 0, y: 50 },
-      {
-        opacity: 1,
-        y: 0,
-        duration: 0.6,
-        ease: "power3.out",
-        stagger: 0.3,
-        scrollTrigger: {
-          trigger: infoSection,
-          start: "top top", // animation starts when section is centered
-          end: () => "+=" + infoSection.offsetHeight, // pin for full section height
-
-          pin: true,
-          scrub: true,
-          toggleActions: "play none none reverse",
-        },
-      }
-    );
-
-    return () => {
-      ScrollTrigger.getAll().forEach(trigger => trigger.kill());
-    };
-  }, [location.pathname]);
-
-
-  // the entry about animation
-  useGSAP(() => {
-    gsap.to(".cursor", {
-      opacity: 0,
-      ease: "power2.inOut",
-      repeat: -1,
+      gsap.fromTo(
+        letters,
+        { opacity: 0, y: 50 },
+        {
+          opacity: 1,
+          y: 0,
+          duration: 0.6,
+          ease: "power3.out",
+          stagger: 0.3,
+          scrollTrigger: {
+            trigger: infoSection,
+            start: "top top",
+            end: () => "+=" + infoSection.offsetHeight,
+            pin: true,
+            scrub: true,
+            toggleActions: "play none none reverse",
+          },
+        }
+      );
     });
 
+    return () => ctx.revert(); // kills triggers/tweens created above
+  }, [location.pathname]);
 
-    const Boxtl = gsap.timeline()
-
-    Boxtl.to('.box-txt', {
-      duration: 1, width: "fit-content", ease: "power4.inOut"
-    })
-      .from('.here', {
-        duration: 1,
-        y: 2,
+  // the entry about animation
+useEffect(() => {
+    const words_h1 = ["as a Plumber", "as a Tutor", "as You Want", "with Kaargar"];
+    const ctx = gsap.context(() => {
+      const cursorTween = gsap.to(".cursor", {
         opacity: 0,
-        ease: "power3.out", onComplete: () => {
-          masterTl.play()
-        },
-      })
-      .to('.here', {
-        duration: 2, autoAlpha: 0.5, yoyo: true, repeat: -1, ease: "power1.inOut",
+        ease: "power2.inOut",
+        repeat: -1,
       });
-    const masterTl = gsap.timeline({ repeat: -1 }).pause()
 
-    words_h1.forEach(el => {
-      let tl = gsap.timeline({ repeat: 1, yoyo: true, repeatDelay: 1 })
-      tl.to('.text', {
-        duration: 1, text: el
-      })
-      masterTl.add(tl)
-    })
+      const Boxtl = gsap.timeline();
+      const masterTl = gsap.timeline({ repeat: -1 }).pause();
 
-  });
+      Boxtl.to(".box-txt", { duration: 1, width: "fit-content", ease: "power4.inOut" })
+        .from(".here", {
+          duration: 1,
+          y: 2,
+          opacity: 0,
+          ease: "power3.out",
+          onComplete: () => masterTl.play(),
+        })
+        .to(".here", {
+          duration: 2,
+          autoAlpha: 0.5,
+          yoyo: true,
+          repeat: -1,
+          ease: "power1.inOut",
+        });
+
+      words_h1.forEach((el) => {
+        let tl = gsap.timeline({ repeat: 1, yoyo: true, repeatDelay: 1 });
+        tl.to(".text", { duration: 1, text: el });
+        masterTl.add(tl);
+      });
+    });
+
+    return () => ctx.revert();
+  }, [location.pathname]);
 
 
 
@@ -133,6 +130,7 @@ const Worker = () => {
 
     let stars = [];
     const numStars = 100;
+    let animationId;
 
     function resizeCanvas() {
       canvas.width = window.innerWidth;
@@ -171,14 +169,16 @@ const Worker = () => {
         }
       }
 
-      requestAnimationFrame(animateStars);
+      animationId=requestAnimationFrame(animateStars);
     }
 
     animateStars();
 
     return () => {
       window.removeEventListener("resize", resizeCanvas);
+      cancelAnimationFrame(animationId);
     };
+
   }, [location.pathname]);
   return (
     <>
@@ -198,7 +198,7 @@ const Worker = () => {
               <Link className='btn-mi' to='/W_register'> <button className="btn-m">Offer Your Skill </button></Link>
 
 
-              <ScrollLink to="info" smooth={true} duration={500} className="scroll">  <button className="btn">Learn More ⬇︎         </button></ScrollLink>
+              <a href="#info" className="scroll">  <button className="btn">Learn More ⬇︎         </button></a>
 
             </div>
           </div>
