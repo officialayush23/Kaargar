@@ -12,12 +12,18 @@ import InfoCards from '../components/InfoCards';
 import Join from '../components/join';
 import FAQ from '../components/faq';
 import Footer from '../components/Footer';
-
+import { useLocation } from 'react-router-dom';
 
 
 
 
 const Worker = () => {
+
+
+
+
+  const location = useLocation();
+
   gsap.registerPlugin(ScrollTrigger);
   gsap.registerPlugin(TextPlugin, RoughEase);
   const canvasRef = useRef(null);
@@ -66,7 +72,7 @@ const Worker = () => {
     return () => {
       ScrollTrigger.getAll().forEach(trigger => trigger.kill());
     };
-  }, []);
+  }, [location.pathname]);
 
 
   // the entry about animation
@@ -173,7 +179,7 @@ const Worker = () => {
     return () => {
       window.removeEventListener("resize", resizeCanvas);
     };
-  }, []);
+  }, [location.pathname]);
   return (
     <>
       <main className='wrapper'>
@@ -184,7 +190,7 @@ const Worker = () => {
           <div className="info">
             <div className="info-txt">
               <h1 className="txt"><span className="box-txt"></span>
-                <span className="here">Work </span><span className="text"></span><span className="cursor">_</span></h1>
+                <span className="here">Work</span><span className="text"></span><span className="cursor">_</span></h1>
               <h2 className="h2-txt">Kaargar connects skilled workers with clients — from students needing quick help to enterprises managing large projects. Reliable, affordable, and fast.</h2>
             </div>
             <div className="bttn">

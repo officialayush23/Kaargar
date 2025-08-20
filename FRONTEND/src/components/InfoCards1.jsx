@@ -21,7 +21,7 @@ import { motion, useScroll, useTransform } from 'motion/react';
 import AuroraBackground from './auroraback'
 import { Link } from 'react-router-dom'
 
-const InfoCards = () => {
+const InfoCards1 = () => {
   const titleRef = useRef(null);
   const sectionRef = useRef(null);
 
@@ -60,7 +60,7 @@ const InfoCards = () => {
         style={{ opacity: titleOpacity, y: titleY, willChange: "opacity, transform" }} className="title-container">
         <h1
 
-          className="title">All Professions Supported</h1>
+          className="title">Hire Any Profession.</h1>
       </motion.div>
 
       <section ref={sectionRef}
@@ -110,7 +110,7 @@ const InfoCards = () => {
               <SwiperSlide className="element" key={index}>
                 <div className="holder">
                   <img src={prof.img} alt={prof.name} className="img1" />
-                  <Link to="/w_register"><button className="name"><span>{prof.name}</span></button></Link>
+                  <Link to="/u_register"><button className="name"><span>Hire {prof.name}</span></button></Link>
                 </div>
               </SwiperSlide>
             ))}
@@ -124,4 +124,4 @@ const InfoCards = () => {
   )
 }
 
-export default InfoCards
+export default InfoCards1

@@ -43,14 +43,29 @@
 
 }
 
+
+/* active deactive animation */
+
+/* Active link underline */
+.nav-text.active,
+.option-txt.active {
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    text-decoration-thickness: 2px;
+    color: rgb(13, 142, 228);
+    /* Optional: same as hover */
+}
+
+
 .nav-txt {
     text-decoration: none;
 }
 
-.option{
-    display:flex;
-    gap:28px;
+.option {
+    display: flex;
+    gap: 28px;
 }
+
 .option-txt {
 
     text-decoration: none;

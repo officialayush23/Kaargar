@@ -13,20 +13,29 @@ import InfoCards from '../components/InfoCards';
 import Join from '../components/join';
 import FAQ from '../components/faq';
 import Footer from '../components/Footer';
-
+import InfoCards1 from '../components/InfoCards1';
+import Join1 from '../components/Join1';
+import FAQ1 from '../components/FAQ1';
+import { useLocation } from 'react-router-dom';
 
 
 
 
 const User = () => {
+
+
+
+  const location = useLocation();
+
+
   gsap.registerPlugin(ScrollTrigger);
   gsap.registerPlugin(TextPlugin, RoughEase);
   const canvasRef = useRef(null);
   const titleRef = useRef([]);
   const words_h1 = [
-    "as a Plumber",
-    "as a Tutor",
-    "as You Want",
+    " a Plumber",
+    " a Tutor",
+    " You Want",
     "with Kaargar"
   ];
 
@@ -67,7 +76,7 @@ const User = () => {
     return () => {
       ScrollTrigger.getAll().forEach(trigger => trigger.kill());
     };
-  }, []);
+  }, [location.pathname]);
 
 
   // the entry about animation
@@ -174,7 +183,7 @@ const User = () => {
     return () => {
       window.removeEventListener("resize", resizeCanvas);
     };
-  }, []);
+  }, [location.pathname]);
 
   return (
     <>
@@ -186,12 +195,12 @@ const User = () => {
           <div className="info">
             <div className="info-txt">
               <h1 className="txt"><span className="box-txt"></span>
-                <span className="here">Work </span><span className="text"></span><span className="cursor">_</span></h1>
+                <span className="here">Hire </span><span className="text"></span><span className="cursor">_</span></h1>
               <h2 className="h2-txt">Kaargar connects skilled workers with clients — from students needing quick help to enterprises managing large projects. Reliable, affordable, and fast.</h2>
             </div>
             <div className="bttn">
 
-              <Link className='btn-mi' to='/W_register'> <button className="btn-m">Offer Your Skill </button></Link>
+              <Link className='btn-mi' to='/U_register'> <button className="btn-m">Hire Now! </button></Link>
 
 
               <ScrollLink to="info" smooth={true} duration={500} className="scroll">  <button className="btn">Learn More ⬇︎         </button></ScrollLink>
@@ -217,9 +226,9 @@ const User = () => {
         </h1>
 
       </section>
-      <InfoCards />
-      <Join />
-      <FAQ />
+      <InfoCards1 />
+      <Join1 />
+      <FAQ1 />
       <Footer />
 
 

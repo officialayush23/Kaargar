@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 import "./Header.css";
 import { gsap } from "gsap";
 import { useGSAP } from "@gsap/react";
-import SideBar from './side_bar'; // Make sure path is correct
+import SideBar from './side_bar';
 import ham from "../assets/images/ham.svg";
 import { motion, useScroll, useMotionValueEvent } from 'motion/react'
-// Add your hamburger icon here
+import { NavLink } from "react-router-dom";
+
 
 const Header = () => {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -24,24 +25,27 @@ const Header = () => {
         };
         window.addEventListener("resize", handleResize);
         return () => window.removeEventListener("resize", handleResize);
+
+        useGSAP(() => {
+            gsap.from(titleRef.current, {
+                y: 20,
+                opacity: 0,
+                duration: 1.3,
+                ease: "power2.out",
+            });
+
+            gsap.from(headRef.current, {
+                y: -20,
+                opacity: 0,
+                duration: 1,
+                delay: 1,
+                stagger: 0.6,
+            });
+        }, []);
+        
     }, []);
 
-    useGSAP(() => {
-        gsap.from(titleRef.current, {
-            y: 20,
-            opacity: 0,
-            duration: 1.3,
-            ease: "power2.out",
-        });
 
-        gsap.from(headRef.current, {
-            y: -20,
-            opacity: 0,
-            duration: 1,
-            delay: 1,
-            stagger: 0.6,
-        });
-    }, []);
 
     const addToRefs = (el) => {
         if (el && !headRef.current.includes(el)) {
@@ -89,13 +93,22 @@ const Header = () => {
 
                 {/* Desktop Navigation */}
                 <div className="option desktop-nav">
-                    <Link ref={addToRefs} className="option-txt" to="/User">
+                    <NavLink
+                        ref={addToRefs}
+                        className={({ isActive }) => isActive ? "option-txt active" : "option-txt"}
+                        to="/User"
+                    >
                         Want To Hire?
-                    </Link>
-                    <Link ref={addToRefs} className="option-txt" to="/Worker">
+                    </NavLink>
+                    <NavLink
+                        ref={addToRefs}
+                        className={({ isActive }) => isActive ? "option-txt active" : "option-txt"}
+                        to="/Worker"
+                    >
                         Want To Work?
-                    </Link>
+                    </NavLink>
                 </div>
+
 
                 <div className="nav-container desktop-nav">
                     <Link ref={addToRefs} className="nav-text" to="/U_login">

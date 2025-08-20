@@ -4,6 +4,7 @@ const U_register = () => {
   return (
     <div>
       
+      
     </div>
   )
 }

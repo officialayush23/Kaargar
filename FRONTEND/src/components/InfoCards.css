@@ -91,17 +91,22 @@
 .name {
     position: absolute;
     left: 50%;
+    top:85%;
     transform: translateX(-50%);
     bottom: 10px;
-    padding: 10px 18px;
     background: rgba(46, 39, 39, 0.3);
     backdrop-filter: blur(2px);
     border-radius: 8px;
     font-family: "Space Mono", monospace;
     color: white;
     font-size: 1.2rem;
+    display:flex;
+    justify-content: center;
+    justify-items: center;
+    align-items: center;
     transition: all 1s linear;
 }
+
 
 .swiper-slide-active .name{
     box-shadow: 0px 0px 12px 4px aqua;

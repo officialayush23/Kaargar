@@ -11,9 +11,11 @@ import Job_display from './pages/Job_display'
 import U_register from './pages/U_register'
 import W_register from './pages/W_register'
 import SideBar from './components/side_bar'
-import  { useEffect } from 'react';
+import { useEffect } from 'react';
 import Lenis from 'lenis'
+import { useLocation } from 'react-router-dom';
 import Footer from './components/Footer'
+import ScrollToTop from './components/ScrollToTop'
 
 const App = () => {
 
@@ -38,8 +40,8 @@ const App = () => {
   return (
     <>
       <div>
-
-        <Routes>
+        <ScrollToTop />
+        <Routes location={location} key={location.pathname}>
           <Route path='/' element={<LogPop />} />
           <Route path='/worker' element={<Worker />} />
           <Route path='/User' element={<User />} />
@@ -51,7 +53,7 @@ const App = () => {
           <Route path='/Job_display' element={<Job_display />} />
         </Routes>
       </div>
-     
+
     </>
   )
 }
