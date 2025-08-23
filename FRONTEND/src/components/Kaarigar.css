@@ -1,0 +1,157 @@
+.steps-section {
+    margin-top: 100px;
+    color: white;
+    display: flex;
+    justify-content: center;
+    justify-items: center;
+    align-items: center;
+    height: 100%;
+    width: 100%;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+    font-family: monospace;
+    margin-bottom: 100px;
+
+}
+
+.steps-title {
+    font-weight: bolder;
+    font-size: clamp(1.2rem, 5vw, 3.5rem);
+    justify-self: center;
+}
+
+/* orientation for inner box */
+
+.steps-container {
+    margin: 25px;
+
+
+}
+
+.step {
+    display: grid;
+    grid-template-areas:
+        "num cont"
+        "num cont";
+    gap: 10px;
+    /* spacing between elements */
+    align-items: start;
+}
+
+.nos {
+    grid-area: num;
+}
+
+.content {
+    grid-area: cont;
+}
+
+
+.no {
+    border-right: 2px solid aqua;
+    display: flex;
+    flex-direction: column;
+    gap: 80px;
+}
+
+.text1 {
+    margin-left: 25px;
+}
+
+
+/* making the containers */
+
+.no {
+    padding: 0;
+    margin: 0;
+}
+
+.nos {
+    font-size: 2rem;
+    background: transparent;
+    font-weight: bolder;
+    border: 1px dotted white;
+    margin: 5px;
+    text-align: center;
+    border-radius: 12px;
+    padding: 23px 23px;
+    margin-right: 20px;
+}
+
+/* for content */
+
+.content {
+    border: 1px solid white;
+
+    border-radius: 12px;
+    margin: 12px;
+    display: flex;
+    flex-direction: column;
+    justify-items: center;
+    justify-content: center;
+    align-items: center;
+
+    padding: 20px;
+
+
+}
+
+.title1 {
+    text-align: left;
+    font-size: 1.5rem;
+}
+
+.desc1 {
+    text-align: left;
+    font-size: 1.1rem;
+}
+
+
+/* responsive ness */
+@media (max-width: 768px) {
+    .step {
+        display: grid;
+        grid-template-areas:
+            "num cont"
+            "num cont";
+        gap: 10px;
+        /* spacing between elements */
+        align-items: start;
+    }
+
+    .no {
+        border-right: 2px solid aqua;
+        gap: 40px;
+        /* reduce spacing between numbers */
+    }
+
+    .nos {
+        font-size: 1.5rem;
+        /* shrink numbers */
+        padding: 15px 15px;
+        margin-right: 10px;
+    }
+
+    .text1 {
+        margin-left: 15px;
+        /* reduce left spacing */
+    }
+
+    .content {
+        margin: 8px 0;
+        /* smaller margin */
+        padding: 15px;
+        /* shrink padding */
+    }
+
+    .title1 {
+        font-size: 1.2rem;
+        /* smaller text */
+    }
+
+    .desc1 {
+        font-size: 0.95rem;
+        /* smaller description */
+    }
+}

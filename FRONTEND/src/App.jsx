@@ -15,6 +15,8 @@ import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import ScrollToTop from './components/ScrollToTop'
 import Footer from './components/Footer'
+import AuroraBackground from './components/auroraback'
+import Background from './components/Background'
 
 
 gsap.registerPlugin(ScrollTrigger);
@@ -51,7 +53,9 @@ const App = () => {
   return (
     <>
       <div>
+        <Background />
         <ScrollToTop />
+
         <Routes location={location} key={location.pathname}>
           <Route path='/' element={<User />} />
           <Route path='/worker' element={<Worker />} />

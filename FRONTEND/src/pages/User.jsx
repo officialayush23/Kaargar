@@ -1,88 +1,28 @@
-
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import './User.css';
 import Header from '../components/Header';
-import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/all';
-import { Timeline } from 'gsap/gsap-core';
 import { TextPlugin, RoughEase } from "gsap/all";
 import { Link } from 'react-router-dom';
-import { Link as ScrollLink } from "react-scroll";
-import InfoCards from '../components/InfoCards';
-import Join from '../components/join';
-import FAQ from '../components/faq';
 import Footer from '../components/Footer';
 import InfoCards1 from '../components/InfoCards1';
 import Join1 from '../components/Join1';
 import FAQ1 from '../components/FAQ1';
 import { useLocation } from 'react-router-dom';
-
-
+import KaargarTitle from '../components/Kaarigar';
 
 
 const User = () => {
-
-
-
   const location = useLocation();
-
 
   gsap.registerPlugin(ScrollTrigger);
   gsap.registerPlugin(TextPlugin, RoughEase);
   const canvasRef = useRef(null);
-  const titleRef = useRef([]);
-  const words_h1 = [
-    " a Plumber",
-    " a Tutor",
-    " You Want",
-    "with Kaargar"
-  ];
-
-  const infoSectionRef = useRef(null);
-
-  const title = ["K", "A", "A", "R", "G", "A", "R"];
-
-  // animation for KAARGAr
-
-  useEffect(() => {
-    titleRef.current = [];
-    const ctx = gsap.context(() => {
-      const letters = titleRef.current;
-      const infoSection = infoSectionRef.current;
-      if (!letters?.length || !infoSection) return;
-
-      gsap.fromTo(
-        letters,
-        { opacity: 0, y: 50 },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.6,
-          ease: "power3.out",
-          stagger: 0.3,
-          scrollTrigger: {
-            trigger: infoSection,
-            start: "top top",
-            end: () => "+=" + infoSection.offsetHeight,
-            pin: true,
-            scrub: true,
-            toggleActions: "play none none reverse",
-          },
-        }
-      );
-    });
-
-
-
-    return () => ctx.revert();
-
-  }, [location.pathname]);
-
 
   // the entry about animation
   useEffect(() => {
-    const words_h1 = ["as a Plumber", "as a Tutor", "as You Want", "with Kaargar"];
+    const words_h1 = [" a Plumber", " a Tutor", "who You Want", "with Kaargar"];
     const ctx = gsap.context(() => {
       const cursorTween = gsap.to(".cursor", {
         opacity: 0,
@@ -119,20 +59,6 @@ const User = () => {
     return () => ctx.revert();
   }, [location.pathname]);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   // canvas animation
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -163,15 +89,13 @@ const User = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
 
       for (let star of stars) {
-        // Twinkle effect
         ctx.globalAlpha = 0.5 + Math.sin(Date.now() / 300 + star.x) * 0.5;
         ctx.fillStyle = "white";
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.radius, 0, 2 * Math.PI);
         ctx.fill();
-        ctx.globalAlpha = 1; // reset
+        ctx.globalAlpha = 1;
 
-        // Falling movement
         star.y += star.speed;
         if (star.y > canvas.height) {
           star.y = 0;
@@ -188,11 +112,7 @@ const User = () => {
       window.removeEventListener("resize", resizeCanvas);
       cancelAnimationFrame(animationId);
     };
-
   }, [location.pathname]);
-
-
-
 
   return (
     <>
@@ -208,42 +128,21 @@ const User = () => {
               <h2 className="h2-txt">Kaargar connects skilled workers with clients — from students needing quick help to enterprises managing large projects. Reliable, affordable, and fast.</h2>
             </div>
             <div className="bttn">
-
               <Link className='btn-mi' to='/U_register'> <button className="btn-m">Hire Now! </button></Link>
-
-
               <a href="#info" className="scroll">   <button className="btn">Learn More ⬇︎         </button></a>
-
             </div>
           </div>
-          {/* <div className="img-container">
-            <img className="img" src={wi1}/>
-          </div> */}
         </div>
       </main>
-      <section ref={infoSectionRef} id="info" className='main-container'>
-        <h1 className="atitle ">
-          {title.map((letter, index) => (
-            <span
-              key={index}
-              ref={(el) => (titleRef.current[index] = el)}
-              className="inline-block"
-            >
-              {letter}
-            </span>
-          ))}
-        </h1>
 
-      </section>
+      {/* Replaced with new component */}
+      <KaargarTitle />
+
       <InfoCards1 />
       <Join1 />
       <FAQ1 />
       <Footer />
-
-
-
     </>
-
   )
 }
 

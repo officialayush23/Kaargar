@@ -1,84 +1,30 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React, { useEffect, useRef } from 'react'
 import './Worker.css';
 import Header from '../components/Header';
-import { useGSAP } from '@gsap/react';
 import gsap from 'gsap';
-import { ScrollTrigger } from 'gsap/all';
-import { Timeline } from 'gsap/gsap-core';
-import { TextPlugin, RoughEase } from "gsap/all";
+import { ScrollTrigger, TextPlugin, RoughEase } from 'gsap/all';
 import { Link } from 'react-router-dom';
-import { Link as ScrollLink } from "react-scroll";
 import InfoCards from '../components/InfoCards';
 import Join from '../components/join';
 import FAQ from '../components/faq';
 import Footer from '../components/Footer';
 import { useLocation } from 'react-router-dom';
-
-
+import KaargarTitle from '../components/Kaarigar';
+import Userkaar from '../components/Userkaar';
 
 
 const Worker = () => {
-
-
-
-
+  const infoSectionRef = useRef(null);
   const location = useLocation();
-
-  gsap.registerPlugin(ScrollTrigger);
-  gsap.registerPlugin(TextPlugin, RoughEase);
   const canvasRef = useRef(null);
-  const titleRef = useRef([]);
-  const words_h1 = [
-    "as a Plumber",
-    "as a Tutor",
-    "as You Want",
-    "with Kaargar"
-  ];
 
+  gsap.registerPlugin(ScrollTrigger, TextPlugin, RoughEase);
 
-  const title = ["K", "A", "A", "R", "G", "A", "R"];
-
-  // animation for KAARGAr
-
-  useEffect(() => {
-      titleRef.current = [];
-    const ctx = gsap.context(() => {
-      const letters = titleRef.current;
-      const infoSection = document.querySelector(".main-container");
-      if (!letters?.length || !infoSection) return;
-
-      gsap.fromTo(
-        letters,
-        { opacity: 0, y: 50 },
-        {
-          opacity: 1,
-          y: 0,
-          duration: 0.6,
-          ease: "power3.out",
-          stagger: 0.3,
-          scrollTrigger: {
-            trigger: infoSection,
-            start: "top top",
-            end: () => "+=" + infoSection.offsetHeight,
-            pin: true,
-            scrub: true,
-            toggleActions: "play none none reverse",
-          },
-        }
-      );
-    });
-
-
-    return () => ctx.revert();
-
-  }, [location.pathname]);
-
-
-  // the entry about animation
+  // entry animation
   useEffect(() => {
     const words_h1 = ["as a Plumber", "as a Tutor", "as You Want", "with Kaargar"];
     const ctx = gsap.context(() => {
-      const cursorTween = gsap.to(".cursor", {
+      gsap.to(".cursor", {
         opacity: 0,
         ease: "power2.inOut",
         repeat: -1,
@@ -113,25 +59,10 @@ const Worker = () => {
     return () => ctx.revert();
   }, [location.pathname]);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   // canvas animation
   useEffect(() => {
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-
     let stars = [];
     const numStars = 100;
     let animationId;
@@ -155,24 +86,20 @@ const Worker = () => {
 
     function animateStars() {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-
       for (let star of stars) {
-        // Twinkle effect
         ctx.globalAlpha = 0.5 + Math.sin(Date.now() / 300 + star.x) * 0.5;
         ctx.fillStyle = "white";
         ctx.beginPath();
         ctx.arc(star.x, star.y, star.radius, 0, 2 * Math.PI);
         ctx.fill();
-        ctx.globalAlpha = 1; // reset
+        ctx.globalAlpha = 1;
 
-        // Falling movement
         star.y += star.speed;
         if (star.y > canvas.height) {
           star.y = 0;
           star.x = Math.random() * canvas.width;
         }
       }
-
       animationId = requestAnimationFrame(animateStars);
     }
 
@@ -182,9 +109,7 @@ const Worker = () => {
       window.removeEventListener("resize", resizeCanvas);
       cancelAnimationFrame(animationId);
     };
-
   }, [location.pathname]);
-
 
   return (
     <>
@@ -200,43 +125,21 @@ const Worker = () => {
               <h2 className="h2-txt">Kaargar connects skilled workers with clients — from students needing quick help to enterprises managing large projects. Reliable, affordable, and fast.</h2>
             </div>
             <div className="bttn">
-
               <Link className='btn-mi' to='/W_register'> <button className="btn-m">Offer Your Skill </button></Link>
-
-
-              <a href="#info" className="scroll">  <button className="btn">Learn More ⬇︎         </button></a>
-
+              <a href="#info" className="scroll">  <button className="btn">Learn More ⬇︎</button></a>
             </div>
           </div>
-          {/* <div className="img-container">
-            <img className="img" src={wi1}/>
-          </div> */}
         </div>
       </main>
-      <section id="info" className='main-container'>
-        <h1 className="atitle ">
-          {title.map((letter, index) => (
-            <span
-              key={index}
-              ref={(el) => (titleRef.current[index] = el)}
-              className="inline-block"
-            >
-              {letter}
-            </span>
-          ))}
-        </h1>
 
-      </section>
+      <Userkaar />
+
       <InfoCards />
       <Join />
       <FAQ />
       <Footer />
-
-
-
     </>
-
   )
 }
 
-export default Worker
+export default Worker;

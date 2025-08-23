@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { createNoise3D } from "simplex-noise"; // ✅ still imported (unused but kept for structure consistency)
 
-const AuroraBackground = () => {
+const Background = () => {
   const canvasRef = useRef(null);
 
   useEffect(() => {
@@ -75,7 +75,7 @@ const AuroraBackground = () => {
     <canvas
       ref={canvasRef}
       style={{
-        position: "absolute",
+        position: "fixed",
         inset: 0,
         zIndex: -111,
         background: "transparent",
@@ -84,4 +84,4 @@ const AuroraBackground = () => {
   );
 };
 
-export default AuroraBackground;
+export default Background;
