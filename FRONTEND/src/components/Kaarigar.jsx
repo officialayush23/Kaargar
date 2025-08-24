@@ -48,7 +48,7 @@ const KaargarTitle = () => {
     }, []);
 
     return (
-        <section className="steps-section">
+        <section id="info" className="steps-section">
             <h2 className="steps-title">How It Works</h2>
             <div className="steps-container">
                 {steps.map((step, i) => (
