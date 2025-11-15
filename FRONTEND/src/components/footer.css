@@ -1,7 +1,9 @@
 /* Footer container */
 .footer {
   background: transparent; /* dark bluish transparent */
-  backdrop-filter: blur(10px); /* glass effect */
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+   /* glass effect */
   color: #d7f7ff;
   padding: 3rem 1rem 1rem;
   font-family: 'Poppins', sans-serif;
