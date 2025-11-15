@@ -86,10 +86,10 @@ const Header = () => {
 
 
 
-                ref={titleRef} className="navbar">
+                ref={titleRef} className="navbar ">
                 <div className="Title">
                     <Link className="nav-txt" to="/">
-                        <h1 ref={addToRefs}>Kaargar</h1>
+                        <h1 className="text-3xl"ref={addToRefs}>Kaargar</h1>
                     </Link>
                 </div>
 
@@ -117,7 +117,7 @@ const Header = () => {
 
 
                 <div className="nav-container desktop-nav">
-                    <Link aria-label="Login to your account" ref={addToRefs} className="nav-text" to="/U_login">
+                    <Link aria-label="Login to your account" ref={addToRefs} className="nav-text" to="/login">
                         Login
                     </Link>
                     <Link aria-label="Sign up for a new account" ref={addToRefs} className="nav-text" to="/U_register">

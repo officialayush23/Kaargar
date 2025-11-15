@@ -1,22 +1,19 @@
 import './App.css'
 import Worker from './pages/Worker'
 import User from './pages/User'
-import U_login from './pages/U_login'
-import W_login from './pages/W_login'
 import Worker_display from './pages/Worker_display'
 import Job_display from './pages/Job_display'
 import U_register from './pages/U_register'
 import W_register from './pages/W_register'
-import SideBar from './components/side_bar'
 import React, { useEffect } from 'react'
 import { Route, Routes, useLocation } from 'react-router-dom'
 import Lenis from 'lenis'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import ScrollToTop from './components/ScrollToTop'
-import Footer from './components/Footer'
-import AuroraBackground from './components/auroraback'
+
 import Background from './components/Background'
+import TabUW from './components/use_ui/TabUW'
 
 
 gsap.registerPlugin(ScrollTrigger);
@@ -62,8 +59,7 @@ const App = () => {
           <Route path='/User' element={<User />} />
           <Route path='/U_register' element={<U_register />} />
           <Route path='/W_register' element={<W_register />} />
-          <Route path='/U_login' element={<U_login />} />
-          <Route path='/W_login' element={< W_login />} />
+         <Route path='/login' element={<TabUW />} />
           <Route path='/Worker_display' element={<Worker_display />} />
           <Route path='/Job_display' element={<Job_display />} />
         </Routes>

@@ -110,9 +110,15 @@ canvas.stars-bg {
 .btn-m:hover {
   transform: scale(1.1);
   background-color: rgb(30, 30, 30);
-  color: #fff;
+  color: #ffffff;
   box-shadow: 0 0px 23px 5px rgba(60, 158, 211, 0.3);
   /* accent glow */
+}
+
+.btn-m{
+
+    background-color: white;
+
 }
 
 .btn-mi:hover {
