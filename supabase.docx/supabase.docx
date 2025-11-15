@@ -1,0 +1,280 @@
+-- Enable PostGIS if you want geo queries (run once)
+-- CREATE EXTENSION IF NOT EXISTS postgis;
+
+-- Core users table (Supabase Auth provides auth; we store profile & private fields here)
+CREATE TABLE public.users (
+  id uuid PRIMARY KEY,                         -- must match auth.users.id
+  email text UNIQUE NOT NULL,
+  name text,
+  phone text,                                  -- real phone (private)
+  phone_masked text,                           -- masked for public
+  gender text,
+  birthdate date,
+  created_at timestamptz DEFAULT now(),
+  role text[] DEFAULT ARRAY['customer']::text[], -- roles: customer, worker, part_time
+  location geography(Point,4326),              -- nullable, index below
+  rating_avg numeric(3,2) DEFAULT 0,
+  rating_count integer DEFAULT 0,
+  kyc_status text DEFAULT 'none',              -- none, pending, approved, rejected
+  is_active boolean DEFAULT true,
+  metadata jsonb DEFAULT '{}'::jsonb           -- extensible (links, social, preferences)
+);
+
+CREATE INDEX idx_users_location ON public.users USING GIST (location);
+
+-- Worker profile (one-to-one with users for heavy worker-specific fields)
+CREATE TABLE public.worker_profiles (
+  user_id uuid PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  professions text[] DEFAULT '{}'::text[],     -- plumber, electrician, walker, tutor...
+  skills text[] DEFAULT '{}'::text[],
+  education jsonb DEFAULT '[]'::jsonb,         -- list of education objects
+  hourly_rate numeric(10,2),
+  base_rate numeric(10,2),
+  bio text,
+  availability jsonb DEFAULT '{}'::jsonb,      -- structured availability (calendar JSON)
+  documents jsonb DEFAULT '{}'::jsonb,        -- links to storage (IDs/URLs)
+  max_concurrent_jobs integer DEFAULT 1,       -- allow multiple acceptance
+  created_at timestamptz DEFAULT now()
+);
+
+-- Jobs
+CREATE TABLE public.jobs (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  customer_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  title text NOT NULL,
+  description text,
+  category text,
+  tags text[] DEFAULT '{}'::text[],
+  location geography(Point,4326),              -- null => remote
+  is_remote boolean DEFAULT false,
+  price_type text NOT NULL CHECK (price_type IN ('fixed','hourly','bidding')),
+  price_min numeric(10,2),
+  price_max numeric(10,2),
+  scheduled_start timestamptz,                 -- when job should start
+  scheduled_end timestamptz,                   -- end window
+  status text NOT NULL DEFAULT 'draft',        -- draft, posted, assigned, in_progress, completed, cancelled, dispute
+  assigned_worker_id uuid REFERENCES public.users(id),
+  created_at timestamptz DEFAULT now(),
+  expires_at timestamptz,
+  metadata jsonb DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX idx_jobs_location ON public.jobs USING GIST (location);
+CREATE INDEX idx_jobs_status ON public.jobs(status);
+CREATE INDEX idx_jobs_scheduled ON public.jobs (scheduled_start, scheduled_end);
+
+-- Bids / Applications
+CREATE TABLE public.bids (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid NOT NULL REFERENCES public.jobs(id) ON DELETE CASCADE,
+  worker_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  amount numeric(10,2),
+  message text,
+  status text NOT NULL DEFAULT 'pending',      -- pending, accepted, rejected, withdrawn
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX idx_bids_job ON public.bids(job_id);
+
+-- Payments / Escrow
+CREATE TABLE public.payments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid REFERENCES public.jobs(id),
+  payer_id uuid REFERENCES public.users(id),
+  payee_id uuid REFERENCES public.users(id),   -- often worker OR platform (for captured funds)
+  provider text,                               -- stripe, razorpay, paypal
+  provider_payment_id text,                    -- provider's payment/intent id
+  amount_total numeric(12,2) NOT NULL,
+  platform_fee numeric(12,2) DEFAULT 0,
+  amount_to_worker numeric(12,2) DEFAULT 0,
+  provider_charge numeric(12,2) DEFAULT 0,
+  coupon_id uuid,
+  status text NOT NULL DEFAULT 'initiated',    -- initiated, captured, released, refunded, failed
+  created_at timestamptz DEFAULT now(),
+  metadata jsonb DEFAULT '{}'::jsonb
+);
+
+CREATE INDEX idx_payments_job ON public.payments(job_id);
+
+-- Coupons
+CREATE TABLE public.coupons (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  code text UNIQUE NOT NULL,
+  kind text NOT NULL CHECK(kind IN ('percent','fixed')),
+  amount numeric(10,2) NOT NULL,
+  max_uses integer DEFAULT 1,
+  used_count integer DEFAULT 0,
+  expires_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+
+-- KYC Documents
+CREATE TABLE public.kyc_documents (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  doc_type text NOT NULL,                      -- ID, address, certificate, license
+  storage_key text NOT NULL,                   -- supabase storage path (private)
+  status text NOT NULL DEFAULT 'uploaded',     -- uploaded, under_review, approved, rejected
+  reviewed_by uuid REFERENCES public.users(id),
+  reviewed_notes text,
+  uploaded_at timestamptz DEFAULT now(),
+  reviewed_at timestamptz
+);
+
+CREATE INDEX idx_kyc_user ON public.kyc_documents(user_id);
+
+-- Ratings & Reviews
+CREATE TABLE public.ratings (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid REFERENCES public.jobs(id),
+  from_user_id uuid NOT NULL REFERENCES public.users(id),
+  to_user_id uuid NOT NULL REFERENCES public.users(id),
+  rating smallint CHECK (rating BETWEEN 1 AND 5),
+  review_text text,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX idx_ratings_to ON public.ratings(to_user_id);
+
+-- Complaints / Disputes
+CREATE TABLE public.disputes (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid REFERENCES public.jobs(id),
+  opened_by uuid REFERENCES public.users(id),
+  reason text,
+  status text DEFAULT 'open',                   -- open, investigating, resolved, dismissed
+  resolution text,
+  created_at timestamptz DEFAULT now(),
+  resolved_at timestamptz
+);
+
+-- Schedule assignments (explicit bookings for availability/conflict checks)
+CREATE TABLE public.assignments (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  job_id uuid REFERENCES public.jobs(id) UNIQUE,      -- one assignment per job
+  worker_id uuid NOT NULL REFERENCES public.users(id),
+  scheduled_start timestamptz NOT NULL,
+  scheduled_end timestamptz NOT NULL,
+  status text DEFAULT 'assigned',                    -- assigned, in_progress, completed, cancelled
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX idx_assignments_worker_time ON public.assignments(worker_id, scheduled_start, scheduled_end);
+
+-- Credits / Wallet (for salary, credits, refunds)
+CREATE TABLE public.wallets (
+  user_id uuid PRIMARY KEY REFERENCES public.users(id) ON DELETE CASCADE,
+  balance numeric(12,2) DEFAULT 0,
+  reserved numeric(12,2) DEFAULT 0,                 -- funds held for pending payouts
+  updated_at timestamptz DEFAULT now()
+);
+
+CREATE TABLE public.wallet_transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES public.users(id),
+  amount numeric(12,2) NOT NULL,
+  kind text NOT NULL,                               -- credit, debit, platform_fee, payout
+  reference_id uuid,                                -- job/payment id
+  metadata jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX idx_wallet_tx_user ON public.wallet_transactions(user_id);
+
+-- Notifications (store to send & for audit)
+CREATE TABLE public.notifications (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid REFERENCES public.users(id),
+  channel text NOT NULL CHECK (channel IN ('push','email','sms','inapp')),
+  title text,
+  body text,
+  data jsonb DEFAULT '{}'::jsonb,
+  sent boolean DEFAULT false,
+  sent_at timestamptz,
+  created_at timestamptz DEFAULT now()
+);
+
+-- Audit / Events (optional)
+CREATE TABLE public.events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  entity_type text,
+  entity_id uuid,
+  event_type text,
+  payload jsonb DEFAULT '{}'::jsonb,
+  created_at timestamptz DEFAULT now()
+);
+
+
+
+
+Helpful triggers & helper functions
+
+Auto-update rating average and a function to mask phone access.
+
+
+-- Function to recalc rating_avg & rating_count
+CREATE OR REPLACE FUNCTION public.recalc_user_rating()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  UPDATE public.users
+  SET rating_avg = COALESCE((
+        SELECT ROUND(AVG(rating)::numeric,2) FROM public.ratings WHERE to_user_id = NEW.to_user_id
+      ),0),
+      rating_count = COALESCE((SELECT COUNT(*) FROM public.ratings WHERE to_user_id = NEW.to_user_id),0)
+  WHERE id = NEW.to_user_id;
+  RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_recalc_rating AFTER INSERT OR UPDATE ON public.ratings
+FOR EACH ROW EXECUTE FUNCTION public.recalc_user_rating();
+
+-- Function to return masked phone (public) or real phone (server-only)
+CREATE OR REPLACE FUNCTION public.mask_phone(p text)
+RETURNS text AS $$
+BEGIN
+  IF p IS NULL THEN RETURN NULL; END IF;
+  RETURN concat(left(p, 3), repeat('*', GREATEST(char_length(p)-6,0)), right(p,3));
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
+
+Scheduling — How to exclude workers with conflicts
+
+Query: find workers available for given time range and within radius — excludes workers who have an assignment overlapping scheduled window unless their max_concurrent_jobs allows it.
+
+Example: find available workers for a job at :start and :end within :radius_meters of a point.
+
+
+
+-- :lat, :lon, :radius_meters, :start_ts, :end_ts
+WITH nearby_workers AS (
+  SELECT u.id, wp.max_concurrent_jobs
+  FROM public.users u
+  JOIN public.worker_profiles wp ON wp.user_id = u.id
+  WHERE ST_DWithin(u.location, ST_SetSRID(ST_MakePoint(:lon, :lat)::geography, 4326), :radius_meters)
+    AND u.kyc_status = 'approved'   -- optional
+    AND u.is_active = true
+)
+, worker_conflicts AS (
+  SELECT a.worker_id,
+         COUNT(*) FILTER (WHERE (a.scheduled_start, a.scheduled_end) OVERLAPS (:start_ts::timestamptz, :end_ts::timestamptz)) AS overlapping_jobs
+  FROM public.assignments a
+  WHERE (a.scheduled_start, a.scheduled_end) OVERLAPS (:start_ts::timestamptz, :end_ts::timestamptz)
+  GROUP BY a.worker_id
+)
+SELECT nw.id
+FROM nearby_workers nw
+LEFT JOIN worker_conflicts wc ON wc.worker_id = nw.id
+WHERE COALESCE(wc.overlapping_jobs,0) < nw.max_concurrent_jobs;
+
+
+
+
+Explanation:
+
+OVERLAPS checks time overlap.
+
+This allows multiple acceptances when max_concurrent_jobs > 1. If freelancer rules forbid multiple, set max_concurrent_jobs = 1 for freelancers.
+
+If you only want workers who are not assigned to any overlapping jobs (strict exclusion), change WHERE to COALESCE(wc.overlapping_jobs,0) = 0.
