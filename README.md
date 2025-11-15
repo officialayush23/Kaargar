@@ -203,9 +203,9 @@ git branch -D paymentf
 
 ---
 
-Want me to:
-- generate a `.github/PULL_REQUEST_TEMPLATE.md` and a `branching.md` file for the repo?
-- or produce CI job examples for GitHub Actions that run tests on `text` and require approval for `lsat-proof`?
 
-Pick one and I’ll spit out the files/commands.
-```
+
+
+
+
+
