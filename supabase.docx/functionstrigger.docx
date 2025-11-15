@@ -1,0 +1,84 @@
+
+
+2) search_workers function (DB-side implementation)
+
+This is a SQL function you can call directly from FastAPI (or wrap in stored proc). It implements your filters: location, rating (DB has rating_avg), category, optional hourly rate filter, and orders by the highest-paying matching job first, then rating, then distance. It also excludes flagged/troubled users by default and respects worker search_radius_km.
+
+Paste this after schema:
+
+
+CREATE OR REPLACE FUNCTION public.search_workers(
+  p_lat double precision,
+  p_lon double precision,
+  p_radius_meters integer DEFAULT 10000,
+  p_category text DEFAULT NULL,
+  p_min_hourly numeric DEFAULT NULL,
+  p_max_hourly numeric DEFAULT NULL,
+  p_limit integer DEFAULT 50
+)
+RETURNS TABLE (
+  worker_id uuid,
+  name text,
+  rating_avg numeric,
+  rating_count integer,
+  hourly_rate numeric,
+  distance_m double precision,
+  matching_job_id uuid,
+  matched_job_max_pay numeric,
+  trouble_score numeric
+) LANGUAGE sql STABLE AS $$
+WITH candidate_workers AS (
+  SELECT u.id as worker_id,
+         u.name,
+         u.rating_avg,
+         u.rating_count,
+         wp.hourly_rate,
+         wp.min_hourly_rate,
+         wp.max_hourly_rate,
+         wp.search_radius_km,
+         u.is_flagged,
+         COALESCE(u.trouble_score, 0) AS trouble_score,
+         ST_Distance(u.location, ST_SetSRID(ST_MakePoint(p_lon, p_lat)::geography,4326)) AS distance_m
+  FROM public.users u
+  JOIN public.worker_profiles wp ON wp.user_id = u.id
+  WHERE u.is_active = true
+    AND (u.is_flagged IS NOT TRUE)
+    AND (
+      p_category IS NULL
+      OR EXISTS (SELECT 1 FROM unnest(wp.professions) p WHERE lower(p) = lower(p_category))
+    )
+    AND (
+      wp.accepts_remote IS TRUE AND p_radius_meters IS NULL
+      OR ST_DWithin(u.location, ST_SetSRID(ST_MakePoint(p_lon,p_lat)::geography,4326), GREATEST(COALESCE(p_radius_meters,10000), wp.search_radius_km * 1000))
+    )
+)
+, highest_job_per_worker AS (
+  SELECT cw.*,
+         j.id AS matching_job_id,
+         GREATEST(COALESCE(j.price_max, j.price_min, 0), COALESCE(b.max_bid,0)) AS matched_job_max_pay
+  FROM candidate_workers cw
+  LEFT JOIN LATERAL (
+    SELECT j.id, j.price_min, j.price_max
+    FROM public.jobs j
+    WHERE j.status = 'posted'
+      AND (p_category IS NULL OR lower(j.category) = lower(p_category))
+      AND (j.is_remote = true OR ST_DWithin(j.location, ST_SetSRID(ST_MakePoint(p_lon,p_lat)::geography,4326), GREATEST(COALESCE(p_radius_meters,10000), cw.search_radius_km * 1000)))
+    ORDER BY GREATEST(COALESCE(j.price_max, j.price_min, 0), 0) DESC
+    LIMIT 1
+  ) j ON true
+  LEFT JOIN LATERAL (
+    SELECT MAX(amount) AS max_bid FROM public.bids b WHERE b.job_id = j.id
+  ) b ON true
+)
+SELECT worker_id, name, rating_avg, rating_count, hourly_rate, distance_m, matching_job_id, matched_job_max_pay, trouble_score
+FROM highest_job_per_worker
+WHERE (p_min_hourly IS NULL OR hourly_rate >= p_min_hourly)
+  AND (p_max_hourly IS NULL OR hourly_rate <= p_max_hourly)
+ORDER BY COALESCE(matched_job_max_pay, 0) DESC, rating_avg DESC, distance_m ASC
+LIMIT p_limit;
+$$;
+
+
+
+Usage from FastAPI: SELECT * FROM public.search_workers($1,$2,$3,$4,$5,$6,$7).
+
