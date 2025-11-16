@@ -103,9 +103,9 @@ const W_login = () => {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
 
-    <Card className="w-full max-w-sm">
+
+    <Card className="w-full sm:min-w-sm max-w-sm">
       <CardHeader>
         <CardTitle>Login to your account</CardTitle>
         <CardDescription>
@@ -162,7 +162,7 @@ const W_login = () => {
         </Button>
       </CardFooter>
     </Card>
-    </div>
+   
   );
 };
 

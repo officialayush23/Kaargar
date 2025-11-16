@@ -1,17 +1,4 @@
 import React from 'react'
-
-import { AppWindowIcon, CodeIcon } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import {
-    Card,
-    CardContent,
-    CardDescription,
-    CardFooter,
-    CardHeader,
-    CardTitle,
-} from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import {
     Tabs,
     TabsContent,
@@ -24,11 +11,11 @@ import W_login from '../../pages/W_login'
 
 const TabUW = () => {
     return (
-        <div>
+           <div className="flex min-h-screen w-full flex-col transition-all duration-300 items-center justify-center p-4">
             <Tabs defaultValue="account">
-                <TabsList>
-                    <TabsTrigger value="account">Account</TabsTrigger>
-                    <TabsTrigger value="password">Password</TabsTrigger>
+                <TabsList className="bg-transparent backdrop-blur-4xl">
+                    <TabsTrigger value="account"><h2 className='text-2xl'>Hire</h2></TabsTrigger>
+                    <TabsTrigger value="password"><h2 className='text-2xl'>Work</h2></TabsTrigger>
                 </TabsList>
                 <TabsContent value="account">
                     <U_login />
