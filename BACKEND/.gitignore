@@ -1,0 +1,46 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+env/
+venv/
+.env
+.env.* 
+*.sqlite3
+
+# IDEs
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Virtualenv
+.venv/
+pip-wheel-metadata/
+build/
+dist/
+
+# Docker
+docker-compose.override.yml
+
+# Misc
+*.bak
+*.swp
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.env
+venv/
+.venv/
+kaargar/
+*.sqlite3
+
+# VSCode
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db

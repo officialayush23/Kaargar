@@ -1,18 +1,14 @@
+// src/pages/U_login.jsx
 import React, { useState } from "react";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
+  Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
 import { signInWithEmail, resetPasswordForEmail, signInWithProvider } from "../auth/AuthHandler";
+import { postLoginUpsert } from "../lib/authSync";
 import { toast } from "sonner";
 
 const U_login = () => {
@@ -31,8 +27,16 @@ const U_login = () => {
         toast.error(error.message || "Login failed");
         return;
       }
-      // data contains session in supabase-js v2; after login the SDK also sets client session
-      // For demo: navigate to dashboard. For production: call backend to upsert user (see FastAPI below)
+
+      // Supabase returns data.session in many setups - attempt to upsert user in backend
+      try {
+        await postLoginUpsert();
+      } catch (upErr) {
+        console.error("upsert_user failed:", upErr);
+        toast.error("Login succeeded but backend sync failed");
+        // continue anyway for UX
+      }
+
       navigate("/");
     } catch (err) {
       console.error("signin err", err);
@@ -65,12 +69,12 @@ const U_login = () => {
     e?.preventDefault?.();
     setBusy(true);
     try {
-      // this redirects user to provider; after provider returns, use AuthCallback to process
       const { error } = await signInWithProvider("google", `${window.location.origin}/auth/callback`);
       if (error) {
         toast.error(error.message || "Google sign-in failed");
         setBusy(false);
       }
+      // redirect will happen
     } catch (err) {
       console.error("google err", err);
       toast.error("Google login failed");
@@ -84,9 +88,7 @@ const U_login = () => {
         <CardHeader>
           <CardTitle>Login to your account</CardTitle>
           <CardDescription>Enter your email below to login to your account</CardDescription>
-          <CardAction>
-            <Button variant="link" onClick={() => navigate("/signup")}>Sign Up</Button>
-          </CardAction>
+          <CardAction><Button variant="link" onClick={() => navigate("/signup")}>Sign Up</Button></CardAction>
         </CardHeader>
 
         <CardContent>

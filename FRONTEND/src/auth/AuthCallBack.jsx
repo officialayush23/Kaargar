@@ -35,7 +35,7 @@ const AuthCallback = () => {
         } else {
           toast.success("Login successful");
         }
-        navigate("/");
+        navigate("/home");
       } catch (err) {
         console.error("callback err", err);
         toast.error("Auth callback failed");

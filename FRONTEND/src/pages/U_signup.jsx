@@ -1,18 +1,14 @@
+// src/pages/U_signup.jsx
 import React, { useState } from "react";
 import {
-  Card,
-  CardAction,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
+  Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
 import { signUpWithEmail, signInWithProvider } from "../auth/AuthHandler";
+import { postLoginUpsert } from "../lib/authSync";
 import { toast } from "sonner";
 
 const U_signup = () => {
@@ -27,13 +23,20 @@ const U_signup = () => {
     if (!email || !password || !name) return toast("Name, email and password are required");
     setBusy(true);
     try {
-      const { data, error } = await signUpWithEmail(email, password);
+      const { data, error } = await signUpWithEmail(email, password, name);
       if (error) {
         toast.error(error.message || "Signup failed");
         return;
       }
-      // For email signup: Supabase may send confirmation email depending on settings.
-      // After sign-up you should call backend to create public.users row — do via upsert after the user is confirmed/logged in.
+
+      // If Supabase returned a session (depends on settings), sync to backend
+      try {
+        await postLoginUpsert();
+      } catch (upErr) {
+        console.error("upsert_user after signup failed:", upErr);
+        // still continue; user may confirm email first
+      }
+
       toast.success("Sign-up successful. Check your email if confirmation is required.");
       navigate("/login");
     } catch (err) {
@@ -66,9 +69,7 @@ const U_signup = () => {
         <CardHeader>
           <CardTitle>Create your account</CardTitle>
           <CardDescription>Enter your email below to create your account</CardDescription>
-          <CardAction>
-            <Button variant="link" onClick={() => navigate("/login")}>Login</Button>
-          </CardAction>
+          <CardAction><Button variant="link" onClick={() => navigate("/login")}>Login</Button></CardAction>
         </CardHeader>
 
         <CardContent>
