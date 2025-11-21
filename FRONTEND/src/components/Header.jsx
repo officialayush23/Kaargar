@@ -120,7 +120,7 @@ const Header = () => {
                     <Link aria-label="Login to your account" ref={addToRefs} className="nav-text" to="/login">
                         Login
                     </Link>
-                    <Link aria-label="Sign up for a new account" ref={addToRefs} className="nav-text" to="/U_register">
+                    <Link aria-label="Sign up for a new account" ref={addToRefs} className="nav-text" to="/signup">
                         SignUp
                     </Link>
                 </div>

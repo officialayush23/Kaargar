@@ -14,6 +14,9 @@ import ScrollToTop from './components/ScrollToTop'
 
 import Background from './components/Background'
 import TabUW from './components/use_ui/TabUW'
+import U_forgot from './pages/U_forgot'
+import U_signup from './pages/U_signup'
+import AuthCallback from './auth/AuthCallBack'
 
 
 gsap.registerPlugin(ScrollTrigger);
@@ -60,8 +63,11 @@ const App = () => {
           <Route path='/U_register' element={<U_register />} />
           <Route path='/W_register' element={<W_register />} />
          <Route path='/login' element={<TabUW />} />
+          <Route path='/signup' element={<U_signup />} />
+          <Route path='/forgot-password' element={<U_forgot />} />
           <Route path='/Worker_display' element={<Worker_display />} />
           <Route path='/Job_display' element={<Job_display />} />
+            <Route path='/auth/callback' element={<AuthCallback />} />
         </Routes>
       </div>
 

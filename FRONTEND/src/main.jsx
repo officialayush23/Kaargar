@@ -4,6 +4,7 @@ import { BrowserRouter } from 'react-router-dom';
 import './index.css';
 import App from './App.jsx';
 import { ThemeProvider } from './components/use_ui/ThemeProvider.jsx';
+import { Toaster } from 'sonner';
 
 
 
@@ -14,6 +15,7 @@ createRoot(document.getElementById('root')).render(
       {/* <StrictMode> */}
       <App />
       {/* </StrictMode> */}
+      <Toaster/>
     </ThemeProvider>
   </BrowserRouter>
 

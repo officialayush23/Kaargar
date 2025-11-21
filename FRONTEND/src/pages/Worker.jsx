@@ -125,7 +125,7 @@ const Worker = () => {
               <h2 className="h2-txt">Kaargar connects skilled workers with clients — from students needing quick help to enterprises managing large projects. Reliable, affordable, and fast.</h2>
             </div>
             <div className="bttn">
-              <Link className='btn-mi' to='/W_register'> <button className="btn-m">Offer Your Skill </button></Link>
+              <Link className='btn-mi' to='/signup'> <button className="btn-m">Offer Your Skill </button></Link>
               <a href="#info" className="scroll">  <button className="btn">Learn More ⬇︎</button></a>
             </div>
           </div>
