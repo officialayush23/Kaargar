@@ -61,8 +61,6 @@ const App = () => {
           <Route path='/' element={<User />} />
           <Route path='/worker' element={<Worker />} />
           <Route path='/User' element={<User />} />
-          <Route path='/U_register' element={<U_register />} />
-          <Route path='/W_register' element={<W_register />} />
          <Route path='/login' element={<TabUW />} />
           <Route path='/signup' element={<U_signup />} />
           <Route path='/forgot-password' element={<U_forgot />} />

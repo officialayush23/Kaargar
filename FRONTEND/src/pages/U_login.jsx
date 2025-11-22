@@ -37,7 +37,7 @@ const U_login = () => {
         // continue anyway for UX
       }
 
-      navigate("/");
+      navigate("/home");
     } catch (err) {
       console.error("signin err", err);
       toast.error("Login failed");
