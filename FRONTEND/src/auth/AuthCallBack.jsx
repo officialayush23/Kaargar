@@ -41,8 +41,12 @@ const AuthCallback = () => {
         toast.error("Auth callback failed");
         navigate("/login");
       }
+
+       console.log("TOKEN FROM CALLBACK:", accessToken);
     })();
   }, [navigate]);
+
+
 
   return <div className="p-8">Completing login...</div>;
 };

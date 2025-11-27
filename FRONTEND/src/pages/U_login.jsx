@@ -28,6 +28,10 @@ const U_login = () => {
         return;
       }
 
+      // LOG ACCESS TOKEN (minimal change)
+      const accessToken = data?.session?.access_token;
+      console.log("Supabase accessToken:", accessToken);
+
       // Supabase returns data.session in many setups - attempt to upsert user in backend
       try {
         await postLoginUpsert();

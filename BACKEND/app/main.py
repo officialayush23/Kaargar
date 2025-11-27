@@ -1,3 +1,4 @@
+# app/main.py
 import os
 import json
 import logging
@@ -11,6 +12,7 @@ load_dotenv()
 from fastapi import FastAPI, Depends, Header, Request, HTTPException, Query, Path
 from pydantic import BaseModel, conint
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.openapi.utils import get_openapi
 
 from app.auth import verify_and_decode_jwt, get_user_id_from_jwt, is_admin_token
 
@@ -209,7 +211,6 @@ async def update_user(user_id: str, payload: UserUpdatePayload, actor = Depends(
     return {"ok": True}
 
 # --- SEARCH & PUBLIC PROFILES ---
-
 @app.get("/api/search/workers")
 async def search_workers(
     lat: float = Query(...),
@@ -357,3 +358,27 @@ async def list_flagged(limit: int = Query(100, gt=0, le=1000), offset: int = Que
             LIMIT $1 OFFSET $2
         """, limit, offset)
     return {"ok": True, "users": [dict(r) for r in rows]}
+
+# ---------------------------
+# Custom OpenAPI (adds Authorize button for Bearer token)
+# ---------------------------
+def custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version="1.0.0",
+        description="KAARGAR API (Auth MVP)",
+        routes=app.routes,
+    )
+    # add bearer scheme
+    openapi_schema.setdefault("components", {}).setdefault("securitySchemes", {})
+    openapi_schema["components"]["securitySchemes"]["BearerAuth"] = {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+    }
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = custom_openapi
