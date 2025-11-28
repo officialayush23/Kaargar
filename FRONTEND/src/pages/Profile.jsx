@@ -15,7 +15,8 @@ import {
   ArrowLeft,
   LayoutDashboard,
   Clock,
-  ShieldCheck
+  IndianRupee,
+  Hammer
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -98,7 +99,7 @@ export default function Profile() {
 
   // 3. Format Currency
   const formatCurrency = (cents) => {
-    if (!cents) return "₹0";
+    if (!cents && cents !== 0) return "₹0";
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(cents / 100);
   };
 
@@ -243,6 +244,24 @@ export default function Profile() {
               </div>
             )}
 
+            {/* CUSTOMER STATS (Only if Customer) */}
+            {!isWorker && (
+              <div className="grid grid-cols-2 gap-4">
+                <Card className="bg-white/5 border-white/10 backdrop-blur-md">
+                  <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Total Spent</p>
+                    <p className="text-xl font-bold text-white">{formatCurrency(stats?.total_spent_cents || 0)}</p>
+                  </CardContent>
+                </Card>
+                <Card className="bg-white/5 border-white/10 backdrop-blur-md">
+                  <CardContent className="p-4 flex flex-col items-center justify-center text-center">
+                    <p className="text-slate-400 text-xs uppercase tracking-wider mb-1">Jobs Commissioned</p>
+                    <p className="text-xl font-bold text-white">{jobs.length}</p>
+                  </CardContent>
+                </Card>
+              </div>
+            )}
+
             {/* PERSONAL DETAILS CARD */}
             <Card className="bg-white/5 border-white/10 backdrop-blur-md">
               <CardHeader>
@@ -317,12 +336,18 @@ export default function Profile() {
                           </p>
                         </div>
                       </div>
-                      <Badge variant="outline" className={`border-0 uppercase text-[10px] ${
-                        job.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 
-                        job.status === 'open' ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'
-                      }`}>
-                        {job.status.replace('_', ' ')}
-                      </Badge>
+                      
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-sm font-bold text-white flex items-center">
+                          {formatCurrency(job.amount_cents)}
+                        </span>
+                        <Badge variant="outline" className={`border-0 uppercase text-[10px] ${
+                          job.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 
+                          job.status === 'open' ? 'bg-blue-500/10 text-blue-400' : 'bg-amber-500/10 text-amber-400'
+                        }`}>
+                          {job.status.replace('_', ' ')}
+                        </Badge>
+                      </div>
                     </div>
                   ))
                 ) : (
