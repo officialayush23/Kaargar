@@ -91,7 +91,7 @@ const Home = () => {
                 if (selectedCategory) params.append("category", selectedCategory);
                 else if (searchQuery) params.append("category", searchQuery);
 
-                let endpoint = mode === "hire" ? "/api/search/workers" : "/api/search/jobs";
+                let endpoint = mode === "hire" ? "/api/search" : "/api/jobs/feed";
 
                 // Use the explicit BACKEND_URL
                 const res = await fetch(`${BACKEND_URL}${endpoint}?${params.toString()}`);

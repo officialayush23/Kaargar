@@ -49,12 +49,12 @@ function SideBar({ close }) {
                             </Link>
                         </li>
                         <li className="listings">
-                            <Link onClick={close} className="listingsa" to="/U_login">
+                            <Link onClick={close} className="listingsa" to="/login">
                                 Login
                             </Link>
                         </li>
                         <li className="listings">
-                            <Link onClick={close} className="listingsa" to="/U_register">
+                            <Link onClick={close} className="listingsa" to="/signup">
                                 SignUp
                             </Link>
                         </li>

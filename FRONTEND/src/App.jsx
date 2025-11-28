@@ -18,6 +18,8 @@ import U_forgot from './pages/U_forgot'
 import U_signup from './pages/U_signup'
 import AuthCallback from './auth/AuthCallBack'
 import Home from './pages/Home'
+import Wregister from './pages/Wregister'
+import Register from './pages/Register'
 
 
 gsap.registerPlugin(ScrollTrigger);
@@ -61,13 +63,15 @@ const App = () => {
           <Route path='/' element={<User />} />
           <Route path='/worker' element={<Worker />} />
           <Route path='/User' element={<User />} />
-         <Route path='/login' element={<TabUW />} />
+          <Route path='/login' element={<TabUW />} />
           <Route path='/signup' element={<U_signup />} />
           <Route path='/forgot-password' element={<U_forgot />} />
           <Route path='/Worker_display' element={<Worker_display />} />
           <Route path='/Job_display' element={<Job_display />} />
-            <Route path='/auth/callback' element={<AuthCallback />} />
-              <Route path='/home' element={<Home />} />
+          <Route path='/auth/callback' element={<AuthCallback />} />
+          <Route path='/home' element={<Home />} />
+          <Route path='/register_worker' element={<Wregister />} />
+          <Route path='/register' element={<Register />} />
         </Routes>
       </div>
 
