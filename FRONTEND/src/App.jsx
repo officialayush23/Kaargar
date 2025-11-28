@@ -20,6 +20,7 @@ import AuthCallback from './auth/AuthCallBack'
 import Home from './pages/Home'
 import Wregister from './pages/Wregister'
 import Register from './pages/Register'
+import Profile from './pages/Profile'
 
 
 gsap.registerPlugin(ScrollTrigger);
@@ -72,6 +73,7 @@ const App = () => {
           <Route path='/home' element={<Home />} />
           <Route path='/register_worker' element={<Wregister />} />
           <Route path='/register' element={<Register />} />
+           <Route path='/profile' element={<Profile />} />
         </Routes>
       </div>
 
