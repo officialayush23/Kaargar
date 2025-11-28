@@ -69,22 +69,46 @@ const U_login = () => {
     }
   }
 
+  // async function handleGoogleLogin(e) {
+  //   e?.preventDefault?.();
+  //   setBusy(true);
+  //   try {
+  //     const { error } = await signInWithProvider("google", `${window.location.origin}/auth/callback`);
+  //     if (error) {
+  //       toast.error(error.message || "Google sign-in failed");
+  //       setBusy(false);
+  //     }
+  //     // redirect will happen
+
+  //   } catch (err) {
+  //     console.error("google err", err);
+  //     toast.error("Google login failed");
+  //     setBusy(false);
+  //   }
+  // }
+
   async function handleGoogleLogin(e) {
     e?.preventDefault?.();
     setBusy(true);
     try {
-      const { error } = await signInWithProvider("google", `${window.location.origin}/auth/callback`);
+      const { data, error } = await signInWithProvider("google", `${window.location.origin}/auth/callback`);
       if (error) {
         toast.error(error.message || "Google sign-in failed");
         setBusy(false);
+        return;
       }
-      // redirect will happen
+
+      // If provider returns without a redirect, send user to home.
+      // (If you're using the redirect flow, the browser may already navigate to the callback.)
+   
     } catch (err) {
       console.error("google err", err);
       toast.error("Google login failed");
+    } finally {
       setBusy(false);
     }
   }
+
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
