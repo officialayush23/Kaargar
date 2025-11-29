@@ -23,20 +23,35 @@ logger = logging.getLogger("uvicorn")
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL: raise RuntimeError("DATABASE_URL missing")
 
-app = FastAPI(title="KAARGAR API 3.2 (Chat Media)", version="3.2.0")
+app = FastAPI(title="KAARGAR API 2.11 (Fix Pooler)", version="2.11.0")
 
 # CORS
-origins = ["http://localhost:5173", "http://localhost:3000","https://kaargar.vercel.app"]
+origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://kaargar.vercel.app"
+]
+
 app.add_middleware(
-    CORSMiddleware, allow_origins=origins, allow_credentials=True, 
-    allow_methods=["*"], allow_headers=["*"]
+    CORSMiddleware,
+    allow_origins=origins, 
+    allow_credentials=True, 
+    allow_methods=["*"], 
+    allow_headers=["*"],
 )
 
 # --- DB LIFECYCLE ---
 @app.on_event("startup")
 async def startup():
     logger.info("Connecting to Database...")
-    app.state.db_pool = await asyncpg.create_pool(DATABASE_URL, min_size=1, max_size=10)
+    # CRITICAL FIX: statement_cache_size=0 is required for Supabase Transaction Pooler (Port 6543)
+    app.state.db_pool = await asyncpg.create_pool(
+        DATABASE_URL, 
+        min_size=1, 
+        max_size=10,
+        statement_cache_size=0 
+    )
+    logger.info("Database Connected.")
 
 @app.on_event("shutdown")
 async def shutdown():
@@ -95,11 +110,16 @@ class JobCreate(BaseModel):
     profession_required: str 
     services_required: List[str] = [] 
     category: Optional[str] = None
+    
+    # Location Data
     lat: float
     lon: float
+    
+    # Explicit Address Fields
     address_text: Optional[str] = None
     city: Optional[str] = None
     pincode: Optional[str] = None
+    
     budget_max_cents: Optional[int] = None
     is_remote: bool = False
 
@@ -154,9 +174,16 @@ class DeviceToken(BaseModel):
     token: str
     device_type: str = "android"
 
+class JobStatusUpdate(BaseModel):
+    status: str
+
 # ==================================================================
 #                       1. PROFILE & ONBOARDING
 # ==================================================================
+
+@app.get("/")
+async def root():
+    return {"message": "Kaargar API is running!", "docs": "/docs"}
 
 @app.post("/api/auth/upsert_user")
 async def upsert_user(payload = Depends(require_user)):
@@ -410,9 +437,6 @@ async def delete_job(job_id: str, token = Depends(require_user)):
             raise HTTPException(400, "Cannot delete active/assigned job. Please cancel instead.")
         await conn.execute("DELETE FROM public.jobs WHERE id = $1", job_id)
     return {"ok": True, "message": "Job deleted"}
-
-class JobStatusUpdate(BaseModel):
-    status: str
 
 @app.patch("/api/jobs/{job_id}/status")
 async def update_job_status(job_id: str, payload: JobStatusUpdate, token = Depends(require_user)):
