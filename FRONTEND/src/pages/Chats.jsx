@@ -244,7 +244,7 @@ export default function Chat() {
          </div>
       </ScrollArea>
 
-      <div className="p-4 bg-slate-900 border-t border-white/10 flex gap-3 items-center relative z-20">
+      <div className="p-4 bg-slate-900 border-t border-white/10 flex gap-3 items-center absolute bottom-0 z-20">
          <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
          <Button size="icon" variant="ghost" className="text-slate-400 hover:text-white shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}>
             {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
