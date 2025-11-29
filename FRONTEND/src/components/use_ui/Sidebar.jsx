@@ -38,7 +38,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { toast } from "sonner";
-import { API_BASE_URL } from "../config";
+import { API_BASE_URL } from "../../config";
 
 const Sidebar = ({ open, onOpenChange, user }) => {
   const navigate = useNavigate();
