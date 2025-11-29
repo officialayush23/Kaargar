@@ -134,7 +134,7 @@ const Home = () => {
             <Headback />
             
             {/* --- HERO SECTION --- */}
-            <div className="relative w-full min-h-[45vh] pb-12 overflow-hidden flex flex-col">
+            <div className="relative w-screen min-h-[45vh] pb-12 overflow-hidden flex flex-col">
 
                 {/* --- HEADER OVERLAY --- */}
                 <header className={`sticky top-0 z-40 px-4 py-3 flex items-center justify-between transition-all duration-300 ${scrolled ? "bg-background/80 backdrop-blur-md shadow-sm border-b border-border/50" : "bg-transparent"}`}>

@@ -120,7 +120,7 @@ export default function Profile() {
   const workerData = profile.worker_profile;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-blue-500/30 pb-12 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-blue-500/30 pb-12 relative overflow-hidden">
       
       {/* --- BACKGROUND BLOBS (Glassmorphism Effect) --- */}
       <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] pointer-events-none" />
@@ -129,10 +129,8 @@ export default function Profile() {
       {/* --- TOP NAVIGATION --- */}
       <div className="relative z-20 px-6 py-6 flex justify-between items-center max-w-7xl mx-auto">
         <Link to="/home" className="flex items-center gap-2 group">
-          <div className="bg-blue-600 p-1.5 rounded-lg group-hover:bg-blue-500 transition-colors">
-            <Hammer className="w-5 h-5 text-white" />
-          </div>
-          <span className="font-bold text-xl tracking-tight text-white">KAARGAR</span>
+        
+          <span className=" text-xl tracking-tight text-white">KAARGAR</span>
         </Link>
         <Button 
           variant="ghost" 

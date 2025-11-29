@@ -126,7 +126,7 @@ button{
 }
 
 .dark {
-  --background: oklch(14.479% 0.00002 271.152);
+  --background:  bg-slate-900 text-slate-100 font-sans selection:bg-blue-500/30;
   --foreground: oklch(0.985 0 0);
   --card: oklch(34.713% 0.06512 227.394);
   --card-foreground: oklch(0.985 0 0);
