@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import Headback from "../components/Headback";
-
+import { API_BASE_URL } from "@/config";
 export default function Chat() {
   const { jobId } = useParams();
   const navigate = useNavigate();
