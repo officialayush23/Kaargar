@@ -21,6 +21,7 @@ import Dashboard from './pages/Dashboard'
 import JobStatus from './pages/JobStatus'
 import User from './pages/User'
 import Worker from './pages/Worker'
+import Chat from './pages/Chats'
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -78,6 +79,7 @@ const App = () => {
 
           {/* FIXED: Added :jobId parameter */}
           <Route path='/status/:jobId' element={<JobStatus />} />
+          <Route path='/chat/:jobId' element={<Chat />} />
         </Routes>
       </div>
     </>

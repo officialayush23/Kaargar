@@ -23,7 +23,7 @@ logger = logging.getLogger("uvicorn")
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL: raise RuntimeError("DATABASE_URL missing")
 
-app = FastAPI(title="KAARGAR API 3.0", version="3.0.0")
+app = FastAPI(title="KAARGAR API 3.1 (Chat)", version="3.1.0")
 
 # CORS
 origins = ["http://localhost:5173", "http://localhost:3000"]
@@ -298,55 +298,41 @@ async def get_worker_job_feed(
     async with app.state.db_pool.acquire() as conn:
         worker = await conn.fetchrow("SELECT professions, services FROM public.worker_profiles WHERE user_id=$1", worker_id)
         if not worker: return {"ok": True, "jobs": []}
-
         my_professions = worker['professions'][0] if worker['professions'] else None
         my_services = worker['services'] if worker['services'] else None
         profession_arg = my_professions if filter_by_profession else None
         services_arg = my_services if filter_by_profession else None
-
         rows = await conn.fetch("""
             SELECT * FROM search_jobs($1, $2, NULL, $3, NULL, $4, $5)
         """, lat, lon, radius, profession_arg, services_arg)
     return {"ok": True, "jobs": [dict(r) for r in rows]}
 
 # ==================================================================
-#                       3. JOB FLOW (CRITICAL)
+#                       3. JOB FLOW & CHAT
 # ==================================================================
 
-@app.get("/api/jobs/{job_id}")
-async def get_single_job(job_id: str, token = Depends(require_user)):
+@app.post("/api/jobs/{job_id}/chat")
+async def get_or_create_chat(job_id: str, token = Depends(require_user)):
     """ 
-    FETCHER: Returns Job, Worker Details, Customer Details, and Proofs.
-    Essential for JobStatus Page.
+    Ensures a chat room exists for this job and returns the chat_id.
     """
     uid = token.get("sub")
     async with app.state.db_pool.acquire() as conn:
-        # Get Basic Job Info + Worker/Customer Names
-        job = await conn.fetchrow("""
-            SELECT j.*, 
-                   w.full_name as worker_name, w.avatar_url as worker_avatar, w.phone as worker_phone,
-                   c.full_name as customer_name, c.avatar_url as customer_avatar, c.phone as customer_phone,
-                   jp.worker_proof_imgs, jp.worker_comment, jp.bill_details, jp.worker_submitted_at
-            FROM public.jobs j
-            LEFT JOIN public.users w ON w.id = j.worker_id
-            LEFT JOIN public.users c ON c.id = j.customer_id
-            LEFT JOIN public.job_proofs jp ON jp.job_id = j.id
-            WHERE j.id = $1
-        """, job_id)
-        
+        # 1. Check existing
+        chat = await conn.fetchrow("SELECT id FROM public.chats WHERE job_id = $1", job_id)
+        if chat:
+            return {"ok": True, "chat_id": str(chat['id'])}
+            
+        # 2. Verify Authorization (Must be Customer or Worker)
+        job = await conn.fetchrow("SELECT customer_id, worker_id FROM public.jobs WHERE id = $1", job_id)
         if not job: raise HTTPException(404, "Job not found")
         
-        # Check Access: Only Worker or Customer can see this
         if str(job['customer_id']) != uid and str(job['worker_id']) != uid:
-            raise HTTPException(403, "Access Denied")
+            raise HTTPException(403, "Access denied")
             
-        # Privacy: Mask phone if not assigned
-        job_dict = dict(job)
-        if job['status'] not in ['assigned', 'in_progress', 'completed']:
-             if str(job['customer_id']) != uid: job_dict['customer_phone'] = None
-             if str(job['worker_id']) != uid: job_dict['worker_phone'] = None
-
-    return {"ok": True, "job": job_dict}
+        # 3. Create Chat
+        chat_id = await conn.fetchval("INSERT INTO public.chats (job_id) VALUES ($1) RETURNING id", job_id)
+        return {"ok": True, "chat_id": str(chat_id)}
 
 @app.post("/api/jobs/book")
 async def direct_book_worker(payload: DirectBooking, token = Depends(require_user)):
@@ -357,7 +343,6 @@ async def direct_book_worker(payload: DirectBooking, token = Depends(require_use
         worker = await conn.fetchrow("SELECT accepts_auto_assign, is_online FROM public.worker_profiles WHERE user_id=$1", payload.worker_id)
         if not worker: raise HTTPException(404, "Worker not found")
         if not worker['is_online']: raise HTTPException(400, "Worker is offline")
-        
         initial_status = 'assigned' if worker['accepts_auto_assign'] else 'pending_acceptance'
         row = await conn.fetchrow("""
             INSERT INTO public.jobs (
@@ -426,30 +411,19 @@ async def delete_job(job_id: str, token = Depends(require_user)):
         await conn.execute("DELETE FROM public.jobs WHERE id = $1", job_id)
     return {"ok": True, "message": "Job deleted"}
 
-# --- NEW: Status Update Endpoint ---
+# --- Job Status Update ---
 class JobStatusUpdate(BaseModel):
     status: str
 
 @app.patch("/api/jobs/{job_id}/status")
 async def update_job_status(job_id: str, payload: JobStatusUpdate, token = Depends(require_user)):
-    """ Worker Accepts/Rejects Job. """
     uid = token.get("sub")
     async with app.state.db_pool.acquire() as conn:
         job = await conn.fetchrow("SELECT worker_id FROM public.jobs WHERE id = $1", job_id)
         if not job: raise HTTPException(404, "Job not found")
         if str(job['worker_id']) != uid: raise HTTPException(403, "Not authorized")
-        
-        # Validate transitions
-        if payload.status not in ['assigned', 'cancelled']:
-            raise HTTPException(400, "Invalid status transition")
-            
+        if payload.status not in ['assigned', 'cancelled']: raise HTTPException(400, "Invalid status transition")
         await conn.execute("UPDATE public.jobs SET status = $1 WHERE id = $2", payload.status, job_id)
-        
-        # If accepted, create escrow entry (placeholder since payment is handled later in this flow)
-        if payload.status == 'assigned':
-             # In a real app, you might check payment status here. 
-             pass
-             
     return {"ok": True}
 
 # ==================================================================
@@ -496,6 +470,30 @@ async def get_financial_stats(token = Depends(require_user)):
         jobs_done = await conn.fetchval("SELECT COUNT(*) FROM public.jobs WHERE worker_id = $1 AND status = 'completed'", uid)
     return { "ok": True, "total_spent_cents": spent, "total_earned_cents": earned, "jobs_completed_count": jobs_done }
 
+@app.get("/api/jobs/{job_id}")
+async def get_single_job(job_id: str, token = Depends(require_user)):
+    uid = token.get("sub")
+    async with app.state.db_pool.acquire() as conn:
+        job = await conn.fetchrow("""
+            SELECT j.*, 
+                   w.full_name as worker_name, w.avatar_url as worker_avatar, w.phone as worker_phone,
+                   c.full_name as customer_name, c.avatar_url as customer_avatar, c.phone as customer_phone,
+                   jp.worker_proof_imgs, jp.worker_comment, jp.bill_details, jp.worker_submitted_at
+            FROM public.jobs j
+            LEFT JOIN public.users w ON w.id = j.worker_id
+            LEFT JOIN public.users c ON c.id = j.customer_id
+            LEFT JOIN public.job_proofs jp ON jp.job_id = j.id
+            WHERE j.id = $1
+        """, job_id)
+        if not job: raise HTTPException(404, "Job not found")
+        if str(job['customer_id']) != uid and str(job['worker_id']) != uid:
+            raise HTTPException(403, "Access Denied")
+        job_dict = dict(job)
+        if job['status'] not in ['assigned', 'in_progress', 'completed']:
+             if str(job['customer_id']) != uid: job_dict['customer_phone'] = None
+             if str(job['worker_id']) != uid: job_dict['worker_phone'] = None
+    return {"ok": True, "job": job_dict}
+
 # ==================================================================
 #                       5. MISC (RATINGS, PROOF, KYC, CHAT)
 # ==================================================================
@@ -532,7 +530,6 @@ async def submit_job_proof(job_id: str, payload: JobProofSubmit, token = Depends
         if not job: raise HTTPException(403, "Not your job")
         
         bill_json = json.dumps([item.dict() for item in payload.bill_details])
-        
         await conn.execute("""
             INSERT INTO public.job_proofs (job_id, worker_proof_imgs, worker_comment, bill_details) 
             VALUES ($1, $2, $3, $4::jsonb)
