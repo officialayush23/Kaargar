@@ -22,7 +22,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import Headback from "../components/Headback";
-
+import { API_BASE_URL } from "../config";
 export default function UserPosted() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -41,7 +41,7 @@ export default function UserPosted() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { navigate("/login"); return; }
 
-      const res = await fetch("http://localhost:8000/api/me/jobs/posted", {
+      const res = await fetch(`${API_BASE_URL}/api/me/jobs/posted`, {
         headers: { Authorization: `Bearer ${session.access_token}` }
       });
       
@@ -69,7 +69,7 @@ export default function UserPosted() {
     
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`http://localhost:8000/api/jobs/${job.id}/bids`, {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/${job.id}/bids`, {
         headers: { Authorization: `Bearer ${session.access_token}` }
       });
       
@@ -89,7 +89,7 @@ export default function UserPosted() {
     setHiringId(bidId);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch("http://localhost:8000/api/jobs/hire", {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/hire`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -123,7 +123,7 @@ export default function UserPosted() {
     
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`http://localhost:8000/api/jobs/${jobId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${session.access_token}` }
       });

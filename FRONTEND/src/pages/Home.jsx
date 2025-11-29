@@ -6,7 +6,7 @@ import {
   ShieldCheck, Hammer, Zap, SlidersHorizontal,
   Star, Clock, Loader2, Filter, IndianRupee
 } from "lucide-react";
-
+import { API_BASE_URL } from "../config"; // Adjust path as needed (e.g. "@/config")
 // UI Components
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -140,7 +140,7 @@ export default function Home() {
       setUser(session.user);
 
       try {
-        const res = await fetch("http://localhost:8000/api/me", {
+        const res = await fetch(`${API_BASE_URL}/api/me`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         if (res.ok) {
@@ -155,7 +155,7 @@ export default function Home() {
           setCoords({ lat: latitude, lon: longitude });
           setLocationName("Current Location");
 
-          await fetch("http://localhost:8000/api/me/location", {
+          await fetch(`${API_BASE_URL}/api/me/location`, {
             method: "PATCH",
             headers: { 
               "Content-Type": "application/json",
@@ -206,7 +206,7 @@ export default function Home() {
         }
       }
 
-      const res = await fetch(`http://localhost:8000${endpoint}?${params.toString()}`, {
+      const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
         headers: { Authorization: `Bearer ${session.access_token}` }
       });
 
@@ -231,7 +231,7 @@ export default function Home() {
   const fetchWorkerReviews = async (workerId) => {
     setReviewsLoading(true);
     try {
-      const res = await fetch(`http://localhost:8000/api/ratings/${workerId}`);
+      const res = await fetch(`${API_BASE_URL}/api/ratings/${workerId}`);
       if (res.ok) {
         const data = await res.json();
         setWorkerReviews(data.reviews || []);
@@ -309,7 +309,7 @@ export default function Home() {
         }
       };
 
-      const res = await fetch("http://localhost:8000/api/jobs/book", {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/book`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -344,7 +344,7 @@ export default function Home() {
     setBidding(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`http://localhost:8000/api/jobs/${selectedJob.id || selectedJob.job_id}/bids`, {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/${selectedJob.id || selectedJob.job_id}/bids`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

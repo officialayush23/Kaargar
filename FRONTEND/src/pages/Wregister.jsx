@@ -25,7 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-
+import { API_BASE_URL } from "../config";
 // Select
 import {
   Select,
@@ -88,7 +88,7 @@ export default function Wregister() {
           return;
         }
 
-        const res = await fetch("http://localhost:8000/api/me", {
+        const res = await fetch(`${API_BASE_URL}/api/me`, {
           headers: { Authorization: `Bearer ${session.access_token}` }
         });
 
@@ -160,7 +160,7 @@ export default function Wregister() {
         pincode: values.pincode
       };
 
-      const res1 = await fetch("http://localhost:8000/api/me/profile", {
+      const res1 = await fetch(`${API_BASE_URL}/api/me/profile`, {
         method: "PATCH",
         headers: { 
           "Content-Type": "application/json",
@@ -185,7 +185,7 @@ export default function Wregister() {
         accepts_auto_assign: values.accepts_auto_assign
       };
 
-      const res2 = await fetch("http://localhost:8000/api/profiles/onboard", {
+      const res2 = await fetch(`${API_BASE_URL}/api/profiles/onboard`, {
         method: "POST",
         headers: { 
           "Content-Type": "application/json",

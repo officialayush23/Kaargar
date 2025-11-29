@@ -34,8 +34,8 @@ export default function Dashboard() {
 
       // Parallel Fetch
       const [statsRes, jobsRes] = await Promise.all([
-         fetch("http://localhost:8000/api/me/stats", { headers: { Authorization: `Bearer ${token}` } }),
-         fetch("http://localhost:8000/api/me/jobs/worked", { headers: { Authorization: `Bearer ${token}` } })
+         fetch(`${API_BASE_URL}/api/me/stats`, { headers: { Authorization: `Bearer ${token}` } }),
+         fetch(`${API_BASE_URL}/api/me/jobs/worked`, { headers: { Authorization: `Bearer ${token}` } })
       ]);
 
       if (statsRes.ok) setStats(await statsRes.json());

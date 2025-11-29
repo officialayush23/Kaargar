@@ -34,7 +34,7 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
-
+import { API_BASE_URL } from "../config";
 // --- VALIDATION SCHEMA ---
 const profileSchema = z.object({
   full_name: z.string().min(2, "Name must be at least 2 characters."),
@@ -79,7 +79,7 @@ export default function Register() {
       }
 
       try {
-        const res = await fetch("http://localhost:8000/api/me", {
+        const res = await fetch(`${API_BASE_URL}/api/me`, {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         
@@ -113,7 +113,7 @@ export default function Register() {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const response = await fetch("http://localhost:8000/api/me/profile", {
+      const response = await fetch(`${API_BASE_URL}/api/me/profile`, {
         method: "PATCH",
         headers: {
           "Content-Type": "application/json",

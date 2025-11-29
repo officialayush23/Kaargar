@@ -35,7 +35,7 @@ export default function Chat() {
         const token = session.access_token;
 
         // A. Get Job Details
-        const jobRes = await fetch(`http://localhost:8000/api/jobs/${jobId}`, {
+        const jobRes = await fetch(`${API_BASE_URL}/api/jobs/${jobId}`, {
              headers: { Authorization: `Bearer ${token}` }
         });
         
@@ -50,7 +50,7 @@ export default function Chat() {
         });
 
         // B. Get/Create Chat Room
-        const chatRes = await fetch(`http://localhost:8000/api/jobs/${jobId}/chat`, {
+        const chatRes = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/chat`, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` }
         });
@@ -62,7 +62,7 @@ export default function Chat() {
             setChatId(chatData.chat_id);
             
             // C. Load History
-            const historyRes = await fetch(`http://localhost:8000/api/chats/${chatData.chat_id}/messages`, {
+            const historyRes = await fetch(`${API_BASE_URL}/api/chats/${chatData.chat_id}/messages`, {
                  headers: { Authorization: `Bearer ${token}` }
             });
             if (historyRes.ok) {

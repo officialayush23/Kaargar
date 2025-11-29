@@ -7,7 +7,7 @@ import {
   CheckCircle2, Clock, FileText, Upload, Plus, Trash2, 
   IndianRupee, ArrowLeft, Loader2, ShieldCheck, Mail, File
 } from "lucide-react";
-
+import { API_BASE_URL } from "../config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -59,7 +59,7 @@ export default function JobStatus() {
       if (!user) setUser(session.user);
       const token = session.access_token;
 
-      const res = await fetch(`http://localhost:8000/api/jobs/${jobId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}`, {
           headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -140,7 +140,7 @@ export default function JobStatus() {
       const { data: { session } } = await supabase.auth.getSession();
       const cleanBills = billItems.filter(i => i.item && i.price).map(i => ({ item: i.item, price: parseFloat(i.price) }));
 
-      const res = await fetch(`http://localhost:8000/api/jobs/${jobId}/proof`, {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/proof`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({ photos, comment: desc, bill_details: cleanBills })
@@ -159,7 +159,7 @@ export default function JobStatus() {
     setSubmitting(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`http://localhost:8000/api/jobs/${jobId}/approve`, {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/approve`, {
         method: "POST",
         headers: { Authorization: `Bearer ${session.access_token}` }
       });
@@ -179,7 +179,7 @@ export default function JobStatus() {
       const { data: { session } } = await supabase.auth.getSession();
       const targetId = user.id === job.customer_id ? job.worker_id : job.customer_id;
       
-      const res = await fetch("http://localhost:8000/api/complaints", {
+      const res = await fetch(`${API_BASE_URL}/api/complaints`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
         body: JSON.stringify({

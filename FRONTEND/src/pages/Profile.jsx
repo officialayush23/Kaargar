@@ -31,7 +31,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
-
+import { API_BASE_URL } from "../config";
 export default function Profile() {
   const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
@@ -51,7 +51,7 @@ export default function Profile() {
         const token = session.access_token;
 
         // Fetch User
-        const userRes = await fetch("http://localhost:8000/api/me", {
+        const userRes = await fetch(`${API_BASE_URL}/api/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         const userData = await userRes.json();
@@ -63,7 +63,7 @@ export default function Profile() {
           const isWorker = userData.user.role === 'worker' || userData.user.role === 'agency';
           const jobsEndpoint = isWorker ? "/api/me/jobs/worked" : "/api/me/jobs/posted";
           
-          const jobsRes = await fetch(`http://localhost:8000${jobsEndpoint}`, {
+          const jobsRes = await fetch(`${API_BASE_URL}:8000${jobsEndpoint}`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (jobsRes.ok) {
@@ -72,7 +72,7 @@ export default function Profile() {
           }
 
           // Fetch Stats (for revenue/spending)
-          const statsRes = await fetch("http://localhost:8000/api/me/stats", {
+          const statsRes = await fetch(`${API_BASE_URL}/api/me/stats`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (statsRes.ok) {

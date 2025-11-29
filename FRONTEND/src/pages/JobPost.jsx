@@ -11,7 +11,7 @@ import {
   ArrowLeft,
   LocateFixed
 } from "lucide-react";
-
+import { API_BASE_URL } from "../config";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
@@ -61,7 +61,7 @@ export default function JobPost() {
         if (!session) { navigate("/login"); return; }
         
         // A. Get User Profile (For Address Defaults)
-        const res = await fetch("http://localhost:8000/api/me", {
+        const res = await fetch(`${API_BASE_URL}/api/me`, {
           headers: { Authorization: `Bearer ${session.access_token}` }
         });
         
@@ -133,7 +133,7 @@ export default function JobPost() {
         is_remote: values.is_remote
       };
 
-      const res = await fetch("http://localhost:8000/api/jobs", {
+      const res = await fetch(`${API_BASE_URL}/api/jobs`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
