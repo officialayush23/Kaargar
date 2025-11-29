@@ -1,15 +1,16 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
+import { motion } from "framer-motion";
 import { 
   MessageSquare, AlertTriangle, Calendar, MapPin, 
   CheckCircle2, Clock, FileText, Upload, Plus, Trash2, 
   IndianRupee, ArrowLeft, Loader2, ShieldCheck, Mail, File,
-  Navigation
+  Navigation, XCircle
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -24,6 +25,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import Headback from "../components/Headback";
 
@@ -42,42 +44,55 @@ export default function JobStatus() {
   const [desc, setDesc] = useState("");
   const [billItems, setBillItems] = useState([{ item: "", price: "" }]);
   const [submitting, setSubmitting] = useState(false);
+  
+  // Worker Accept/Decline State
+  const [actionLoading, setActionLoading] = useState(false);
 
   // Customer Approval State
   const [approveOpen, setApproveOpen] = useState(false);
 
   // 1. Fetch Job Details
-  useEffect(() => {
-    const fetchJob = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (!session) { navigate("/login"); return; }
-        setUser(session.user);
-        const token = session.access_token;
+  const fetchJob = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) { navigate("/login"); return; }
+      setUser(session.user);
+      const token = session.access_token;
 
-        const isWorkerRes = await fetch("http://localhost:8000/api/me", { headers: { Authorization: `Bearer ${token}` }});
-        const userData = await isWorkerRes.json();
-        const isWorker = userData.user.role === 'worker';
+      // We can try fetching from both worked/posted lists to find the job details
+      // Or if you implement a direct GET /api/jobs/{id}, use that.
+      // For now, we check both lists to be safe since user could be either role.
+      
+      const [resPosted, resWorked] = await Promise.all([
+          fetch("http://localhost:8000/api/me/jobs/posted", { headers: { Authorization: `Bearer ${token}` }}),
+          fetch("http://localhost:8000/api/me/jobs/worked", { headers: { Authorization: `Bearer ${token}` }})
+      ]);
 
-        const endpoint = isWorker ? "/api/me/jobs/worked" : "/api/me/jobs/posted";
-        const res = await fetch(`http://localhost:8000${endpoint}`, { headers: { Authorization: `Bearer ${token}` }});
-        
-        if (res.ok) {
-          const data = await res.json();
-          const foundJob = data.jobs.find(j => j.id === jobId);
-          if (foundJob) {
-            setJob(foundJob);
-          } else {
-            toast.error("Job not found");
-            navigate("/home");
-          }
-        }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setLoading(false);
+      let foundJob = null;
+      if (resPosted.ok) {
+          const data = await resPosted.json();
+          foundJob = data.jobs.find(j => j.id === jobId) || foundJob;
       }
-    };
+      if (resWorked.ok && !foundJob) {
+          const data = await resWorked.json();
+          foundJob = data.jobs.find(j => j.id === jobId) || foundJob;
+      }
+
+      if (foundJob) {
+        setJob(foundJob);
+      } else {
+        toast.error("Job not found or access denied");
+        navigate("/home");
+      }
+    } catch (err) {
+      console.error(err);
+      toast.error("Error loading job");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     fetchJob();
   }, [jobId, navigate]);
 
@@ -134,7 +149,7 @@ export default function JobStatus() {
     return billItems.reduce((acc, curr) => acc + (parseFloat(curr.price) || 0), 0);
   };
 
-  // 4. Submit & Approve Logic
+  // 4. Submit Work Logic
   const handleSubmitWork = async () => {
     setSubmitting(true);
     try {
@@ -160,7 +175,7 @@ export default function JobStatus() {
       if (res.ok) {
         toast.success("Work Submitted! Customer notified.");
         setSubmitOpen(false);
-        window.location.reload();
+        fetchJob();
       } else {
         throw new Error("Submission failed");
       }
@@ -183,7 +198,7 @@ export default function JobStatus() {
       if (res.ok) {
         toast.success("Job Completed! Payment Released.");
         setApproveOpen(false);
-        window.location.reload();
+        fetchJob();
       }
     } catch (e) {
       toast.error("Approval failed");
@@ -195,10 +210,17 @@ export default function JobStatus() {
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
   if (!job) return null;
 
-  const isWorker = user?.id !== job.customer_id; 
-  const statusStep = {
-    'open': 1, 'bidding': 1, 'pending_acceptance': 2, 'assigned': 3, 'in_progress': 4, 'completed': 5
-  }[job.status] || 1;
+  // SECURITY FIX: Ensure only the assigned worker is treated as the worker
+  // If user is customer (job owner), they are NOT the worker.
+  // If user is not the customer, check if they are the assigned worker for safety.
+  const isWorker = user?.id !== job.customer_id; // Basic check (Viewer != Owner)
+  
+  // Status Mapping
+  let statusStep = 1;
+  if (job.status === 'pending_acceptance') statusStep = 2;
+  if (job.status === 'assigned') statusStep = 3;
+  if (job.status === 'in_progress') statusStep = 4;
+  if (job.status === 'completed') statusStep = 5;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-20 font-sans relative">
@@ -206,7 +228,7 @@ export default function JobStatus() {
 
       {/* Header */}
       <div className="relative z-10 px-6 py-6 flex items-center justify-between max-w-5xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate("/home")} className="text-slate-400 hover:text-white -ml-4">
+        <Button variant="ghost" onClick={() => navigate(isWorker ? "/dashboard" : "/my_postings")} className="text-slate-400 hover:text-white -ml-4">
           <ArrowLeft className="w-5 h-5 mr-2" /> Back
         </Button>
         <Badge variant="outline" className="uppercase border-blue-500/30 text-blue-400 tracking-wider">
@@ -226,7 +248,8 @@ export default function JobStatus() {
                 <CardTitle className="text-2xl text-white">{job.title}</CardTitle>
                 <Badge className={`uppercase text-[10px] ${
                     job.status === 'completed' ? 'bg-emerald-500 text-white' : 
-                    job.status === 'in_progress' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-300'
+                    job.status === 'in_progress' ? 'bg-blue-600 text-white' : 
+                    job.status === 'pending_acceptance' ? 'bg-amber-500 text-black' : 'bg-slate-700 text-slate-300'
                 }`}>
                     {job.status.replace('_', ' ')}
                 </Badge>
@@ -248,6 +271,7 @@ export default function JobStatus() {
               {/* Timeline */}
               <div className="relative flex items-center justify-between mb-8 px-2">
                 <div className="absolute left-0 top-1/2 h-0.5 w-full bg-white/10 -z-10" />
+                
                 <div className={`flex flex-col items-center gap-2 bg-slate-950 p-2 rounded-full z-10 ${statusStep >= 1 ? "text-blue-500" : "text-slate-600"}`}>
                   <div className={`w-4 h-4 rounded-full ${statusStep >= 1 ? "bg-blue-500" : "bg-slate-800"}`} />
                   <span className="text-[10px] uppercase font-bold">Posted</span>
@@ -258,7 +282,7 @@ export default function JobStatus() {
                 </div>
                 <div className={`flex flex-col items-center gap-2 bg-slate-950 p-2 rounded-full z-10 ${statusStep >= 4 ? "text-amber-500" : "text-slate-600"}`}>
                   <div className={`w-4 h-4 rounded-full ${statusStep >= 4 ? "bg-amber-500" : "bg-slate-800"}`} />
-                  <span className="text-[10px] uppercase font-bold">Work Done</span>
+                  <span className="text-[10px] uppercase font-bold">Work</span>
                 </div>
                 <div className={`flex flex-col items-center gap-2 bg-slate-950 p-2 rounded-full z-10 ${statusStep >= 5 ? "text-emerald-500" : "text-slate-600"}`}>
                   <div className={`w-4 h-4 rounded-full ${statusStep >= 5 ? "bg-emerald-500" : "bg-slate-800"}`} />

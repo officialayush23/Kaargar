@@ -4,8 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   Search, MapPin, Briefcase, Wrench, User, ChevronRight,
   ShieldCheck, Hammer, Zap, SlidersHorizontal,
-  Star, Clock, Loader2, Filter, IndianRupee, 
-  CheckCircle2, AlertCircle, MessageSquare
+  Star, Clock, Loader2, Filter, IndianRupee
 } from "lucide-react";
 
 // UI Components
@@ -28,7 +27,6 @@ import {
   SheetTitle,
   SheetTrigger,
   SheetFooter,
-  SheetClose
 } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -41,15 +39,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Drawer,
-  DrawerClose,
-  DrawerContent,
-  DrawerDescription,
-  DrawerFooter,
-  DrawerHeader,
-  DrawerTitle,
-} from "@/components/ui/drawer";
-import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -59,7 +48,6 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { ScrollArea } from "@/components/ui/scroll-area";
 
 // Custom Components
 import Sidebar from "../components/use_ui/Sidebar";
@@ -87,14 +75,14 @@ export default function Home() {
   const navigate = useNavigate();
 
   // -- STATE --
-  const [mode, setMode] = useState("hire"); // 'hire' or 'work'
+  const [mode, setMode] = useState("hire"); 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const [user, setUser] = useState(null);
   const [profile, setProfile] = useState(null);
   
   // Location
-  const [coords, setCoords] = useState({ lat: 21.1458, lon: 79.0882 }); // Default Nagpur
+  const [coords, setCoords] = useState({ lat: 21.1458, lon: 79.0882 }); 
   const [locationName, setLocationName] = useState("Locating...");
 
   // Data
@@ -120,7 +108,7 @@ export default function Home() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [jobModalOpen, setJobModalOpen] = useState(false);
   
-  // Hire Worker Modal (Direct Booking)
+  // Hire Worker Modal
   const [selectedWorker, setSelectedWorker] = useState(null);
   const [hireModalOpen, setHireModalOpen] = useState(false);
   const [hireForm, setHireForm] = useState({ 
@@ -300,8 +288,8 @@ export default function Home() {
         ? selectedWorker.professions[0] 
         : "General"; 
       
-      // Combine description with address details
-      const fullDescription = `${hireForm.description}\n\nLocation Details:\nAddress: ${hireForm.address}\nCity: ${hireForm.city}\nPincode: ${hireForm.pincode}`;
+      // Combine description with address details for legacy support if needed
+      const fullDescription = `${hireForm.description}`;
 
       const payload = {
         worker_id: selectedWorker.worker_id,
@@ -338,8 +326,8 @@ export default function Home() {
         setWorkerDetailsOpen(false);
         setHireForm({ title: "", description: "", budget: "", service: "", address: "", city: "", pincode: "" });
         
-        // Correct Redirect for Customer
-        navigate("/my_postings"); 
+        // REDIRECT TO STATUS PAGE
+        navigate(`/status/${data.job_id}`); 
       } else {
         const err = await res.json();
         toast.error(err.detail || "Failed to book worker.");
@@ -387,6 +375,12 @@ export default function Home() {
     fetchWorkerReviews(worker.worker_id);
     setWorkerDetailsOpen(true);
   };
+
+  const formatCurrency = (cents) => {
+    if (!cents) return "₹0";
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(cents / 100);
+  };
+  const getInitials = () => user?.user_metadata?.full_name ? user.user_metadata.full_name.charAt(0).toUpperCase() : "U";
 
   return (
     <div className="min-h-screen pb-0 relative flex flex-col overflow-x-hidden">
@@ -439,7 +433,7 @@ export default function Home() {
           <div onClick={() => setSidebarOpen(true)} className="cursor-pointer transition-transform hover:scale-105 active:scale-95">
             <Avatar className="w-9 h-9 border-2 border-white/10 shadow-sm">
               <AvatarImage src={user?.user_metadata?.avatar_url} />
-              <AvatarFallback className="bg-slate-800 text-blue-400 font-bold text-xs">U</AvatarFallback>
+              <AvatarFallback className="bg-slate-800 text-blue-400 font-bold text-xs">{getInitials()}</AvatarFallback>
             </Avatar>
           </div>
         </div>
@@ -490,6 +484,8 @@ export default function Home() {
               <MapPin className="w-3 h-3" /> {locationName.split(',')[0]}
             </div>
           </div>
+
+          {/* FILTER SHEET */}
           <Sheet open={filterSheetOpen} onOpenChange={setFilterSheetOpen}>
             <SheetTrigger asChild>
               <Button size="icon" className="h-14 w-14 rounded-2xl bg-slate-900/90 backdrop-blur-xl border border-white/10 shadow-2xl hover:bg-white/5 shrink-0 ring-1 ring-white/5">
@@ -542,7 +538,7 @@ export default function Home() {
           <div className="flex justify-start md:justify-center gap-4 overflow-x-auto pb-4 no-scrollbar px-2">
             {CATEGORIES.map((cat) => (
               <div key={cat.id} onClick={() => setSelectedCategory(selectedCategory === cat.id ? null : cat.id)} className={`flex flex-col items-center gap-2 min-w-[70px] cursor-pointer group transition-all duration-200 ${selectedCategory === cat.id ? "scale-105" : "opacity-70 hover:opacity-100"}`}>
-                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center border-2 transition-all ${selectedCategory === cat.id ? "bg-blue-600 border-blue-500 text-white shadow-lg" : "bg-white/5 border-white/5 text-slate-400"}`}>{cat.icon}</div>
+                <div className={`w-16 h-16 rounded-2xl flex items-center justify-center border-2 transition-all ${selectedCategory === cat.id ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/30" : "bg-white/5 border-white/5 text-slate-400 group-hover:bg-white/10 group-hover:text-white group-hover:border-white/20"}`}>{cat.icon}</div>
                 <span className={`text-[11px] font-medium ${selectedCategory === cat.id ? "text-blue-400" : "text-slate-500 group-hover:text-slate-300"}`}>{cat.label}</span>
               </div>
             ))}
@@ -559,7 +555,7 @@ export default function Home() {
              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                {results.map((item) => (
                  mode === 'hire' ? (
-                   // WORKER CARD WITH DIALOG TRIGGER
+                   // WORKER CARD
                    <Card key={item.worker_id} onClick={() => openWorkerDetails(item)} className="bg-white/5 border-white/10 overflow-hidden hover:bg-white/10 transition-all group rounded-2xl cursor-pointer">
                      <CardContent className="p-5">
                        <div className="flex gap-4">
@@ -576,7 +572,7 @@ export default function Home() {
                            </div>
                            <p className="text-xs text-slate-400 truncate mb-2 mt-1">{item.services?.join(", ") || "General Worker"}</p>
                            <div className="flex items-center gap-3 text-xs text-slate-500">
-                             <Badge variant="secondary" className="h-6 px-2 text-[10px] bg-blue-500/10 text-blue-300 border-0">{item.worker_type}</Badge>
+                             <Badge variant="secondary" className="h-6 px-2 text-[10px] bg-blue-500/10 text-blue-300 border-0 hover:bg-blue-500/20">{item.worker_type}</Badge>
                              <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {(item.distance_meters / 1000).toFixed(1)} km</span>
                            </div>
                          </div>
@@ -615,7 +611,7 @@ export default function Home() {
         </div>
       </div>
 
-      {/* --- WORKER DETAILS MODAL (NEW) --- */}
+      {/* --- WORKER DETAILS MODAL --- */}
       <Dialog open={workerDetailsOpen} onOpenChange={setWorkerDetailsOpen}>
          <DialogContent className="bg-slate-950 border-white/10 text-white max-w-lg max-h-[90vh] overflow-y-auto">
            <DialogHeader>
@@ -635,15 +631,12 @@ export default function Home() {
            </DialogHeader>
            
            <div className="space-y-6 py-2">
-              {/* Bio */}
               {selectedWorker?.about_text && (
                 <div className="bg-white/5 p-4 rounded-xl border border-white/5">
                    <h4 className="text-xs font-bold text-slate-500 uppercase mb-2">About</h4>
                    <p className="text-sm text-slate-300 leading-relaxed">{selectedWorker.about_text}</p>
                 </div>
               )}
-
-              {/* Stats */}
               <div className="grid grid-cols-2 gap-4">
                  <div className="bg-white/5 p-3 rounded-xl border border-white/5 text-center">
                     <p className="text-xs text-slate-500 uppercase">Rate</p>
@@ -654,8 +647,6 @@ export default function Home() {
                     <p className="text-sm font-medium text-white truncate">{selectedWorker?.services?.length || 0} Listed</p>
                  </div>
               </div>
-
-              {/* Reviews */}
               <div>
                  <h4 className="text-sm font-bold text-white mb-3">Recent Reviews</h4>
                  {reviewsLoading ? <Loader2 className="animate-spin mx-auto" /> : workerReviews.length === 0 ? (
@@ -831,3 +822,4 @@ export default function Home() {
     </div>
   );
 }
+

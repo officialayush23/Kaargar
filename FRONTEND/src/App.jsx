@@ -19,7 +19,6 @@ import JobPost from './pages/JobPost'
 import UserPosted from './pages/UserPosted'
 import Dashboard from './pages/Dashboard'
 import JobStatus from './pages/JobStatus'
-// import Chat from './pages/Chat' // Create this later
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -61,7 +60,7 @@ const App = () => {
           <Route path='/auth/callback' element={<AuthCallback />} />
 
           {/* Core */}
-          <Route path='/' element={<Home />} /> {/* Default to Home if auth */}
+          <Route path='/' element={<Home />} />
           <Route path='/home' element={<Home />} />
           
           {/* Profiles */}
@@ -71,13 +70,11 @@ const App = () => {
 
           {/* Job Flow */}
           <Route path='/post_job' element={<JobPost />} />
-          <Route path='/my_postings' element={<UserPosted />} /> {/* Fixed typo my_posting -> my_postings */}
+          <Route path='/my_posting' element={<UserPosted />} />
           <Route path='/dashboard' element={<Dashboard />} />
           
-          {/* Specific Job Pages */}
-          <Route path='/status/:jobId' element={<JobStatus />} /> {/* FIXED: Added :jobId */}
-          {/* <Route path='/chat/:jobId' element={<Chat />} /> */}
-
+          {/* FIXED: Added :jobId parameter */}
+          <Route path='/status/:jobId' element={<JobStatus />} />
         </Routes>
       </div>
     </>

@@ -33,7 +33,8 @@ import {
   Edit,
   AlertCircle,
   Wifi,      // Icon for online
-  WifiOff    // Icon for offline
+  WifiOff,   // Icon for offline
+  PlusCircle // Icon for Post Job
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { toast } from "sonner";
@@ -230,12 +231,14 @@ const Sidebar = ({ open, onOpenChange, user }) => {
           </div>
 
           {!isWorker ? (
+            // Customer Links
             <>
-              <NavItem to="/my_posting" icon={<Briefcase className="w-4 h-4" />} label="My Job Postings" onClick={close} />
+              <NavItem to="/post_job" icon={<PlusCircle className="w-4 h-4" />} label="Post a Job" onClick={close} />
+              <NavItem to="/my_postings" icon={<Briefcase className="w-4 h-4" />} label="My Job Postings" onClick={close} />
             </>
           ) : (
+            // Worker Links
             <>
-              {/* WORKER LINKS WITH BADGES */}
               <NavItem to="/dashboard" icon={<Hammer className="w-4 h-4" />} label="Dashboard" onClick={close} />
               
               <NavItem 
