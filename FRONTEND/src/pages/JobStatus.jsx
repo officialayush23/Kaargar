@@ -5,13 +5,11 @@ import { motion } from "framer-motion";
 import { 
   MessageSquare, AlertTriangle, Calendar, MapPin, 
   CheckCircle2, Clock, FileText, Upload, Plus, Trash2, 
-  IndianRupee, ArrowLeft, Loader2, ShieldCheck, Mail, File,
-  Navigation, XCircle, RefreshCw, CreditCard
+  IndianRupee, ArrowLeft, Loader2, ShieldCheck, Mail, File
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,7 +23,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import Headback from "../components/Headback";
 
@@ -37,15 +34,15 @@ export default function JobStatus() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   
-  // Forms
+  // Worker Submission State
   const [submitOpen, setSubmitOpen] = useState(false);
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [desc, setDesc] = useState("");
   const [billItems, setBillItems] = useState([{ item: "", price: "" }]);
   const [submitting, setSubmitting] = useState(false);
-  
-  // Modals
+
+  // Customer Approval State
   const [approveOpen, setApproveOpen] = useState(false);
   const [complaintOpen, setComplaintOpen] = useState(false);
   const [complaintText, setComplaintText] = useState("");
@@ -85,26 +82,36 @@ export default function JobStatus() {
     return () => clearInterval(pollingRef.current);
   }, [jobId]);
 
-  // 2. Handlers
+  // 2. File Upload (Signed URL Fix)
   const handleFileUpload = async (e) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
+
     setUploading(true);
+    const uploadedUrls = [];
+
     try {
-      const uploaded = [];
       for (const file of files) {
-        // Sanitize filename to avoid URL issues
+        // Sanitize filename
         const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
         const path = `${jobId}/${Date.now()}_${sanitizedName}`;
         
-        const { error } = await supabase.storage.from('JOB_PROOF').upload(path, file);
-        if (error) throw error;
-        
-        const { data } = supabase.storage.from('JOB_PROOF').getPublicUrl(path);
-        uploaded.push(data.publicUrl);
+        const { error: uploadError } = await supabase.storage
+          .from('JOB_PROOF')
+          .upload(path, file);
+
+        if (uploadError) throw uploadError;
+
+        // FIX: Use createSignedUrl instead of getPublicUrl to avoid 404 on private buckets
+        const { data, error: signError } = await supabase.storage
+            .from('JOB_PROOF')
+            .createSignedUrl(path, 60 * 60 * 24 * 365); // Valid for 1 year
+            
+        if (signError) throw signError;
+        uploadedUrls.push(data.signedUrl);
       }
-      setPhotos(prev => [...prev, ...uploaded]);
-      toast.success("Uploaded successfully");
+      setPhotos(prev => [...prev, ...uploadedUrls]);
+      toast.success("Files uploaded successfully");
     } catch (e) { 
       console.error("Upload error:", e);
       toast.error("Upload failed: " + e.message); 
@@ -112,6 +119,21 @@ export default function JobStatus() {
     finally { setUploading(false); }
   };
 
+  // 3. Bill Helpers
+  const handleAddBillItem = () => setBillItems([...billItems, { item: "", price: "" }]);
+  const handleRemoveBillItem = (index) => {
+    const newItems = [...billItems];
+    newItems.splice(index, 1);
+    setBillItems(newItems);
+  };
+  const handleBillChange = (index, field, value) => {
+    const newItems = [...billItems];
+    newItems[index][field] = value;
+    setBillItems(newItems);
+  };
+  const calculateTotal = () => billItems.reduce((acc, curr) => acc + (parseFloat(curr.price) || 0), 0);
+
+  // 4. Submit Logic
   const handleSubmitWork = async () => {
     setSubmitting(true);
     try {
@@ -155,7 +177,6 @@ export default function JobStatus() {
     setSubmitting(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      // Determine target
       const targetId = user.id === job.customer_id ? job.worker_id : job.customer_id;
       
       const res = await fetch("http://localhost:8000/api/complaints", {
@@ -171,40 +192,22 @@ export default function JobStatus() {
       });
       
       if (res.ok) {
-          toast.success("Report Filed. Support will contact you.");
+          toast.success("Report Filed.");
           setComplaintOpen(false);
       }
     } catch(e) { toast.error("Report failed"); }
     finally { setSubmitting(false); }
   };
 
-  // --- ROBUST BILL CALCULATION ---
   const billTotal = useMemo(() => {
     if (!job?.bill_details) return 0;
-    
     let details = job.bill_details;
-    
-    // Handle potential string response from DB
     if (typeof details === 'string') {
-      try {
-        details = JSON.parse(details);
-      } catch (e) {
-        console.error("Failed to parse bill details", e);
-        return 0;
-      }
+      try { details = JSON.parse(details); } catch (e) { return 0; }
     }
-
     if (!Array.isArray(details)) return 0;
-
     return details.reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
   }, [job?.bill_details]);
-
-  // Smart Back Navigation
-  const handleBack = () => {
-      // If I am the worker, go to dashboard. If Customer, go to My Postings.
-      if (isWorker) navigate("/dashboard");
-      else navigate("/my_postings");
-  };
 
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
@@ -212,15 +215,13 @@ export default function JobStatus() {
 
   const isWorker = user?.id === job.worker_id;
   const isCustomer = user?.id === job.customer_id;
-  const finalTotal = ((job.budget_max_cents || 0)/100) + billTotal;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-20 font-sans relative">
       <Headback />
 
-      {/* --- HEADER --- */}
       <div className="relative z-10 px-6 py-6 flex items-center justify-between max-w-5xl mx-auto">
-        <Button variant="ghost" onClick={handleBack} className="text-slate-400 hover:text-white -ml-4">
+        <Button variant="ghost" onClick={() => navigate("/home")} className="text-slate-400 hover:text-white -ml-4">
           <ArrowLeft className="w-5 h-5 mr-2" /> Back
         </Button>
         <div className="flex gap-2">
@@ -232,7 +233,6 @@ export default function JobStatus() {
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* --- LEFT: DETAILS --- */}
         <div className="lg:col-span-2 space-y-6">
           <Card className="bg-white/5 border-white/10 backdrop-blur-xl">
             <CardHeader>
@@ -254,7 +254,6 @@ export default function JobStatus() {
             </CardContent>
           </Card>
 
-          {/* PROOF SECTION (Visible if submitted) */}
           {(job.status === 'in_progress' || job.status === 'completed') && job.worker_submitted_at && (
              <Card className="bg-slate-900 border-emerald-500/20 shadow-lg shadow-emerald-900/10">
                 <CardHeader>
@@ -263,7 +262,6 @@ export default function JobStatus() {
                 <CardContent className="space-y-4">
                    <p className="text-slate-300 text-sm bg-white/5 p-3 rounded-lg">"{job.worker_comment}"</p>
                    
-                   {/* Bill Table */}
                    {billTotal > 0 && (
                      <div className="border border-white/10 rounded-lg overflow-hidden">
                         <div className="bg-white/5 p-2 text-xs font-bold text-slate-400 flex justify-between px-4"><span>Item</span><span>Cost</span></div>
@@ -280,13 +278,12 @@ export default function JobStatus() {
                      </div>
                    )}
 
-                   {/* Photos */}
                    {job.worker_proof_imgs && job.worker_proof_imgs.length > 0 && (
                       <div className="flex gap-2 overflow-x-auto pb-2">
                          {job.worker_proof_imgs.map((url, i) => (
                             <a href={url} target="_blank" key={i} rel="noreferrer">
                                <img src={url} className="h-24 w-24 object-cover rounded-lg border border-white/10 hover:scale-105 transition-transform" 
-                                 onError={(e) => {e.target.style.display='none'}} // Hide broken images
+                                 onError={(e) => {e.target.style.display='none'}} 
                                />
                             </a>
                          ))}
@@ -297,13 +294,11 @@ export default function JobStatus() {
           )}
         </div>
 
-        {/* --- RIGHT: ACTIONS --- */}
         <div className="lg:col-span-1">
            <Card className="bg-gradient-to-b from-slate-900 to-slate-950 border-white/10 h-full">
              <CardHeader><CardTitle className="text-white">Actions</CardTitle></CardHeader>
              <CardContent className="space-y-4">
                
-               {/* WORKER ACTIONS */}
                {isWorker && (
                   job.status === 'assigned' || job.status === 'in_progress' ? (
                     <Dialog open={submitOpen} onOpenChange={setSubmitOpen}>
@@ -333,13 +328,12 @@ export default function JobStatus() {
                   ) : <div className="text-center text-slate-500 italic">No actions available</div>
                )}
 
-               {/* CUSTOMER ACTIONS */}
                {isCustomer && (
                   job.status === 'in_progress' && job.worker_submitted_at ? (
                      <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
                        <DialogTrigger asChild>
                           <Button className="w-full h-14 bg-emerald-600 hover:bg-emerald-500 text-white text-lg shadow-lg shadow-emerald-900/20 animate-pulse">
-                             Review & Pay ₹{finalTotal}
+                             Review & Pay
                           </Button>
                        </DialogTrigger>
                        <DialogContent className="bg-slate-900 border-white/10 text-white">
@@ -348,7 +342,6 @@ export default function JobStatus() {
                              <DialogDescription>Funds will be released to the worker.</DialogDescription>
                           </DialogHeader>
                           <div className="py-6 text-center">
-                             <p className="text-3xl font-bold text-white">₹{finalTotal}</p>
                              <p className="text-sm text-slate-400 mt-1">Total Payable Amount</p>
                           </div>
                           <Button onClick={handleApproveWork} disabled={submitting} className="w-full bg-emerald-600 h-12 text-lg">{submitting ? <Loader2 className="animate-spin"/> : "Pay Now"}</Button>
@@ -367,7 +360,6 @@ export default function JobStatus() {
 
       </div>
 
-      {/* Complaint Dialog */}
       <Dialog open={complaintOpen} onOpenChange={setComplaintOpen}>
          <DialogContent className="bg-slate-900 border-white/10 text-white">
             <DialogHeader><DialogTitle>Report Issue</DialogTitle></DialogHeader>

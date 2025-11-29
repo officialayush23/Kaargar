@@ -23,7 +23,7 @@ logger = logging.getLogger("uvicorn")
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL: raise RuntimeError("DATABASE_URL missing")
 
-app = FastAPI(title="KAARGAR API 3.1 (Chat)", version="3.1.0")
+app = FastAPI(title="KAARGAR API 3.2 (Chat Media)", version="3.2.0")
 
 # CORS
 origins = ["http://localhost:5173", "http://localhost:3000"]
@@ -135,7 +135,9 @@ class RatingCreate(BaseModel):
     comment: str
 
 class ChatMessage(BaseModel):
-    content: str
+    content: Optional[str] = None
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None # 'image', 'file'
     
 class KycUpload(BaseModel):
     doc_type: str
@@ -298,13 +300,17 @@ async def get_worker_job_feed(
     async with app.state.db_pool.acquire() as conn:
         worker = await conn.fetchrow("SELECT professions, services FROM public.worker_profiles WHERE user_id=$1", worker_id)
         if not worker: return {"ok": True, "jobs": []}
+
         my_professions = worker['professions'][0] if worker['professions'] else None
         my_services = worker['services'] if worker['services'] else None
+        
         profession_arg = my_professions if filter_by_profession else None
         services_arg = my_services if filter_by_profession else None
+
         rows = await conn.fetch("""
             SELECT * FROM search_jobs($1, $2, NULL, $3, NULL, $4, $5)
         """, lat, lon, radius, profession_arg, services_arg)
+        
     return {"ok": True, "jobs": [dict(r) for r in rows]}
 
 # ==================================================================
@@ -313,24 +319,17 @@ async def get_worker_job_feed(
 
 @app.post("/api/jobs/{job_id}/chat")
 async def get_or_create_chat(job_id: str, token = Depends(require_user)):
-    """ 
-    Ensures a chat room exists for this job and returns the chat_id.
-    """
     uid = token.get("sub")
     async with app.state.db_pool.acquire() as conn:
-        # 1. Check existing
         chat = await conn.fetchrow("SELECT id FROM public.chats WHERE job_id = $1", job_id)
-        if chat:
-            return {"ok": True, "chat_id": str(chat['id'])}
-            
-        # 2. Verify Authorization (Must be Customer or Worker)
+        if chat: return {"ok": True, "chat_id": str(chat['id'])}
+        
         job = await conn.fetchrow("SELECT customer_id, worker_id FROM public.jobs WHERE id = $1", job_id)
         if not job: raise HTTPException(404, "Job not found")
         
         if str(job['customer_id']) != uid and str(job['worker_id']) != uid:
             raise HTTPException(403, "Access denied")
             
-        # 3. Create Chat
         chat_id = await conn.fetchval("INSERT INTO public.chats (job_id) VALUES ($1) RETURNING id", job_id)
         return {"ok": True, "chat_id": str(chat_id)}
 
@@ -343,6 +342,7 @@ async def direct_book_worker(payload: DirectBooking, token = Depends(require_use
         worker = await conn.fetchrow("SELECT accepts_auto_assign, is_online FROM public.worker_profiles WHERE user_id=$1", payload.worker_id)
         if not worker: raise HTTPException(404, "Worker not found")
         if not worker['is_online']: raise HTTPException(400, "Worker is offline")
+        
         initial_status = 'assigned' if worker['accepts_auto_assign'] else 'pending_acceptance'
         row = await conn.fetchrow("""
             INSERT INTO public.jobs (
@@ -411,7 +411,6 @@ async def delete_job(job_id: str, token = Depends(require_user)):
         await conn.execute("DELETE FROM public.jobs WHERE id = $1", job_id)
     return {"ok": True, "message": "Job deleted"}
 
-# --- Job Status Update ---
 class JobStatusUpdate(BaseModel):
     status: str
 
@@ -582,7 +581,12 @@ async def get_messages(chat_id: str, token = Depends(require_user)):
 async def send_message(chat_id: str, payload: ChatMessage, token = Depends(require_user)):
     uid = token.get("sub")
     async with app.state.db_pool.acquire() as conn:
-        await conn.execute("INSERT INTO public.messages (chat_id, sender_id, content) VALUES ($1, $2, $3)", chat_id, uid, payload.content)
+        if not payload.content and not payload.media_url:
+            raise HTTPException(400, "Message must have content or media")
+        await conn.execute("""
+            INSERT INTO public.messages (chat_id, sender_id, content, media_url, media_type) 
+            VALUES ($1, $2, $3, $4, $5)
+        """, chat_id, uid, payload.content, payload.media_url, payload.media_type)
     return {"ok": True}
 
 @app.post("/api/notifications/device")
