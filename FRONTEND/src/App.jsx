@@ -19,6 +19,8 @@ import JobPost from './pages/JobPost'
 import UserPosted from './pages/UserPosted'
 import Dashboard from './pages/Dashboard'
 import JobStatus from './pages/JobStatus'
+import User from './pages/User'
+import Worker from './pages/Worker'
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -60,9 +62,10 @@ const App = () => {
           <Route path='/auth/callback' element={<AuthCallback />} />
 
           {/* Core */}
-          <Route path='/' element={<Home />} />
+          <Route path='/' element={<User />} />
+          <Route path='/worker' element={<Worker />} />
           <Route path='/home' element={<Home />} />
-          
+
           {/* Profiles */}
           <Route path='/register' element={<Register />} />
           <Route path='/register_worker' element={<Wregister />} />
@@ -70,9 +73,9 @@ const App = () => {
 
           {/* Job Flow */}
           <Route path='/post_job' element={<JobPost />} />
-          <Route path='/my_posting' element={<UserPosted />} />
+          <Route path='/my_postings' element={<UserPosted />} />
           <Route path='/dashboard' element={<Dashboard />} />
-          
+
           {/* FIXED: Added :jobId parameter */}
           <Route path='/status/:jobId' element={<JobStatus />} />
         </Routes>
@@ -82,3 +85,5 @@ const App = () => {
 }
 
 export default App
+
+
