@@ -28,7 +28,6 @@ app = FastAPI(title="KAARGAR API 2.11 (Fix Pooler)", version="2.11.0")
 # CORS
 origins = [
     "http://localhost:5173",
-    "http://localhost:3000",
     "https://kaargar.vercel.app"
 ]
 
