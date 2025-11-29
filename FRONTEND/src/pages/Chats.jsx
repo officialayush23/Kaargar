@@ -218,7 +218,7 @@ export default function Chat() {
         <Button size="icon" variant="ghost" className="text-slate-400 hover:text-emerald-400"><Phone className="w-5 h-5" /></Button>
       </div>
 
-      <ScrollArea className="flex-1 p-4">
+      <ScrollArea className="flex-1 overflow-y-auto p-4">
          <div className="space-y-4 pb-4">
             {messages.length === 0 && <div className="text-center text-slate-500 text-sm mt-10">Start the conversation...</div>}
             {messages.map((msg, i) => {
