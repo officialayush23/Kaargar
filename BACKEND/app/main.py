@@ -26,7 +26,7 @@ if not DATABASE_URL: raise RuntimeError("DATABASE_URL missing")
 app = FastAPI(title="KAARGAR API 3.2 (Chat Media)", version="3.2.0")
 
 # CORS
-origins = ["http://localhost:5173", "http://localhost:3000"]
+origins = ["http://localhost:5173", "http://localhost:3000","https://kaargar.vercel.app/"]
 app.add_middleware(
     CORSMiddleware, allow_origins=origins, allow_credentials=True, 
     allow_methods=["*"], allow_headers=["*"]
