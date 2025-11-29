@@ -6,7 +6,7 @@ import App from './App.jsx';
 import { ThemeProvider } from './components/use_ui/ThemeProvider.jsx';
 import { Toaster } from 'sonner';
 
-
+import { Analytics } from "@vercel/analytics/react"
 
 createRoot(document.getElementById('root')).render(
 
@@ -14,6 +14,7 @@ createRoot(document.getElementById('root')).render(
 
     <ThemeProvider>
       {/* <StrictMode> */}
+      <Analytics />
       <App />
       {/* </StrictMode> */}
       <Toaster/>
