@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { supabase } from "@/lib/supabaseClient";
+import { API_BASE_URL } from "../../config";
 
 export default function SearchWorker({ searchQuery, category }) {
   const [workers, setWorkers] = useState([]);
@@ -37,7 +38,7 @@ export default function SearchWorker({ searchQuery, category }) {
         if (category) params.append("profession", category);
         if (searchQuery) params.append("service", searchQuery); // Search by service tag
 
-        const res = await fetch(`http://localhost:8000/api/search?${params.toString()}`, {
+        const res = await fetch(`${API_BASE_URL}/api/search?${params.toString()}`, {
           headers: { Authorization: `Bearer ${session.access_token}` }
         });
 

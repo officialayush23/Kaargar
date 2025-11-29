@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { supabase } from "../../lib/supabaseClient";
 import { toast } from "sonner";
+import { API_BASE_URL } from "../../config";
 
 const Sidebar = ({ open, onOpenChange, user }) => {
   const navigate = useNavigate();
@@ -59,7 +60,7 @@ const Sidebar = ({ open, onOpenChange, user }) => {
         const token = session.access_token;
 
         // A. Get Profile
-        const resProfile = await fetch("http://localhost:8000/api/me", {
+        const resProfile = await fetch(`${API_BASE_URL}/api/me`, {
           headers: { Authorization: `Bearer ${token}` },
         });
         
@@ -69,7 +70,7 @@ const Sidebar = ({ open, onOpenChange, user }) => {
 
           // B. If Worker, Get Job Counts
           if (data.user.role === 'worker' || data.user.role === 'agency') {
-             const resJobs = await fetch("http://localhost:8000/api/me/jobs/worked", {
+             const resJobs = await fetch(`${API_BASE_URL}/api/me/jobs/worked`, {
                 headers: { Authorization: `Bearer ${token}` }
              });
              if (resJobs.ok) {
@@ -118,7 +119,7 @@ const Sidebar = ({ open, onOpenChange, user }) => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
       
-      const res = await fetch("http://localhost:8000/api/me/worker", {
+      const res = await fetch(`${API_BASE_URL}/api/me/worker`, {
          method: "PATCH",
          headers: {
            "Content-Type": "application/json",

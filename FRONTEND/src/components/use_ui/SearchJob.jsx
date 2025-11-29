@@ -16,6 +16,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { supabase } from "@/lib/supabaseClient";
+import { API_BASE_URL } from "../../config";
 
 export default function SearchJob({ searchQuery, category }) {
   const [jobs, setJobs] = useState([]);
@@ -55,7 +56,7 @@ export default function SearchJob({ searchQuery, category }) {
         }
         // Note: Feed endpoint supports 'filter_by_profession' logic if we mapped category to user profession
 
-        const res = await fetch(`http://localhost:8000${endpoint}?${params.toString()}`, {
+        const res = await fetch(`${API_BASE_URL}${endpoint}?${params.toString()}`, {
           headers: { Authorization: `Bearer ${session.access_token}` }
         });
 
@@ -79,7 +80,7 @@ export default function SearchJob({ searchQuery, category }) {
     setBidding(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`http://localhost:8000/api/jobs/${selectedJob.id}/bids`, {
+      const res = await fetch(`${API_BASE_URL}/api/jobs/${selectedJob.id}/bids`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
