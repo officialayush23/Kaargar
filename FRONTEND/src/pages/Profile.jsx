@@ -63,7 +63,7 @@ export default function Profile() {
           const isWorker = userData.user.role === 'worker' || userData.user.role === 'agency';
           const jobsEndpoint = isWorker ? "/api/me/jobs/worked" : "/api/me/jobs/posted";
           
-          const jobsRes = await fetch(`${API_BASE_URL}:8000${jobsEndpoint}`, {
+          const jobsRes = await fetch(`${API_BASE_URL}${jobsEndpoint}`, {
             headers: { Authorization: `Bearer ${token}` },
           });
           if (jobsRes.ok) {
