@@ -23,13 +23,10 @@ logger = logging.getLogger("uvicorn")
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL: raise RuntimeError("DATABASE_URL missing")
 
-app = FastAPI(title="KAARGAR API 2.11 (Fix Pooler)", version="2.11.0")
+app = FastAPI(title="KAARGAR API 3.3 (Stable)", version="3.3.0")
 
-# CORS
-origins = [
-    "http://localhost:5173",
-    "https://kaargar.vercel.app"
-]
+# CORS - Set to "*" to allow Mobile Apps (IP-based origins) and Web
+origins = ["*"]
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,12 +40,14 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup():
     logger.info("Connecting to Database...")
-    # CRITICAL FIX: statement_cache_size=0 is required for Supabase Transaction Pooler (Port 6543)
+    # Increased pool size to handle polling better
+    # statement_cache_size=0 is CRITICAL for Supabase Transaction Pooler
     app.state.db_pool = await asyncpg.create_pool(
         DATABASE_URL, 
         min_size=1, 
-        max_size=10,
-        statement_cache_size=0 
+        max_size=20, 
+        statement_cache_size=0,
+        max_inactive_connection_lifetime=300 # Recycle connections to keep them fresh
     )
     logger.info("Database Connected.")
 
@@ -109,16 +108,11 @@ class JobCreate(BaseModel):
     profession_required: str 
     services_required: List[str] = [] 
     category: Optional[str] = None
-    
-    # Location Data
     lat: float
     lon: float
-    
-    # Explicit Address Fields
     address_text: Optional[str] = None
     city: Optional[str] = None
     pincode: Optional[str] = None
-    
     budget_max_cents: Optional[int] = None
     is_remote: bool = False
 
@@ -244,6 +238,9 @@ async def get_my_profile(token = Depends(require_user)):
 @app.patch("/api/me/profile")
 async def update_user_profile(payload: UserUpdate, token = Depends(require_user)):
     uid = token.get("sub")
+    # LOGGING TO DEBUG PROFILE UPDATE ISSUES
+    print(f"Updating profile for {uid}: {payload.dict(exclude_unset=True)}")
+    
     async with app.state.db_pool.acquire() as conn:
         await conn.execute("""
             UPDATE public.users SET 
