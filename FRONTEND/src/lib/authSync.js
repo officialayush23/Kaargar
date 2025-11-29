@@ -1,7 +1,7 @@
 // src/lib/authSync.js
+import { API_BASE_URL } from "../config";
 import { supabase } from "./supabaseClient";
 
-const BACKEND_BASE = import.meta.env.VITE_BACKEND_BASE || ""; // empty = same origin
 
 export async function postLoginUpsert(opts = {}) {
   // opts optional: { accessToken } - if not provided, will fetch from supabase client
@@ -15,7 +15,7 @@ export async function postLoginUpsert(opts = {}) {
     return null;
   }
 
-  const url = `${BACKEND_BASE}/api/auth/upsert_user`;
+  const url = `${API_BASE_URL}/api/auth/upsert_user`;
   const res = await fetch(url, {
     method: "POST",
     headers: {
