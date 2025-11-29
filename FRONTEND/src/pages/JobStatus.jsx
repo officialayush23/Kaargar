@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { motion } from "framer-motion";
@@ -6,7 +6,7 @@ import {
   MessageSquare, AlertTriangle, Calendar, MapPin, 
   CheckCircle2, Clock, FileText, Upload, Plus, Trash2, 
   IndianRupee, ArrowLeft, Loader2, ShieldCheck, Mail, File,
-  Navigation, XCircle
+  Navigation, XCircle, RefreshCw, CreditCard
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,7 +37,7 @@ export default function JobStatus() {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   
-  // Worker Submission State
+  // Forms
   const [submitOpen, setSubmitOpen] = useState(false);
   const [photos, setPhotos] = useState([]);
   const [uploading, setUploading] = useState(false);
@@ -45,145 +45,92 @@ export default function JobStatus() {
   const [billItems, setBillItems] = useState([{ item: "", price: "" }]);
   const [submitting, setSubmitting] = useState(false);
   
-  // Worker Accept/Decline State
-  const [actionLoading, setActionLoading] = useState(false);
-
-  // Customer Approval State
+  // Modals
   const [approveOpen, setApproveOpen] = useState(false);
+  const [complaintOpen, setComplaintOpen] = useState(false);
+  const [complaintText, setComplaintText] = useState("");
+  
+  const pollingRef = useRef(null);
 
-  // 1. Fetch Job Details
-  const fetchJob = async () => {
+  // 1. Fetch
+  const fetchJob = async (isBackground = false) => {
     try {
+      if (!isBackground) setLoading(true);
+      
       const { data: { session } } = await supabase.auth.getSession();
-      if (!session) { navigate("/login"); return; }
-      setUser(session.user);
+      if (!session) { if (!isBackground) navigate("/login"); return; }
+      if (!user) setUser(session.user);
       const token = session.access_token;
 
-      // We can try fetching from both worked/posted lists to find the job details
-      // Or if you implement a direct GET /api/jobs/{id}, use that.
-      // For now, we check both lists to be safe since user could be either role.
-      
-      const [resPosted, resWorked] = await Promise.all([
-          fetch("http://localhost:8000/api/me/jobs/posted", { headers: { Authorization: `Bearer ${token}` }}),
-          fetch("http://localhost:8000/api/me/jobs/worked", { headers: { Authorization: `Bearer ${token}` }})
-      ]);
+      const res = await fetch(`http://localhost:8000/api/jobs/${jobId}`, {
+          headers: { Authorization: `Bearer ${token}` }
+      });
 
-      let foundJob = null;
-      if (resPosted.ok) {
-          const data = await resPosted.json();
-          foundJob = data.jobs.find(j => j.id === jobId) || foundJob;
-      }
-      if (resWorked.ok && !foundJob) {
-          const data = await resWorked.json();
-          foundJob = data.jobs.find(j => j.id === jobId) || foundJob;
-      }
-
-      if (foundJob) {
-        setJob(foundJob);
+      if (res.ok) {
+          const data = await res.json();
+          setJob(data.job);
       } else {
-        toast.error("Job not found or access denied");
-        navigate("/home");
+          if (!isBackground) { toast.error("Access Denied"); navigate("/home"); }
       }
     } catch (err) {
       console.error(err);
-      toast.error("Error loading job");
     } finally {
-      setLoading(false);
+      if (!isBackground) setLoading(false);
     }
   };
 
   useEffect(() => {
     fetchJob();
-  }, [jobId, navigate]);
+    pollingRef.current = setInterval(() => fetchJob(true), 5000);
+    return () => clearInterval(pollingRef.current);
+  }, [jobId]);
 
-  // 2. File Upload Handler
+  // 2. Handlers
   const handleFileUpload = async (e) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
-
     setUploading(true);
-    const uploadedUrls = [];
-
     try {
+      const uploaded = [];
       for (const file of files) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Math.random()}.${fileExt}`;
-        const filePath = `${jobId}/${fileName}`;
-
-        const { error: uploadError } = await supabase.storage
-          .from('JOB_PROOF')
-          .upload(filePath, file);
-
-        if (uploadError) throw uploadError;
-
-        const { data } = supabase.storage.from('JOB_PROOF').getPublicUrl(filePath);
-        uploadedUrls.push(data.publicUrl);
+        // Sanitize filename to avoid URL issues
+        const sanitizedName = file.name.replace(/[^a-zA-Z0-9.]/g, '_');
+        const path = `${jobId}/${Date.now()}_${sanitizedName}`;
+        
+        const { error } = await supabase.storage.from('JOB_PROOF').upload(path, file);
+        if (error) throw error;
+        
+        const { data } = supabase.storage.from('JOB_PROOF').getPublicUrl(path);
+        uploaded.push(data.publicUrl);
       }
-      setPhotos(prev => [...prev, ...uploadedUrls]);
-      toast.success("Files uploaded successfully");
-    } catch (error) {
-      toast.error("Upload failed: " + error.message);
-    } finally {
-      setUploading(false);
+      setPhotos(prev => [...prev, ...uploaded]);
+      toast.success("Uploaded successfully");
+    } catch (e) { 
+      console.error("Upload error:", e);
+      toast.error("Upload failed: " + e.message); 
     }
+    finally { setUploading(false); }
   };
 
-  // 3. Bill Handlers
-  const handleAddBillItem = () => {
-    setBillItems([...billItems, { item: "", price: "" }]);
-  };
-
-  const handleRemoveBillItem = (index) => {
-    const newItems = [...billItems];
-    newItems.splice(index, 1);
-    setBillItems(newItems);
-  };
-
-  const handleBillChange = (index, field, value) => {
-    const newItems = [...billItems];
-    newItems[index][field] = value;
-    setBillItems(newItems);
-  };
-
-  const calculateTotal = () => {
-    return billItems.reduce((acc, curr) => acc + (parseFloat(curr.price) || 0), 0);
-  };
-
-  // 4. Submit Work Logic
   const handleSubmitWork = async () => {
     setSubmitting(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
-      
-      const cleanBills = billItems
-        .filter(i => i.item && i.price)
-        .map(i => ({ item: i.item, price: parseFloat(i.price) }));
+      const cleanBills = billItems.filter(i => i.item && i.price).map(i => ({ item: i.item, price: parseFloat(i.price) }));
 
       const res = await fetch(`http://localhost:8000/api/jobs/${jobId}/proof`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${session.access_token}`
-        },
-        body: JSON.stringify({
-          photos: photos,
-          comment: desc,
-          bill_details: cleanBills
-        })
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({ photos, comment: desc, bill_details: cleanBills })
       });
 
       if (res.ok) {
-        toast.success("Work Submitted! Customer notified.");
+        toast.success("Submitted!");
         setSubmitOpen(false);
         fetchJob();
-      } else {
-        throw new Error("Submission failed");
       }
-    } catch (e) {
-      toast.error("Error submitting work");
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (e) { toast.error("Error submitting"); }
+    finally { setSubmitting(false); }
   };
 
   const handleApproveWork = async () => {
@@ -196,274 +143,239 @@ export default function JobStatus() {
       });
 
       if (res.ok) {
-        toast.success("Job Completed! Payment Released.");
+        toast.success("Payment Released!");
         setApproveOpen(false);
         fetchJob();
       }
-    } catch (e) {
-      toast.error("Approval failed");
-    } finally {
-      setSubmitting(false);
-    }
+    } catch (e) { toast.error("Failed"); }
+    finally { setSubmitting(false); }
   };
+
+  const handleReport = async () => {
+    setSubmitting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      // Determine target
+      const targetId = user.id === job.customer_id ? job.worker_id : job.customer_id;
+      
+      const res = await fetch("http://localhost:8000/api/complaints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
+        body: JSON.stringify({
+            target_user_id: targetId,
+            job_id: jobId,
+            complaint_type: "job_dispute",
+            subject: "Issue reported from Job Status",
+            description: complaintText
+        })
+      });
+      
+      if (res.ok) {
+          toast.success("Report Filed. Support will contact you.");
+          setComplaintOpen(false);
+      }
+    } catch(e) { toast.error("Report failed"); }
+    finally { setSubmitting(false); }
+  };
+
+  // --- ROBUST BILL CALCULATION ---
+  const billTotal = useMemo(() => {
+    if (!job?.bill_details) return 0;
+    
+    let details = job.bill_details;
+    
+    // Handle potential string response from DB
+    if (typeof details === 'string') {
+      try {
+        details = JSON.parse(details);
+      } catch (e) {
+        console.error("Failed to parse bill details", e);
+        return 0;
+      }
+    }
+
+    if (!Array.isArray(details)) return 0;
+
+    return details.reduce((acc, item) => acc + (parseFloat(item.price) || 0), 0);
+  }, [job?.bill_details]);
+
+  // Smart Back Navigation
+  const handleBack = () => {
+      // If I am the worker, go to dashboard. If Customer, go to My Postings.
+      if (isWorker) navigate("/dashboard");
+      else navigate("/my_postings");
+  };
+
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
   if (!job) return null;
 
-  // SECURITY FIX: Ensure only the assigned worker is treated as the worker
-  // If user is customer (job owner), they are NOT the worker.
-  // If user is not the customer, check if they are the assigned worker for safety.
-  const isWorker = user?.id !== job.customer_id; // Basic check (Viewer != Owner)
-  
-  // Status Mapping
-  let statusStep = 1;
-  if (job.status === 'pending_acceptance') statusStep = 2;
-  if (job.status === 'assigned') statusStep = 3;
-  if (job.status === 'in_progress') statusStep = 4;
-  if (job.status === 'completed') statusStep = 5;
+  const isWorker = user?.id === job.worker_id;
+  const isCustomer = user?.id === job.customer_id;
+  const finalTotal = ((job.budget_max_cents || 0)/100) + billTotal;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 pb-20 font-sans relative">
       <Headback />
 
-      {/* Header */}
+      {/* --- HEADER --- */}
       <div className="relative z-10 px-6 py-6 flex items-center justify-between max-w-5xl mx-auto">
-        <Button variant="ghost" onClick={() => navigate(isWorker ? "/dashboard" : "/my_postings")} className="text-slate-400 hover:text-white -ml-4">
+        <Button variant="ghost" onClick={handleBack} className="text-slate-400 hover:text-white -ml-4">
           <ArrowLeft className="w-5 h-5 mr-2" /> Back
         </Button>
-        <Badge variant="outline" className="uppercase border-blue-500/30 text-blue-400 tracking-wider">
-          ID: {job.id.slice(0,8)}
-        </Badge>
+        <div className="flex gap-2">
+           <Button variant="outline" className="border-red-500/30 text-red-400 bg-red-500/5 hover:bg-red-500/10" onClick={() => setComplaintOpen(true)}>
+             <AlertTriangle className="w-4 h-4 mr-2" /> Report
+           </Button>
+        </div>
       </div>
 
       <div className="relative z-10 max-w-5xl mx-auto px-4 grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* LEFT: Job Details */}
+        {/* --- LEFT: DETAILS --- */}
         <div className="lg:col-span-2 space-y-6">
-          
-          {/* Status Card */}
           <Card className="bg-white/5 border-white/10 backdrop-blur-xl">
             <CardHeader>
-              <div className="flex justify-between items-start">
-                <CardTitle className="text-2xl text-white">{job.title}</CardTitle>
-                <Badge className={`uppercase text-[10px] ${
-                    job.status === 'completed' ? 'bg-emerald-500 text-white' : 
-                    job.status === 'in_progress' ? 'bg-blue-600 text-white' : 
-                    job.status === 'pending_acceptance' ? 'bg-amber-500 text-black' : 'bg-slate-700 text-slate-300'
-                }`}>
-                    {job.status.replace('_', ' ')}
-                </Badge>
-              </div>
-              <CardDescription className="text-slate-400">
-                 {job.description}
-              </CardDescription>
+              <CardTitle className="text-2xl text-white">{job.title}</CardTitle>
+              <CardDescription>{job.description}</CardDescription>
+              <Badge className="bg-blue-600/20 text-blue-400 border-0 w-fit mt-2">{job.status.replace('_', ' ')}</Badge>
             </CardHeader>
-            <CardContent>
-              {/* Address Block */}
-              <div className="mb-8 p-4 bg-white/5 rounded-xl border border-white/10">
-                 <p className="text-xs text-slate-500 uppercase font-bold mb-2 flex items-center gap-1">
-                    <Navigation className="w-3 h-3" /> Job Location
-                 </p>
-                 <p className="text-sm text-white font-medium">{job.address_text || "Address not provided"}</p>
-                 <p className="text-sm text-slate-400">{job.city} {job.pincode ? `- ${job.pincode}` : ""}</p>
-              </div>
-
-              {/* Timeline */}
-              <div className="relative flex items-center justify-between mb-8 px-2">
-                <div className="absolute left-0 top-1/2 h-0.5 w-full bg-white/10 -z-10" />
-                
-                <div className={`flex flex-col items-center gap-2 bg-slate-950 p-2 rounded-full z-10 ${statusStep >= 1 ? "text-blue-500" : "text-slate-600"}`}>
-                  <div className={`w-4 h-4 rounded-full ${statusStep >= 1 ? "bg-blue-500" : "bg-slate-800"}`} />
-                  <span className="text-[10px] uppercase font-bold">Posted</span>
+            <CardContent className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5">
+                      <p className="text-xs text-slate-500 uppercase">Budget</p>
+                      <p className="text-lg font-bold text-emerald-400">₹{(job.budget_max_cents || 0) / 100}</p>
+                   </div>
+                   <div className="bg-slate-900/50 p-3 rounded-lg border border-white/5">
+                      <p className="text-xs text-slate-500 uppercase">Location</p>
+                      <p className="text-sm text-white truncate">{job.city}</p>
+                   </div>
                 </div>
-                <div className={`flex flex-col items-center gap-2 bg-slate-950 p-2 rounded-full z-10 ${statusStep >= 3 ? "text-blue-500" : "text-slate-600"}`}>
-                  <div className={`w-4 h-4 rounded-full ${statusStep >= 3 ? "bg-blue-500" : "bg-slate-800"}`} />
-                  <span className="text-[10px] uppercase font-bold">Hired</span>
-                </div>
-                <div className={`flex flex-col items-center gap-2 bg-slate-950 p-2 rounded-full z-10 ${statusStep >= 4 ? "text-amber-500" : "text-slate-600"}`}>
-                  <div className={`w-4 h-4 rounded-full ${statusStep >= 4 ? "bg-amber-500" : "bg-slate-800"}`} />
-                  <span className="text-[10px] uppercase font-bold">Work</span>
-                </div>
-                <div className={`flex flex-col items-center gap-2 bg-slate-950 p-2 rounded-full z-10 ${statusStep >= 5 ? "text-emerald-500" : "text-slate-600"}`}>
-                  <div className={`w-4 h-4 rounded-full ${statusStep >= 5 ? "bg-emerald-500" : "bg-slate-800"}`} />
-                  <span className="text-[10px] uppercase font-bold">Paid</span>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                    <p className="text-xs text-slate-500 uppercase">Role</p>
-                    <div className="flex items-center gap-2 mt-1">
-                        <span className="text-sm font-medium text-white">{isWorker ? "Worker" : "Customer"}</span>
-                    </div>
-                  </div>
-                  <div className="bg-white/5 p-3 rounded-lg border border-white/5">
-                    <p className="text-xs text-slate-500 uppercase">Budget</p>
-                    <div className="flex items-center gap-2 mt-1">
-                        <IndianRupee className="w-4 h-4 text-emerald-400" />
-                        <span className="text-sm font-medium text-white">{(job.amount_cents || 0) / 100}</span>
-                    </div>
-                  </div>
-              </div>
             </CardContent>
           </Card>
 
-          {/* Actions Grid */}
-          <div className="grid grid-cols-2 gap-4">
-            <Button 
-              variant="outline" 
-              className="h-14 border-white/10 bg-white/5 hover:bg-white/10 text-white"
-              onClick={() => navigate(`/chat/${job.id}`)}
-            >
-              <MessageSquare className="w-5 h-5 mr-2 text-blue-400" /> Chat
-            </Button>
-            <Button 
-              variant="outline" 
-              className="h-14 border-white/10 bg-white/5 hover:bg-red-500/10 hover:text-red-400 text-slate-300"
-              onClick={() => navigate("/report")}
-            >
-              <AlertTriangle className="w-5 h-5 mr-2" /> Report Issue
-            </Button>
-          </div>
+          {/* PROOF SECTION (Visible if submitted) */}
+          {(job.status === 'in_progress' || job.status === 'completed') && job.worker_submitted_at && (
+             <Card className="bg-slate-900 border-emerald-500/20 shadow-lg shadow-emerald-900/10">
+                <CardHeader>
+                   <CardTitle className="text-emerald-400 flex items-center gap-2"><FileText className="w-5 h-5" /> Work Submitted</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                   <p className="text-slate-300 text-sm bg-white/5 p-3 rounded-lg">"{job.worker_comment}"</p>
+                   
+                   {/* Bill Table */}
+                   {billTotal > 0 && (
+                     <div className="border border-white/10 rounded-lg overflow-hidden">
+                        <div className="bg-white/5 p-2 text-xs font-bold text-slate-400 flex justify-between px-4"><span>Item</span><span>Cost</span></div>
+                        {Array.isArray(job.bill_details) && job.bill_details.map((b, i) => (
+                           <div key={i} className="p-2 flex justify-between px-4 text-sm border-t border-white/5 text-slate-300">
+                              <span>{b.item}</span>
+                              <span>₹{b.price}</span>
+                           </div>
+                        ))}
+                        <div className="bg-emerald-500/10 p-2 px-4 flex justify-between text-emerald-400 font-bold text-sm border-t border-white/10">
+                           <span>Total Extra</span>
+                           <span>₹{billTotal}</span>
+                        </div>
+                     </div>
+                   )}
 
+                   {/* Photos */}
+                   {job.worker_proof_imgs && job.worker_proof_imgs.length > 0 && (
+                      <div className="flex gap-2 overflow-x-auto pb-2">
+                         {job.worker_proof_imgs.map((url, i) => (
+                            <a href={url} target="_blank" key={i} rel="noreferrer">
+                               <img src={url} className="h-24 w-24 object-cover rounded-lg border border-white/10 hover:scale-105 transition-transform" 
+                                 onError={(e) => {e.target.style.display='none'}} // Hide broken images
+                               />
+                            </a>
+                         ))}
+                      </div>
+                   )}
+                </CardContent>
+             </Card>
+          )}
         </div>
 
-        {/* RIGHT: Action Panel */}
+        {/* --- RIGHT: ACTIONS --- */}
         <div className="lg:col-span-1">
-           <Card className="bg-gradient-to-b from-slate-900 to-slate-950 border-white/10 h-full shadow-2xl">
-             <CardHeader>
-               <CardTitle className="text-xl text-white">Action Required</CardTitle>
-               <CardDescription>Next steps for this job.</CardDescription>
-             </CardHeader>
-             <CardContent className="space-y-6">
+           <Card className="bg-gradient-to-b from-slate-900 to-slate-950 border-white/10 h-full">
+             <CardHeader><CardTitle className="text-white">Actions</CardTitle></CardHeader>
+             <CardContent className="space-y-4">
                
-               {/* WORKER VIEW */}
-               {isWorker ? (
-                 job.status === 'assigned' || job.status === 'in_progress' ? (
-                   <Dialog open={submitOpen} onOpenChange={setSubmitOpen}>
-                     <DialogTrigger asChild>
-                       <Button className="w-full h-16 text-lg font-bold bg-blue-600 hover:bg-blue-500 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)] animate-pulse">
-                         <CheckCircle2 className="w-6 h-6 mr-2" /> Submit Work
-                       </Button>
-                     </DialogTrigger>
-                     <DialogContent className="bg-slate-900 border-white/10 text-white max-w-lg max-h-[90vh] overflow-y-auto">
-                       <DialogHeader>
-                         <DialogTitle>Submit Proof of Work</DialogTitle>
-                         <DialogDescription>Upload photos and bill details.</DialogDescription>
-                       </DialogHeader>
-                       
-                       <div className="space-y-6 py-4">
-                         {/* Upload */}
-                         <div className="space-y-2">
-                            <Label>Photos & Documents</Label>
-                            <div className="border-2 border-dashed border-white/10 rounded-xl p-4 text-center hover:border-blue-500/50 transition-colors cursor-pointer bg-white/5 relative">
-                              <input type="file" multiple onChange={handleFileUpload} className="absolute inset-0 opacity-0 cursor-pointer" />
-                              <Upload className="w-8 h-8 mx-auto text-slate-500 mb-2" />
-                              <p className="text-sm text-slate-400">{uploading ? "Uploading..." : "Tap to upload"}</p>
-                            </div>
-                            {photos.length > 0 && <p className="text-xs text-emerald-400">{photos.length} files attached</p>}
-                         </div>
-
-                         {/* Bill Generator */}
-                         <div className="space-y-3">
-                           <div className="flex justify-between items-center">
-                             <h4 className="text-sm font-bold text-white">Bill of Materials</h4>
-                             <Button size="sm" variant="ghost" onClick={handleAddBillItem}><Plus className="w-4 h-4" /></Button>
-                           </div>
-                           {billItems.map((item, idx) => (
-                             <div key={idx} className="flex gap-2">
-                               <Input 
-                                 placeholder="Item Name" 
-                                 className="bg-white/5 border-white/10" 
-                                 value={item.item}
-                                 onChange={(e) => handleBillChange(idx, 'item', e.target.value)}
-                               />
-                               <Input 
-                                 type="number" 
-                                 placeholder="Price" 
-                                 className="bg-white/5 border-white/10 w-24" 
-                                 value={item.price}
-                                 onChange={(e) => handleBillChange(idx, 'price', e.target.value)}
-                               />
-                               <Button size="icon" variant="ghost" onClick={() => handleRemoveBillItem(idx)} className="text-red-400"><Trash2 className="w-4 h-4" /></Button>
-                             </div>
-                           ))}
-                           <div className="flex justify-between text-sm font-bold pt-2 border-t border-white/10">
-                             <span>Total Bill:</span>
-                             <span className="text-emerald-400">₹{calculateTotal()}</span>
-                           </div>
-                         </div>
-
-                         <Textarea 
-                           placeholder="Describe the work done..." 
-                           className="bg-white/5 border-white/10 min-h-[100px]"
-                           value={desc}
-                           onChange={(e) => setDesc(e.target.value)}
-                         />
-                       </div>
-
-                       <DialogFooter>
-                         <Button onClick={handleSubmitWork} disabled={submitting || uploading} className="w-full bg-blue-600 text-white">
-                           {submitting ? <Loader2 className="animate-spin" /> : "Submit & Notify Customer"}
-                         </Button>
-                       </DialogFooter>
-                     </DialogContent>
-                   </Dialog>
-                 ) : job.status === 'completed' ? (
-                   <div className="text-center p-6 bg-emerald-500/10 rounded-xl border border-emerald-500/20">
-                     <ShieldCheck className="w-12 h-12 mx-auto text-emerald-500 mb-2" />
-                     <h3 className="text-emerald-400 font-bold">Job Completed</h3>
-                     <p className="text-xs text-emerald-500/70">Payment has been released to your wallet.</p>
-                   </div>
-                 ) : (
-                   <div className="text-center p-6 text-slate-500 italic">Waiting for job to start...</div>
-                 )
-               ) : (
-                 // CUSTOMER VIEW
-                 job.status === 'in_progress' ? ( 
-                    <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
-                      <DialogTrigger asChild>
-                        <Button className="w-full h-16 text-lg font-bold bg-emerald-600 hover:bg-emerald-500 text-white shadow-[0_0_20px_rgba(16,185,129,0.4)] animate-pulse">
-                          Review & Pay
-                        </Button>
-                      </DialogTrigger>
+               {/* WORKER ACTIONS */}
+               {isWorker && (
+                  job.status === 'assigned' || job.status === 'in_progress' ? (
+                    <Dialog open={submitOpen} onOpenChange={setSubmitOpen}>
+                      <DialogTrigger asChild><Button className="w-full h-14 bg-blue-600 hover:bg-blue-500 text-white text-lg shadow-lg shadow-blue-900/20">Submit Work</Button></DialogTrigger>
                       <DialogContent className="bg-slate-900 border-white/10 text-white">
-                        <DialogHeader>
-                          <DialogTitle>Review Work</DialogTitle>
-                          <DialogDescription>Confirm the details to release payment.</DialogDescription>
-                        </DialogHeader>
-                        <div className="py-4 text-center space-y-4">
-                           <FileText className="w-12 h-12 mx-auto text-slate-500" />
-                           <p className="text-slate-300">Worker has submitted proof of work.</p>
-                           <div className="bg-white/5 p-4 rounded-lg text-left">
-                              <p className="text-xs text-slate-500 uppercase mb-2">Summary</p>
-                              <p className="text-sm">Work completed as per requirement.</p>
-                              <p className="text-sm mt-2 text-emerald-400 font-bold">Total to Pay: ₹{(job.amount_cents || 0)/100}</p>
-                           </div>
-                        </div>
-                        <DialogFooter>
-                           <Button onClick={handleApproveWork} disabled={submitting} className="w-full bg-emerald-600 text-white">
-                             {submitting ? <Loader2 className="animate-spin" /> : "Approve & Release Funds"}
-                           </Button>
-                        </DialogFooter>
+                         <DialogHeader><DialogTitle>Submit Details</DialogTitle></DialogHeader>
+                         <div className="space-y-4 py-4">
+                            <Label>Description</Label>
+                            <Textarea value={desc} onChange={(e) => setDesc(e.target.value)} className="bg-white/5 border-white/10" />
+                            
+                            <Label>Bill Items</Label>
+                            {billItems.map((item, i) => (
+                               <div key={i} className="flex gap-2">
+                                  <Input placeholder="Item" value={item.item} onChange={(e) => {const n = [...billItems]; n[i].item = e.target.value; setBillItems(n)}} className="bg-white/5 border-white/10"/>
+                                  <Input type="number" placeholder="₹" value={item.price} onChange={(e) => {const n = [...billItems]; n[i].price = e.target.value; setBillItems(n)}} className="bg-white/5 border-white/10 w-20"/>
+                                  <Button size="icon" variant="ghost" onClick={() => setBillItems(billItems.filter((_, idx) => idx !== i))}><Trash2 className="w-4 h-4 text-red-400"/></Button>
+                               </div>
+                            ))}
+                            <Button size="sm" variant="outline" onClick={() => setBillItems([...billItems, {item:'', price:''}])}><Plus className="w-4 h-4 mr-2"/> Add Item</Button>
+
+                            <Label>Photos</Label>
+                            <Input type="file" multiple onChange={handleFileUpload} className="bg-white/5 border-white/10" />
+                         </div>
+                         <Button onClick={handleSubmitWork} disabled={submitting || uploading} className="w-full bg-blue-600 text-white">{submitting ? <Loader2 className="animate-spin"/> : "Submit"}</Button>
                       </DialogContent>
                     </Dialog>
-                 ) : job.status === 'completed' ? (
-                    <div className="text-center p-6 bg-white/5 rounded-xl border border-white/10">
-                      <CheckCircle2 className="w-12 h-12 mx-auto text-slate-500 mb-2" />
-                      <h3 className="text-white font-bold">Job Closed</h3>
-                      <p className="text-xs text-slate-500">Thank you for using Kaargar.</p>
-                    </div>
-                 ) : (
-                    <div className="text-center p-6 text-slate-500 italic">Worker is working on your job...</div>
-                 )
+                  ) : <div className="text-center text-slate-500 italic">No actions available</div>
                )}
+
+               {/* CUSTOMER ACTIONS */}
+               {isCustomer && (
+                  job.status === 'in_progress' && job.worker_submitted_at ? (
+                     <Dialog open={approveOpen} onOpenChange={setApproveOpen}>
+                       <DialogTrigger asChild>
+                          <Button className="w-full h-14 bg-emerald-600 hover:bg-emerald-500 text-white text-lg shadow-lg shadow-emerald-900/20 animate-pulse">
+                             Review & Pay ₹{finalTotal}
+                          </Button>
+                       </DialogTrigger>
+                       <DialogContent className="bg-slate-900 border-white/10 text-white">
+                          <DialogHeader>
+                             <DialogTitle>Confirm Payment</DialogTitle>
+                             <DialogDescription>Funds will be released to the worker.</DialogDescription>
+                          </DialogHeader>
+                          <div className="py-6 text-center">
+                             <p className="text-3xl font-bold text-white">₹{finalTotal}</p>
+                             <p className="text-sm text-slate-400 mt-1">Total Payable Amount</p>
+                          </div>
+                          <Button onClick={handleApproveWork} disabled={submitting} className="w-full bg-emerald-600 h-12 text-lg">{submitting ? <Loader2 className="animate-spin"/> : "Pay Now"}</Button>
+                       </DialogContent>
+                     </Dialog>
+                  ) : <div className="text-center text-slate-500 italic">Waiting for worker...</div>
+               )}
+
+               <Button variant="outline" className="w-full border-white/10 text-slate-300 hover:bg-white/5" onClick={() => navigate(`/chat/${jobId}`)}>
+                 <MessageSquare className="w-4 h-4 mr-2" /> Chat
+               </Button>
 
              </CardContent>
            </Card>
         </div>
 
       </div>
+
+      {/* Complaint Dialog */}
+      <Dialog open={complaintOpen} onOpenChange={setComplaintOpen}>
+         <DialogContent className="bg-slate-900 border-white/10 text-white">
+            <DialogHeader><DialogTitle>Report Issue</DialogTitle></DialogHeader>
+            <Textarea placeholder="Describe the issue..." value={complaintText} onChange={(e) => setComplaintText(e.target.value)} className="bg-white/5 border-white/10 min-h-[100px]" />
+            <Button onClick={handleReport} disabled={submitting} variant="destructive" className="w-full">{submitting ? <Loader2 className="animate-spin"/> : "Submit Report"}</Button>
+         </DialogContent>
+      </Dialog>
+
     </div>
   );
 }

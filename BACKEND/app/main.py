@@ -1,5 +1,3 @@
-
-
 # app/main.py
 import os
 import json
@@ -25,7 +23,7 @@ logger = logging.getLogger("uvicorn")
 DATABASE_URL = os.getenv("DATABASE_URL")
 if not DATABASE_URL: raise RuntimeError("DATABASE_URL missing")
 
-app = FastAPI(title="KAARGAR API 2.10", version="2.10.0")
+app = FastAPI(title="KAARGAR API 3.0", version="3.0.0")
 
 # CORS
 origins = ["http://localhost:5173", "http://localhost:3000"]
@@ -97,14 +95,11 @@ class JobCreate(BaseModel):
     profession_required: str 
     services_required: List[str] = [] 
     category: Optional[str] = None
-    
-    # Location
     lat: float
     lon: float
     address_text: Optional[str] = None
     city: Optional[str] = None
     pincode: Optional[str] = None
-    
     budget_max_cents: Optional[int] = None
     is_remote: bool = False
 
@@ -124,7 +119,6 @@ class BidCreate(BaseModel):
     amount_cents: int
     message: Optional[str] = None
 
-# NEW: Structured Bill Item
 class BillItem(BaseModel):
     item: str
     price: float
@@ -307,27 +301,58 @@ async def get_worker_job_feed(
 
         my_professions = worker['professions'][0] if worker['professions'] else None
         my_services = worker['services'] if worker['services'] else None
-        
         profession_arg = my_professions if filter_by_profession else None
         services_arg = my_services if filter_by_profession else None
 
         rows = await conn.fetch("""
             SELECT * FROM search_jobs($1, $2, NULL, $3, NULL, $4, $5)
         """, lat, lon, radius, profession_arg, services_arg)
-        
     return {"ok": True, "jobs": [dict(r) for r in rows]}
 
 # ==================================================================
-#                       3. JOB FLOW
+#                       3. JOB FLOW (CRITICAL)
 # ==================================================================
+
+@app.get("/api/jobs/{job_id}")
+async def get_single_job(job_id: str, token = Depends(require_user)):
+    """ 
+    FETCHER: Returns Job, Worker Details, Customer Details, and Proofs.
+    Essential for JobStatus Page.
+    """
+    uid = token.get("sub")
+    async with app.state.db_pool.acquire() as conn:
+        # Get Basic Job Info + Worker/Customer Names
+        job = await conn.fetchrow("""
+            SELECT j.*, 
+                   w.full_name as worker_name, w.avatar_url as worker_avatar, w.phone as worker_phone,
+                   c.full_name as customer_name, c.avatar_url as customer_avatar, c.phone as customer_phone,
+                   jp.worker_proof_imgs, jp.worker_comment, jp.bill_details, jp.worker_submitted_at
+            FROM public.jobs j
+            LEFT JOIN public.users w ON w.id = j.worker_id
+            LEFT JOIN public.users c ON c.id = j.customer_id
+            LEFT JOIN public.job_proofs jp ON jp.job_id = j.id
+            WHERE j.id = $1
+        """, job_id)
+        
+        if not job: raise HTTPException(404, "Job not found")
+        
+        # Check Access: Only Worker or Customer can see this
+        if str(job['customer_id']) != uid and str(job['worker_id']) != uid:
+            raise HTTPException(403, "Access Denied")
+            
+        # Privacy: Mask phone if not assigned
+        job_dict = dict(job)
+        if job['status'] not in ['assigned', 'in_progress', 'completed']:
+             if str(job['customer_id']) != uid: job_dict['customer_phone'] = None
+             if str(job['worker_id']) != uid: job_dict['worker_phone'] = None
+
+    return {"ok": True, "job": job_dict}
 
 @app.post("/api/jobs/book")
 async def direct_book_worker(payload: DirectBooking, token = Depends(require_user)):
     customer_id = token.get("sub")
     job = payload.job_details
-    
     final_category = job.category if job.category else job.profession_required
-
     async with app.state.db_pool.acquire() as conn:
         worker = await conn.fetchrow("SELECT accepts_auto_assign, is_online FROM public.worker_profiles WHERE user_id=$1", payload.worker_id)
         if not worker: raise HTTPException(404, "Worker not found")
@@ -345,17 +370,14 @@ async def direct_book_worker(payload: DirectBooking, token = Depends(require_use
             RETURNING id
         """, customer_id, payload.worker_id, job.title, job.description, 
              job.profession_required, job.services_required, final_category,
-             job.lon, job.lat, 
-             job.address_text, job.city, job.pincode,
+             job.lon, job.lat, job.address_text, job.city, job.pincode,
              job.budget_max_cents, job.is_remote, initial_status)
     return {"ok": True, "job_id": str(row["id"]), "status": initial_status}
 
 @app.post("/api/jobs")
 async def post_open_job(payload: JobCreate, token = Depends(require_user)):
     uid = token.get("sub")
-    
     final_category = payload.category if payload.category else payload.profession_required
-
     async with app.state.db_pool.acquire() as conn:
         row = await conn.fetchrow("""
             INSERT INTO public.jobs (
@@ -368,8 +390,7 @@ async def post_open_job(payload: JobCreate, token = Depends(require_user)):
             RETURNING id
         """, uid, payload.title, payload.description, 
              payload.profession_required, payload.services_required, final_category,
-             payload.lon, payload.lat, 
-             payload.address_text, payload.city, payload.pincode,
+             payload.lon, payload.lat, payload.address_text, payload.city, payload.pincode,
              payload.budget_max_cents, payload.is_remote)
     return {"ok": True, "job_id": str(row["id"])}
 
@@ -405,6 +426,32 @@ async def delete_job(job_id: str, token = Depends(require_user)):
         await conn.execute("DELETE FROM public.jobs WHERE id = $1", job_id)
     return {"ok": True, "message": "Job deleted"}
 
+# --- NEW: Status Update Endpoint ---
+class JobStatusUpdate(BaseModel):
+    status: str
+
+@app.patch("/api/jobs/{job_id}/status")
+async def update_job_status(job_id: str, payload: JobStatusUpdate, token = Depends(require_user)):
+    """ Worker Accepts/Rejects Job. """
+    uid = token.get("sub")
+    async with app.state.db_pool.acquire() as conn:
+        job = await conn.fetchrow("SELECT worker_id FROM public.jobs WHERE id = $1", job_id)
+        if not job: raise HTTPException(404, "Job not found")
+        if str(job['worker_id']) != uid: raise HTTPException(403, "Not authorized")
+        
+        # Validate transitions
+        if payload.status not in ['assigned', 'cancelled']:
+            raise HTTPException(400, "Invalid status transition")
+            
+        await conn.execute("UPDATE public.jobs SET status = $1 WHERE id = $2", payload.status, job_id)
+        
+        # If accepted, create escrow entry (placeholder since payment is handled later in this flow)
+        if payload.status == 'assigned':
+             # In a real app, you might check payment status here. 
+             pass
+             
+    return {"ok": True}
+
 # ==================================================================
 #                       4. HISTORY & STATS
 # ==================================================================
@@ -430,7 +477,8 @@ async def get_my_worked_jobs(token = Depends(require_user)):
     async with app.state.db_pool.acquire() as conn:
         rows = await conn.fetch("""
             SELECT j.id, j.title, j.status, j.created_at, c.full_name as customer_name,
-                   COALESCE(p.amount_cents, j.budget_max_cents) as amount_cents
+                   COALESCE(p.amount_cents, j.budget_max_cents) as amount_cents,
+                   j.customer_id
             FROM public.jobs j
             JOIN public.users c ON c.id = j.customer_id
             LEFT JOIN public.payments p ON p.job_id = j.id AND p.payee_id = j.worker_id
@@ -483,7 +531,6 @@ async def submit_job_proof(job_id: str, payload: JobProofSubmit, token = Depends
         job = await conn.fetchrow("SELECT * FROM public.jobs WHERE id=$1 AND worker_id=$2", job_id, worker_id)
         if not job: raise HTTPException(403, "Not your job")
         
-        # Convert Bill Items to JSON
         bill_json = json.dumps([item.dict() for item in payload.bill_details])
         
         await conn.execute("""
@@ -494,10 +541,6 @@ async def submit_job_proof(job_id: str, payload: JobProofSubmit, token = Depends
         """, job_id, payload.photos, payload.comment, bill_json)
         
         await conn.execute("UPDATE public.jobs SET status = 'in_progress' WHERE id=$1", job_id)
-        
-        # Notification Mock (Real app would send push/email here)
-        # await send_notification(job['customer_id'], "Job Proof Submitted")
-        
     return {"ok": True, "msg": "Proof submitted."}
 
 @app.post("/api/jobs/{job_id}/approve")
