@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts"; 
 import Headback from "../components/Headback";
 import { Separator } from "@/components/ui/separator";
-
+import { API_BASE_URL } from "@/config";
 export default function Dashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
