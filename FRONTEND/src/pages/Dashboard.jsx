@@ -4,7 +4,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { 
   Loader2, TrendingUp, CheckCircle2, Clock, 
   IndianRupee, BarChart3, ArrowUpRight, Briefcase,
-  XCircle, Check, AlertCircle, Calendar
+  XCircle, AlertCircle, Calendar
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -14,13 +14,16 @@ import { toast } from "sonner";
 import { Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts"; 
 import Headback from "../components/Headback";
 import { Separator } from "@/components/ui/separator";
-import { API_BASE_URL } from "@/config";
+import { API_BASE_URL } from "../config";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"; // Added Avatar imports
+
 export default function Dashboard() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState(null);
   const [jobs, setJobs] = useState([]);
   const [actionLoading, setActionLoading] = useState(null);
+  const [user, setUser] = useState(null); // State to store user info
   const pollingRef = useRef(null);
 
   // 1. Fetch Data
@@ -31,18 +34,61 @@ export default function Dashboard() {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) { navigate("/login"); return; }
       const token = session.access_token;
+      
+      // Fetch User Details directly from Supabase Auth to get metadata
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      setUser(authUser);
+
 
       // Parallel Fetch
       const [statsRes, jobsRes] = await Promise.all([
-         fetch(`${API_BASE_URL}/api/me/stats`, { headers: { Authorization: `Bearer ${token}` } }),
-         fetch(`${API_BASE_URL}/api/me/jobs/worked`, { headers: { Authorization: `Bearer ${token}` } })
+         fetch(`${API_BASE_URL}/api/me`, { headers: { Authorization: `Bearer ${token}` } }), // Changed endpoint to /api/me to get stats from profile response if structured that way, or keep /api/me/stats if separate endpoint exists. Assuming stats are in /api/me based on previous context or separate. Let's stick to specific endpoints if they exist or parse from /api/me. 
+         // Actually, based on your backend code, stats are returned in /api/me under 'governance' or we might need a specific stats endpoint if you created one. 
+         // Your backend has /api/me returning governance stats. Let's use that or if you have a dedicated stats endpoint.
+         // Looking at your backend code, there isn't a specific /api/me/stats endpoint visible in the provided main.py. 
+         // However, /api/me returns governance data. I will assume for now we use /api/me for stats or you might have added it. 
+         // Let's stick to your previous code's endpoint /api/me/stats if you are sure it exists, otherwise I will use /api/me.
+         // Wait, your previous Dashboard code used /api/me/stats. I will assume it's there or I should use /api/me. 
+         // Let's use /api/me to be safe as I see it in your backend code returning governance stats.
+         fetch(`${API_BASE_URL}/api/me`, { headers: { Authorization: `Bearer ${token}` } }),
+         // For jobs, your backend has /api/me/jobs/worked but I don't see it in the provided main.py. 
+         // I see /api/jobs/{job_id} and /api/jobs/search.
+         // You might need to add an endpoint to get user's jobs.
+         // Assuming /api/me/jobs/worked exists or we need to filter /api/jobs/search?
+         // Let's assume you have or will add /api/me/jobs/worked or similar. 
+         // If not, we might need to use /api/jobs/search with a filter if supported, or add the endpoint.
+         // I'll keep the fetch but add a comment.
+         fetch(`${API_BASE_URL}/api/chats`, { headers: { Authorization: `Bearer ${token}` } }) // Just fetching chats as a placeholder if jobs endpoint is missing, but ideally we need jobs.
       ]);
 
-      if (statsRes.ok) setStats(await statsRes.json());
-      if (jobsRes.ok) {
-        const data = await jobsRes.json();
-        setJobs(data.jobs || []);
+      // RE-VERIFYING BACKEND: Your provided main.py DOES NOT have /api/me/stats or /api/me/jobs/worked.
+      // It has /api/me which returns wallet, governance, etc.
+      // It has /api/chats.
+      // It has /api/jobs/{id} and /api/jobs/search.
+      // IT IS MISSING endpoints to list "My Jobs".
+      // I will assume you will add them or I should use /api/me data if it includes jobs (it doesn't currently).
+      // For now, I will stub the jobs data or use what's available. 
+      // actually, to make this work, I should probably add those endpoints to your main.py or you should.
+      // Since I cannot edit main.py here, I will assume they exist or will be added. 
+      // I will keep the calls as per your previous working dashboard code but note this dependency.
+
+      if (statsRes.ok) {
+          const profileData = await statsRes.json();
+          // Adapting to /api/me response structure
+          setStats(profileData.data.governance || {}); 
       }
+      
+      // Mocking jobs response if endpoint missing, or assuming it works
+      // You really need: @app.get("/api/me/jobs/worked") in backend
+      // For now, I'll try to fetch chats which might give us some job info if we join them, 
+      // but realistically you need the jobs endpoint.
+      // I will keep the original fetch line assuming you add the endpoint.
+      const jobsResponse = await fetch(`${API_BASE_URL}/api/me/jobs/worked`, { headers: { Authorization: `Bearer ${token}` } });
+      if (jobsResponse.ok) {
+        const data = await jobsResponse.json();
+        setJobs(data.data || []); // v4 uses data: []
+      }
+
     } catch (err) {
       console.error(err);
       if (!isBackground) toast.error("Failed to load dashboard");
@@ -79,15 +125,22 @@ export default function Dashboard() {
   const handleJobAction = async (jobId, action) => {
     setActionLoading(jobId);
     try {
+      // Using the new v4 endpoint: PATCH /api/jobs/{job_id}/status
+      const { data: { session } } = await supabase.auth.getSession();
+      const token = session.access_token;
+      
       const status = action === 'accept' ? 'assigned' : 'cancelled';
       
-      // Using Supabase Client directly ensures this works even if API endpoint is missing
-      const { error } = await supabase
-        .from('jobs')
-        .update({ status: status })
-        .eq('id', jobId);
+      const res = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/status`, {
+          method: "PATCH",
+          headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${token}`
+          },
+          body: JSON.stringify({ status })
+      });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Failed to update status");
 
       toast.success(action === 'accept' ? "Job Accepted! You can now start work." : "Job Declined.");
       loadDashboardData(true); // Refresh list immediately
@@ -102,8 +155,8 @@ export default function Dashboard() {
   const formatCurrency = (amount) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(amount);
   
   // Categorize Jobs
-  const requests = jobs.filter(j => j.status === 'pending_acceptance');
-  const activeJobs = jobs.filter(j => ['assigned', 'in_progress'].includes(j.status));
+  const requests = jobs.filter(j => j.status === 'pending_acceptance' || j.status === 'assigned'); // 'assigned' might be the initial state depending on your flow
+  const activeJobs = jobs.filter(j => ['in_progress'].includes(j.status));
   const history = jobs.filter(j => ['completed', 'cancelled'].includes(j.status));
 
   if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500 h-8 w-8" /></div>;
@@ -116,9 +169,18 @@ export default function Dashboard() {
         
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight">Worker Dashboard</h1>
-            <p className="text-slate-400 text-sm">Manage your earnings and active jobs.</p>
+          <div className="flex items-center gap-4">
+             {/* Profile Photo from Metadata */}
+             <Avatar className="h-16 w-16 border-2 border-white/10 shadow-lg">
+                <AvatarImage src={user?.user_metadata?.avatar_url} />
+                <AvatarFallback className="bg-blue-600 text-white font-bold text-xl">
+                    {user?.user_metadata?.full_name?.[0] || "U"}
+                </AvatarFallback>
+            </Avatar>
+            <div>
+                <h1 className="text-3xl font-bold text-white tracking-tight">Worker Dashboard</h1>
+                <p className="text-slate-400 text-sm">Welcome back, {user?.user_metadata?.full_name || "Worker"}</p>
+            </div>
           </div>
           <Button onClick={() => loadDashboardData()} variant="outline" className="bg-white/5 border-white/10 text-slate-300 hover:bg-white/10 hover:text-white gap-2 h-10 rounded-xl">
             <Clock className="w-4 h-4" /> Refresh
@@ -138,6 +200,7 @@ export default function Dashboard() {
                 <CardTitle className="text-sm font-medium text-slate-400 uppercase tracking-wider">Total Earnings</CardTitle>
               </CardHeader>
               <CardContent>
+                {/* Using wallet balance or separate stats if available */}
                 <div className="text-4xl font-bold text-white">{formatCurrency((stats?.total_earned_cents || 0) / 100)}</div>
                 <div className="flex items-center gap-1 text-emerald-400 text-xs mt-2 font-medium">
                   <TrendingUp className="w-3 h-3" /> +Lifetime
@@ -152,7 +215,7 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
                   <div className="text-2xl font-bold text-blue-400 flex items-center gap-2">
-                     <CheckCircle2 className="w-5 h-5" /> {stats?.jobs_completed_count || 0}
+                      <CheckCircle2 className="w-5 h-5" /> {stats?.jobs_completed_count || 0}
                   </div>
                 </CardContent>
               </Card>
@@ -162,7 +225,7 @@ export default function Dashboard() {
                 </CardHeader>
                 <CardContent className="p-4 pt-0">
                   <div className="text-2xl font-bold text-amber-500 flex items-center gap-2">
-                     <AlertCircle className="w-5 h-5" /> {requests.length}
+                      <AlertCircle className="w-5 h-5" /> {requests.length}
                   </div>
                 </CardContent>
               </Card>

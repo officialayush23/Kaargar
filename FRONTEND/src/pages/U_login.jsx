@@ -1,14 +1,27 @@
 // src/pages/U_login.jsx
 import React, { useState } from "react";
 import {
-  Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle,
+  Card,
+  CardAction,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
-import { signInWithEmail, resetPasswordForEmail, signInWithProvider } from "../auth/AuthHandler";
-import { postLoginUpsert } from "../lib/authSync";
+import {
+  signInWithEmail,
+  resetPasswordForEmail,
+  signInWithProvider,
+} from "../auth/AuthHandler";
+// If your project uses @ as alias for /src, prefer this:
+import { postLoginUpsert } from "@/lib/authSync";
+// If not using alias, then use this instead and delete the line above:
+// import { postLoginUpsert } from "../lib/authSync";
 import { toast } from "sonner";
 
 const U_login = () => {
@@ -28,17 +41,17 @@ const U_login = () => {
         return;
       }
 
-      // LOG ACCESS TOKEN (minimal change)
+      // access token just for debugging
       const accessToken = data?.session?.access_token;
       console.log("Supabase accessToken:", accessToken);
 
-      // Supabase returns data.session in many setups - attempt to upsert user in backend
+      // Hit FastAPI /api/auth/upsert_user to sync DB user/wallet
       try {
         await postLoginUpsert();
       } catch (upErr) {
         console.error("upsert_user failed:", upErr);
         toast.error("Login succeeded but backend sync failed");
-        // continue anyway for UX
+        // still navigate so user can continue
       }
 
       navigate("/home");
@@ -55,7 +68,10 @@ const U_login = () => {
     if (!email) return toast("Enter your email first.");
     setBusy(true);
     try {
-      const { data, error } = await resetPasswordForEmail(email, `${window.location.origin}/reset-password-callback`);
+      const { data, error } = await resetPasswordForEmail(
+        email,
+        `${window.location.origin}/reset-password-callback`
+      );
       if (error) {
         toast.error(error.message || "Could not send reset email");
         return;
@@ -69,38 +85,32 @@ const U_login = () => {
     }
   }
 
-  // async function handleGoogleLogin(e) {
-  //   e?.preventDefault?.();
-  //   setBusy(true);
-  //   try {
-  //     const { error } = await signInWithProvider("google", `${window.location.origin}/auth/callback`);
-  //     if (error) {
-  //       toast.error(error.message || "Google sign-in failed");
-  //       setBusy(false);
-  //     }
-  //     // redirect will happen
-
-  //   } catch (err) {
-  //     console.error("google err", err);
-  //     toast.error("Google login failed");
-  //     setBusy(false);
-  //   }
-  // }
-
   async function handleGoogleLogin(e) {
     e?.preventDefault?.();
     setBusy(true);
     try {
-      const { data, error } = await signInWithProvider("google", `${window.location.origin}/auth/callback`);
+      const { data, error } = await signInWithProvider(
+        "google",
+        `${window.location.origin}/auth/callback`
+      );
       if (error) {
         toast.error(error.message || "Google sign-in failed");
-        setBusy(false);
         return;
       }
 
-      // If provider returns without a redirect, send user to home.
-      // (If you're using the redirect flow, the browser may already navigate to the callback.)
-   
+      // Two possibilities:
+      // 1) Redirect flow: browser leaves this page -> callback route handles everything.
+      // 2) No redirect (popup/session returned): we should sync + navigate.
+      if (data?.session) {
+        try {
+          await postLoginUpsert();
+        } catch (upErr) {
+          console.error("upsert_user failed (google):", upErr);
+          toast.error("Login succeeded but backend sync failed");
+        }
+        navigate("/home");
+      }
+      // If redirect flow is used, this code may never execute after this point.
     } catch (err) {
       console.error("google err", err);
       toast.error("Google login failed");
@@ -109,14 +119,19 @@ const U_login = () => {
     }
   }
 
-
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
       <Card className="w-full sm:min-w-sm max-w-sm">
         <CardHeader>
           <CardTitle>Login to your account</CardTitle>
-          <CardDescription>Enter your email below to login to your account</CardDescription>
-          <CardAction><Button variant="link" onClick={() => navigate("/signup")}>Sign Up</Button></CardAction>
+          <CardDescription>
+            Enter your email below to login to your account
+          </CardDescription>
+          <CardAction>
+            <Button variant="link" onClick={() => navigate("/signup")}>
+              Sign Up
+            </Button>
+          </CardAction>
         </CardHeader>
 
         <CardContent>
@@ -124,28 +139,55 @@ const U_login = () => {
             <div className="flex flex-col gap-6">
               <div className="grid gap-2">
                 <Label htmlFor="email">Email</Label>
-                <Input id="email" type="email" placeholder="m@example.com" required value={email} onChange={(e) => setEmail(e.target.value)} />
+                <Input
+                  id="email"
+                  type="email"
+                  placeholder="m@example.com"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
               </div>
 
               <div className="grid gap-2">
                 <div className="flex items-center">
                   <Label htmlFor="password">Password</Label>
-                  <button onClick={handleForgotPassword} type="button" className="ml-auto text-sm underline">
+                  <button
+                    onClick={handleForgotPassword}
+                    type="button"
+                    className="ml-auto text-sm underline"
+                  >
                     Forgot your password?
                   </button>
                 </div>
-                <Input id="password" type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+                <Input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
             </div>
           </form>
         </CardContent>
 
         <CardFooter className="flex-col gap-2">
-          <Button type="button" className="w-full" onClick={handleSignIn} disabled={busy}>
+          <Button
+            type="button"
+            className="w-full"
+            onClick={handleSignIn}
+            disabled={busy}
+          >
             {busy ? "Working..." : "Login"}
           </Button>
 
-          <Button variant="outline" className="w-full" onClick={handleGoogleLogin} disabled={busy}>
+          <Button
+            variant="outline"
+            className="w-full"
+            onClick={handleGoogleLogin}
+            disabled={busy}
+          >
             Login with Google
           </Button>
         </CardFooter>

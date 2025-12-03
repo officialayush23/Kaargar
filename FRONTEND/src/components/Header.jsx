@@ -100,7 +100,7 @@ const Header = () => {
 
                         ref={addToRefs}
                         className={({ isActive }) => isActive ? "option-txt active" : "option-txt"}
-                        to="/User"
+                        to="/"
                     >
                         Want To Hire?
                     </NavLink>

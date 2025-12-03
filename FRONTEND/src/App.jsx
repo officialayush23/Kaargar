@@ -9,7 +9,7 @@ import ScrollToTop from './components/ScrollToTop'
 import Background from './components/Background'
 import TabUW from './components/use_ui/TabUW'
 import U_signup from './pages/U_signup'
-import U_forgot from './pages/U_forgot'
+
 import AuthCallback from './auth/AuthCallBack'
 import Home from './pages/Home'
 import Wregister from './pages/Wregister'
@@ -22,6 +22,7 @@ import JobStatus from './pages/JobStatus'
 import User from './pages/User'
 import Worker from './pages/Worker'
 import Chat from './pages/Chats'
+import Admin from './pages/Admin' // New Import
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -59,7 +60,7 @@ const App = () => {
           {/* Auth */}
           <Route path='/login' element={<TabUW />} />
           <Route path='/signup' element={<U_signup />} />
-          <Route path='/forgot-password' element={<U_forgot />} />
+  
           <Route path='/auth/callback' element={<AuthCallback />} />
 
           {/* Core */}
@@ -77,9 +78,12 @@ const App = () => {
           <Route path='/my_postings' element={<UserPosted />} />
           <Route path='/dashboard' element={<Dashboard />} />
 
-          {/* FIXED: Added :jobId parameter */}
+          {/* Job Actions */}
           <Route path='/status/:jobId' element={<JobStatus />} />
           <Route path='/chat/:jobId' element={<Chat />} />
+          
+          {/* Admin */}
+          <Route path='/admin' element={<Admin />} />
         </Routes>
       </div>
     </>
@@ -87,5 +91,3 @@ const App = () => {
 }
 
 export default App
-
-

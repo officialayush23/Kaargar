@@ -1,485 +1,282 @@
-import React, { useEffect, useState } from "react";
-import { useForm, Controller } from "react-hook-form";
-import { useNavigate } from "react-router-dom";
+import React, { useState, useEffect, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
-import { toast } from "sonner";
-import { 
-  Loader2, 
-  Briefcase, 
-  User, 
-  MapPin, 
-  Settings, 
-  ShieldCheck, 
-  Save, 
-  ArrowLeft 
-} from "lucide-react";
-
-// UI Components
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Send, ArrowLeft, Paperclip, Phone, Loader2, FileText, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Textarea } from "@/components/ui/textarea";
-import { Separator } from "@/components/ui/separator";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Switch } from "@/components/ui/switch";
+import { Input } from "@/components/ui/input";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Badge } from "@/components/ui/badge";
-import { API_BASE_URL } from "../config";
-// Select
-import {
-  Select,
-  SelectTrigger,
-  SelectValue,
-  SelectContent,
-  SelectItem
-} from "@/components/ui/select";
+import { toast } from "sonner";
+import Headback from "../components/Headback";
+import { API_BASE_URL } from "../config"; 
 
-export default function Wregister() {
+export default function Chat() {
+  const { jobId } = useParams();
   const navigate = useNavigate();
+  
+  const [chatId, setChatId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [newMessage, setNewMessage] = useState("");
+  const [user, setUser] = useState(null);
+  const [otherUser, setOtherUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
+  const [isConnected, setIsConnected] = useState(false);
+  
+  const socketRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const [isUploading, setIsUploading] = useState(false);
+  const scrollRef = useRef(null);
 
-  const {
-    control,
-    register,
-    handleSubmit,
-    reset,
-    setValue,
-    watch,
-    formState: { errors }
-  } = useForm({
-    defaultValues: {
-      // Identity
-      full_name: "",
-      phone: "",
-      gender: "",
-      dob: "",
-      // Address
-      address_text: "",
-      city: "",
-      state: "",
-      pincode: "",
-      // Worker Specifics
-      worker_type: "individual",
-      professions: "", // Single select for primary profession
-      services: "", // Comma separated string
-      min_hourly_rate_cents: "",
-      experience_years: "",
-      about_text: "",
-      // Settings
-      accepts_auto_assign: false,
-      // Policies
-      policy_terms: false,
-      policy_privacy: false,
-      policy_consent: false
-    }
-  });
-
-  const policies = watch(["policy_terms", "policy_privacy", "policy_consent"]);
-
-  // 1. LOAD DATA
+  // 1. Initialize & Load History
   useEffect(() => {
-    async function loadProfile() {
+    const initChat = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session) {
-          navigate("/login");
-          return;
-        }
+        if (!session) { navigate("/login"); return; }
+        setUser(session.user);
+        const token = session.access_token;
 
-        const res = await fetch(`${API_BASE_URL}/api/me`, {
-          headers: { Authorization: `Bearer ${session.access_token}` }
+        // A. Get Job Details (to identify the other user)
+        const jobRes = await fetch(`${API_BASE_URL}/api/jobs/${jobId}`, {
+             headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        if (!jobRes.ok) throw new Error("Job not found");
+        const jobJson = await jobRes.json();
+        const j = jobJson.data; // v4 API returns { ok: true, data: {...} }
+        
+        const isCustomer = session.user.id === j.customer_id;
+        // Ideally fetch other user profile details if not present in job object
+        // For now using placeholder logic or data from job if available
+        setOtherUser({
+            name: isCustomer ? (j.worker_name || "Worker") : (j.customer_name || "Customer"),
+            avatar: null 
         });
 
-        if (res.ok) {
-          const data = await res.json();
-          const u = data.user;
-          const w = data.user.worker_profile || {};
+        // B. Get or Create Chat Room ID
+        const chatRes = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/chat`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        
+        const chatData = await chatRes.json();
+        if (chatData.data?.id) {
+            const roomId = chatData.data.id;
+            setChatId(roomId);
+            
+            // C. Load History REST API
+            const historyRes = await fetch(`${API_BASE_URL}/api/chats/${roomId}/messages`, {
+                 headers: { Authorization: `Bearer ${token}` }
+            });
+            if (historyRes.ok) {
+                const history = await historyRes.json();
+                setMessages(history.data || []);
+            }
 
-          reset({
-            full_name: u.full_name || "",
-            phone: u.phone || "",
-            gender: u.gender || "",
-            dob: u.dob || "",
-            address_text: u.address_text || "",
-            city: u.city || "",
-            state: u.state || "",
-            pincode: u.pincode || "",
-            
-            worker_type: w.worker_type || "individual",
-            professions: w.professions?.[0] || "", // Take first profession as primary
-            services: w.services?.join(", ") || "", // Convert array to string
-            min_hourly_rate_cents: w.min_hourly_rate_cents ? w.min_hourly_rate_cents / 100 : "", // Convert cents to Rupees
-            experience_years: w.experience_years || "",
-            about_text: w.about_text || "",
-            accepts_auto_assign: w.accepts_auto_assign || false,
-            
-            policy_terms: false,
-            policy_privacy: false,
-            policy_consent: false
-          });
+            // D. Connect WebSocket
+            connectWebSocket(roomId, token);
         }
-      } catch (err) {
-        console.error("Error loading profile:", err);
-        toast.error("Failed to load profile data");
+      } catch (e) {
+        console.error(e);
+        toast.error("Connection failed");
       } finally {
         setLoading(false);
       }
-    }
-    loadProfile();
-  }, [navigate, reset]);
+    };
+    
+    if (jobId) initChat();
 
-  // 2. SUBMIT HANDLER
-  async function onSubmit(values) {
-    if (!policies.every(Boolean)) {
-      toast.warning("Please accept all policies to continue.");
-      return;
-    }
-
-    setSubmitting(true);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session.access_token;
-
-      // A. Prepare Data
-      // Convert services string "Fix leaks, pipe fitting" -> ["Fix leaks", "pipe fitting"]
-      const servicesList = values.services.split(",").map(s => s.trim()).filter(s => s !== "");
-      // Convert Rate to Cents
-      const rateCents = parseFloat(values.min_hourly_rate_cents) * 100;
-
-      // B. Step 1: Update Identity & Address (PATCH /api/me/profile)
-      const userPayload = {
-        full_name: values.full_name,
-        phone: values.phone,
-        gender: values.gender,
-        dob: values.dob, // Include DOB here for basic update
-        address_text: values.address_text,
-        city: values.city,
-        state: values.state,
-        pincode: values.pincode
-      };
-
-      const res1 = await fetch(`${API_BASE_URL}/api/me/profile`, {
-        method: "PATCH",
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(userPayload)
-      });
-
-      if (!res1.ok) throw new Error("Failed to update personal details");
-
-      // C. Step 2: Upgrade/Update Worker Role (POST /api/profiles/onboard)
-      const workerPayload = {
-        role: "worker",
-        gender: values.gender, // Required by onboard API
-        dob: values.dob,       // Required by onboard API
-        worker_type: values.worker_type,
-        professions: [values.professions], // Backend expects list
-        services: servicesList,
-        min_hourly_rate_cents: Math.round(rateCents),
-        experience_years: parseInt(values.experience_years),
-        about_text: values.about_text,
-        accepts_auto_assign: values.accepts_auto_assign
-      };
-
-      const res2 = await fetch(`${API_BASE_URL}/api/profiles/onboard`, {
-        method: "POST",
-        headers: { 
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}` 
-        },
-        body: JSON.stringify(workerPayload)
-      });
-
-      if (!res2.ok) {
-        const errorData = await res2.json();
-        throw new Error(errorData.detail || "Failed to register as worker");
+    // Cleanup on unmount
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.close();
       }
+    };
+  }, [jobId, navigate]);
 
-      toast.success("Worker Profile Activated Successfully!");
-      navigate("/dashboard"); // Redirect to dashboard
+  // 2. WebSocket Connection Logic
+  const connectWebSocket = (roomId, token) => {
+    // Construct WS URL (Handle http/https -> ws/wss)
+    // Assuming API_BASE_URL is like "http://localhost:8000" or "https://api.kaargar.com"
+    const wsBase = API_BASE_URL.replace(/^http/, 'ws'); 
+    
+    // We pass token as a query param for standard browser WebSocket compatibility
+    // The backend endpoint is: /ws/chat/{chat_id}?token={jwt}
+    // Note: Your backend implementation of websocket_chat(..., token: str = Query(...)) handles this perfectly.
+    // If your backend expects header, standard JS WebSocket API doesn't support custom headers easily.
+    // Query param is the robust way for browser clients.
+    const wsUrl = `${wsBase}/ws/chat/${roomId}?token=${encodeURIComponent(token)}`;
+    
+    console.log("Connecting to WS:", wsUrl);
+    
+    const ws = new WebSocket(wsUrl); 
 
-    } catch (err) {
-      console.error("Submission Error:", err);
-      toast.error(err.message || "Something went wrong.");
-    } finally {
-      setSubmitting(false);
+    ws.onopen = () => {
+      console.log("WS Connected");
+      setIsConnected(true);
+    };
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log("WS Message:", data);
+        
+        setMessages((prev) => {
+          // Dedup logic
+          if (prev.find(m => m.id === data.id)) return prev;
+          return [...prev, data];
+        });
+      } catch (err) {
+        console.error("WS Parse Error", err);
+      }
+    };
+
+    ws.onclose = (event) => {
+      console.log("WS Disconnected", event.code, event.reason);
+      setIsConnected(false);
+      // Optional: Reconnect logic could be added here
+    };
+
+    ws.onerror = (err) => {
+      console.error("WS Error:", err);
+      setIsConnected(false);
+    };
+
+    socketRef.current = ws;
+  };
+
+  // 3. Auto-Scroll
+  useEffect(() => {
+    scrollRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  // 4. Handlers
+  const handleSend = async (mediaUrl = null, mediaType = null) => {
+    const content = newMessage.trim();
+    if (!content && !mediaUrl) return;
+
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        const payload = {
+            content: content,
+            media_url: mediaUrl,
+            media_type: mediaType
+        };
+        socketRef.current.send(JSON.stringify(payload));
+        setNewMessage("");
+    } else {
+        toast.error("Connection lost. Reconnecting...");
+        // Fallback: Use HTTP endpoint if WS is down
+        // This ensures message isn't lost if socket momentarily dropped
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            await fetch(`${API_BASE_URL}/api/chats/${chatId}/messages`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ content, media_url: mediaUrl, media_type: mediaType })
+            });
+            setNewMessage("");
+        } catch (e) {
+            toast.error("Failed to send message via fallback.");
+        }
     }
-  }
+  };
 
-  if (loading) {
-    return (
-      <div className="w-full h-screen flex items-center justify-center bg-[#0f0f17] text-white">
-        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
-      </div>
-    );
-  }
+  const handleFileSelect = async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      setIsUploading(true);
+      try {
+          const fileName = `${chatId}/${Date.now()}_${file.name.replace(/\s/g, '_')}`;
+          const { error } = await supabase.storage.from('chat_media').upload(fileName, file);
+          if (error) throw error;
+
+          const { data } = supabase.storage.from('chat_media').getPublicUrl(fileName);
+          const type = file.type.startsWith('image/') ? 'image' : 'file';
+          
+          // Send via WS
+          await handleSend(data.publicUrl, type);
+      } catch (err) {
+          toast.error("Upload failed");
+      } finally {
+          setIsUploading(false);
+      }
+  };
+
+  if (loading) return <div className="min-h-screen bg-slate-950 flex items-center justify-center"><Loader2 className="animate-spin text-blue-500" /></div>;
 
   return (
-    <div className="min-h-screen w-full bg-[#0f0f17] text-gray-200 flex justify-center px-4 py-10 selection:bg-blue-500/30">
+    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans relative flex flex-col">
+      <Headback />
       
-      {/* Background Glow */}
-      <div className="fixed top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-        <div className="absolute top-[-10%] right-[-10%] w-[500px] h-[500px] bg-blue-600/10 rounded-full blur-[120px]" />
-        <div className="absolute bottom-[-10%] left-[-10%] w-[500px] h-[500px] bg-indigo-600/10 rounded-full blur-[120px]" />
+      <div className="sticky top-0 z-20 bg-slate-900/80 backdrop-blur-xl border-b border-white/10 px-4 py-3 flex items-center justify-between">
+        <div className="flex items-center gap-3">
+            <Button variant="ghost" onClick={() => navigate(-1)} className="text-slate-400 hover:text-white p-0 h-10 w-10 rounded-full">
+                <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <Avatar className="h-10 w-10 border border-white/10">
+                <AvatarImage src={otherUser?.avatar} />
+                <AvatarFallback className="bg-blue-600 text-white font-bold">{otherUser?.name?.[0]}</AvatarFallback>
+            </Avatar>
+            <div>
+                <h3 className="font-bold text-white text-sm">{otherUser?.name || "User"}</h3>
+                <p className="text-xs flex items-center gap-1">
+                    {isConnected ? (
+                        <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3"/> Live</span>
+                    ) : (
+                        <span className="text-red-400 flex items-center gap-1"><WifiOff className="w-3 h-3"/> Offline</span>
+                    )}
+                </p>
+            </div>
+        </div>
+        <Button size="icon" variant="ghost" className="text-slate-400 hover:text-emerald-400"><Phone className="w-5 h-5" /></Button>
       </div>
 
-      <Card className="w-full max-w-4xl bg-[#13131d]/80 backdrop-blur-xl border border-blue-900/20 shadow-2xl rounded-xl overflow-hidden relative z-10">
-        
-        {/* Header */}
-        <div className="p-8 border-b border-white/5 flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-white tracking-tight flex items-center gap-3">
-              <Briefcase className="w-8 h-8 text-blue-500" />
-              Worker Registration
-            </h1>
-            <p className="text-gray-400 mt-2 text-sm">
-              Join the Kaargar network. Fill in your details to start receiving jobs.
-            </p>
-          </div>
-          <Button variant="ghost" onClick={() => navigate("/profile")} className="text-gray-400 hover:text-white">
-            <ArrowLeft className="w-4 h-4 mr-2" /> Back
-          </Button>
-        </div>
+      <ScrollArea className="flex-1 overflow-y-auto p-4">
+         <div className="space-y-4 pb-4">
+            {messages.length === 0 && <div className="text-center text-slate-500 text-sm mt-10">Start the conversation...</div>}
+            {messages.map((msg, i) => {
+                const isMe = msg.sender_id === user?.id;
+                return (
+                    <div key={msg.id || i} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm space-y-2 ${
+                            isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white/10 text-slate-200 rounded-tl-none'
+                        }`}>
+                            {msg.media_url && (
+                                msg.media_type === 'image' ? 
+                                <img src={msg.media_url} alt="attachment" className="rounded-lg max-h-48 object-cover border border-white/10 w-full" /> :
+                                <a href={msg.media_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline text-xs text-white/80 hover:text-white"><FileText className="w-4 h-4"/> Attachment</a>
+                            )}
+                            {msg.content && <p>{msg.content}</p>}
+                            <span className="text-[10px] opacity-50 block text-right pt-1">
+                                {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </span>
+                        </div>
+                    </div>
+                )
+            })}
+            <div ref={scrollRef} />
+         </div>
+      </ScrollArea>
 
-        <ScrollArea className="h-[75vh]">
-          <form onSubmit={handleSubmit(onSubmit)} className="p-8 space-y-10">
-
-            {/* SECTION 1: PERSONAL DETAILS */}
-            <section className="space-y-6">
-              <div className="flex items-center gap-2 text-blue-400 mb-4">
-                <User className="w-5 h-5" />
-                <h3 className="text-sm font-bold uppercase tracking-wider">Identity & Contact</h3>
-              </div>
-              
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Full Name</Label>
-                  <Input {...register("full_name", { required: true })} className="bg-[#181824] border-white/10 text-white focus:border-blue-500/50 transition-colors" placeholder="e.g. Rahul Kumar" />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Phone Number</Label>
-                  <Input {...register("phone", { required: true })} className="bg-[#181824] border-white/10 text-white focus:border-blue-500/50 transition-colors" placeholder="+91 98765 43210" />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Date of Birth</Label>
-                  <Input type="date" {...register("dob", { required: true })} className="bg-[#181824] border-white/10 text-white focus:border-blue-500/50 transition-colors block w-full" />
-                  <p className="text-xs text-gray-500">You must be at least 18 years old.</p>
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Gender</Label>
-                  <Controller
-                    control={control}
-                    name="gender"
-                    render={({ field }) => (
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger className="bg-[#181824] border-white/10 text-white">
-                          <SelectValue placeholder="Select Gender" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#181824] border-blue-900/40 text-white">
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </div>
-              </div>
-            </section>
-
-            <Separator className="bg-white/10" />
-
-            {/* SECTION 2: ADDRESS */}
-            <section className="space-y-6">
-              <div className="flex items-center gap-2 text-blue-400 mb-4">
-                <MapPin className="w-5 h-5" />
-                <h3 className="text-sm font-bold uppercase tracking-wider">Location</h3>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-gray-300">Street Address</Label>
-                <Textarea {...register("address_text", { required: true })} className="bg-[#181824] border-white/10 text-white min-h-[80px]" placeholder="Flat No, Building, Area..." />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="space-y-2">
-                  <Label className="text-gray-300">City</Label>
-                  <Input {...register("city", { required: true })} className="bg-[#181824] border-white/10 text-white" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-gray-300">State</Label>
-                  <Input {...register("state", { required: true })} className="bg-[#181824] border-white/10 text-white" />
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Pincode</Label>
-                  <Input {...register("pincode", { required: true })} className="bg-[#181824] border-white/10 text-white" />
-                </div>
-              </div>
-            </section>
-
-            <Separator className="bg-white/10" />
-
-            {/* SECTION 3: WORKER PROFILE */}
-            <section className="space-y-6">
-              <div className="flex items-center gap-2 text-blue-400 mb-4">
-                <Briefcase className="w-5 h-5" />
-                <h3 className="text-sm font-bold uppercase tracking-wider">Professional Details</h3>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Primary Profession</Label>
-                  <Controller
-                    control={control}
-                    name="professions"
-                    render={({ field }) => (
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger className="bg-[#181824] border-white/10 text-white">
-                          <SelectValue placeholder="Select Profession" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#181824] border-blue-900/40 text-white max-h-[200px]">
-                          <SelectItem value="plumber">Plumber</SelectItem>
-                          <SelectItem value="electrician">Electrician</SelectItem>
-                          <SelectItem value="carpenter">Carpenter</SelectItem>
-                          <SelectItem value="cleaning">Cleaning</SelectItem>
-                          <SelectItem value="driver">Driver</SelectItem>
-                          <SelectItem value="gardener">Gardener</SelectItem>
-                          <SelectItem value="painter">Painter</SelectItem>
-                          <SelectItem value="pest_control">Pest Control</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Work Type</Label>
-                  <Controller
-                    control={control}
-                    name="worker_type"
-                    render={({ field }) => (
-                      <Select value={field.value} onValueChange={field.onChange}>
-                        <SelectTrigger className="bg-[#181824] border-white/10 text-white">
-                          <SelectValue placeholder="Select Type" />
-                        </SelectTrigger>
-                        <SelectContent className="bg-[#181824] border-blue-900/40 text-white">
-                          <SelectItem value="individual">Individual</SelectItem>
-                          <SelectItem value="freelancer">Freelancer</SelectItem>
-                          <SelectItem value="part_time">Part Time</SelectItem>
-                          <SelectItem value="agency">Agency / Company</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    )}
-                  />
-                </div>
-              </div>
-
-              {/* SERVICES & EXPERIENCE */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Services Offered</Label>
-                  <Input {...register("services")} className="bg-[#181824] border-white/10 text-white" placeholder="e.g. Leak repair, Pipe fitting (Comma separated)" />
-                  <p className="text-xs text-gray-500">Separate specific services with commas.</p>
-                </div>
-                <div className="space-y-2">
-                  <Label className="text-gray-300">Years of Experience</Label>
-                  <Input type="number" {...register("experience_years", { min: 0 })} className="bg-[#181824] border-white/10 text-white" placeholder="e.g. 5" />
-                </div>
-              </div>
-
-              {/* HOURLY RATE */}
-              <div className="space-y-2">
-                <Label className="text-gray-300">Minimum Hourly Rate (₹)</Label>
-                <div className="relative">
-                  <span className="absolute left-3 top-2.5 text-gray-500">₹</span>
-                  <Input type="number" {...register("min_hourly_rate_cents", { min: 0 })} className="bg-[#181824] border-white/10 text-white pl-8" placeholder="e.g. 200" />
-                </div>
-                <p className="text-xs text-gray-500">This helps customers filter by budget.</p>
-              </div>
-
-              {/* BIO */}
-              <div className="space-y-2">
-                <Label className="text-gray-300">Professional Bio</Label>
-                <Textarea {...register("about_text")} className="bg-[#181824] border-white/10 text-white h-24" placeholder="Describe your skills and work ethic..." />
-              </div>
-            </section>
-
-            <Separator className="bg-white/10" />
-
-            {/* SECTION 4: PREFERENCES */}
-            <section className="space-y-6">
-              <div className="flex items-center gap-2 text-blue-400 mb-4">
-                <Settings className="w-5 h-5" />
-                <h3 className="text-sm font-bold uppercase tracking-wider">Job Preferences</h3>
-              </div>
-
-              <div className="bg-[#181824] p-4 rounded-lg border border-white/5 flex items-center justify-between">
-                <div>
-                  <h4 className="text-white font-medium">Auto-Assign Jobs</h4>
-                  <p className="text-sm text-gray-500">Allow customers to book you instantly without approval.</p>
-                </div>
-                <Controller
-                  control={control}
-                  name="accepts_auto_assign"
-                  render={({ field }) => (
-                    <Switch checked={field.value} onCheckedChange={field.onChange} />
-                  )}
-                />
-              </div>
-            </section>
-
-            <Separator className="bg-white/10" />
-
-            {/* SECTION 5: POLICIES */}
-            <section className="space-y-4 pt-2">
-              <div className="flex items-center gap-2 text-blue-400 mb-2">
-                <ShieldCheck className="w-5 h-5" />
-                <h3 className="text-sm font-bold uppercase tracking-wider">Agreements</h3>
-              </div>
-              
-              <div className="space-y-3">
-                <div className="flex items-center space-x-3">
-                  <Checkbox id="terms" checked={policies[0]} onCheckedChange={(v) => setValue("policy_terms", v)} className="border-white/20 data-[state=checked]:bg-blue-600" />
-                  <label htmlFor="terms" className="text-sm text-gray-400 cursor-pointer">I agree to the <span className="text-blue-400 underline">Terms & Conditions</span>.</label>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <Checkbox id="privacy" checked={policies[1]} onCheckedChange={(v) => setValue("policy_privacy", v)} className="border-white/20 data-[state=checked]:bg-blue-600" />
-                  <label htmlFor="privacy" className="text-sm text-gray-400 cursor-pointer">I accept the <span className="text-blue-400 underline">Privacy Policy</span>.</label>
-                </div>
-                <div className="flex items-center space-x-3">
-                  <Checkbox id="consent" checked={policies[2]} onCheckedChange={(v) => setValue("policy_consent", v)} className="border-white/20 data-[state=checked]:bg-blue-600" />
-                  <label htmlFor="consent" className="text-sm text-gray-400 cursor-pointer">I consent to background verification checks.</label>
-                </div>
-              </div>
-            </section>
-
-            {/* SUBMIT BUTTON */}
-            <Button 
-              type="submit" 
-              disabled={submitting} 
-              className="w-full bg-blue-600 hover:bg-blue-500 text-white h-14 text-lg font-semibold rounded-xl shadow-[0_0_20px_rgba(37,99,235,0.3)] transition-all hover:scale-[1.01]"
-            >
-              {submitting ? (
-                <div className="flex items-center gap-2">
-                  <Loader2 className="w-5 h-5 animate-spin" /> Saving Profile...
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <Save className="w-5 h-5" /> Complete Registration
-                </div>
-              )}
-            </Button>
-
-          </form>
-        </ScrollArea>
-      </Card>
+      <div className="p-4 bg-slate-900 border-t border-white/10 flex gap-3 items-center relative bottom-0 z-20">
+         <input type="file" ref={fileInputRef} className="hidden" onChange={handleFileSelect} />
+         <Button size="icon" variant="ghost" className="text-slate-400 hover:text-white shrink-0" onClick={() => fileInputRef.current.click()} disabled={isUploading}>
+            {isUploading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Paperclip className="w-5 h-5" />}
+         </Button>
+         <Input 
+            className="bg-white/5 border-white/10 text-white rounded-full h-12 px-4 focus-visible:ring-blue-500/50"
+            placeholder="Type a message..." 
+            value={newMessage} 
+            onChange={(e) => setNewMessage(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+         />
+         <Button onClick={() => handleSend()} size="icon" className="bg-blue-600 hover:bg-blue-500 text-white rounded-full h-12 w-12 shrink-0 shadow-lg shadow-blue-900/20">
+            <Send className="w-5 h-5" />
+         </Button>
+      </div>
     </div>
   );
 }

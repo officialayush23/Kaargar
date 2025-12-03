@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
-import { Send, ArrowLeft, Paperclip, Phone, Loader2, FileText, Wifi } from "lucide-react";
+import { Send, ArrowLeft, Paperclip, Phone, Loader2, FileText, Wifi, WifiOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -13,6 +13,7 @@ import { API_BASE_URL } from "../config";
 export default function Chat() {
   const { jobId } = useParams();
   const navigate = useNavigate();
+  
   const [chatId, setChatId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState("");
@@ -21,11 +22,12 @@ export default function Chat() {
   const [loading, setLoading] = useState(true);
   const [isConnected, setIsConnected] = useState(false);
   
+  const socketRef = useRef(null);
   const fileInputRef = useRef(null);
   const [isUploading, setIsUploading] = useState(false);
   const scrollRef = useRef(null);
 
-  // 1. Initialize
+  // 1. Initialize & Load History
   useEffect(() => {
     const initChat = async () => {
       try {
@@ -34,39 +36,45 @@ export default function Chat() {
         setUser(session.user);
         const token = session.access_token;
 
-        // A. Get Job & User Info
+        // A. Get Job Details (to identify the other user)
         const jobRes = await fetch(`${API_BASE_URL}/api/jobs/${jobId}`, {
              headers: { Authorization: `Bearer ${token}` }
         });
         
         if (!jobRes.ok) throw new Error("Job not found");
-        const data = await jobRes.json();
-        const j = data.job;
+        const jobJson = await jobRes.json();
+        const j = jobJson.data; // v4 API returns { ok: true, data: {...} }
         
         const isCustomer = session.user.id === j.customer_id;
+        // Ideally fetch other user profile details if not present in job object
+        // For now using placeholder logic or data from job if available
         setOtherUser({
-            name: isCustomer ? j.worker_name : j.customer_name,
-            avatar: isCustomer ? j.worker_avatar : j.customer_avatar
+            name: isCustomer ? (j.worker_name || "Worker") : (j.customer_name || "Customer"),
+            avatar: null 
         });
 
-        // B. Get/Create Chat Room
+        // B. Get or Create Chat Room ID
         const chatRes = await fetch(`${API_BASE_URL}/api/jobs/${jobId}/chat`, {
             method: "POST",
             headers: { Authorization: `Bearer ${token}` }
         });
         
         const chatData = await chatRes.json();
-        if (chatData.chat_id) {
-            setChatId(chatData.chat_id);
+        if (chatData.data?.id) {
+            const roomId = chatData.data.id;
+            setChatId(roomId);
             
-            // C. Load History
-            const historyRes = await fetch(`${API_BASE_URL}/api/chats/${chatData.chat_id}/messages`, {
+            // C. Load History REST API
+            const historyRes = await fetch(`${API_BASE_URL}/api/chats/${roomId}/messages`, {
                  headers: { Authorization: `Bearer ${token}` }
             });
             if (historyRes.ok) {
                 const history = await historyRes.json();
-                setMessages(history.messages || []);
+                setMessages(history.data || []);
             }
+
+            // D. Connect WebSocket
+            connectWebSocket(roomId, token);
         }
       } catch (e) {
         console.error(e);
@@ -77,59 +85,65 @@ export default function Chat() {
     };
     
     if (jobId) initChat();
+
+    // Cleanup on unmount
+    return () => {
+      if (socketRef.current) {
+        socketRef.current.close();
+      }
+    };
   }, [jobId, navigate]);
 
-  // 2. Realtime Subscription (Updated for RLS Policy)
-  useEffect(() => {
-    if (!chatId) return;
+  // 2. WebSocket Connection Logic
+  const connectWebSocket = (roomId, token) => {
+    // Construct WS URL (Handle http/https -> ws/wss)
+    // Assuming API_BASE_URL is like "http://localhost:8000" or "https://api.kaargar.com"
+    const wsBase = API_BASE_URL.replace(/^http/, 'ws'); 
+    
+    // We pass token as a query param for standard browser WebSocket compatibility
+    // The backend endpoint is: /ws/chat/{chat_id}?token={jwt}
+    // Note: Your backend implementation of websocket_chat(..., token: str = Query(...)) handles this perfectly.
+    // If your backend expects header, standard JS WebSocket API doesn't support custom headers easily.
+    // Query param is the robust way for browser clients.
+    const wsUrl = `${wsBase}/ws/chat/${roomId}?token=${encodeURIComponent(token)}`;
+    
+    console.log("Connecting to WS:", wsUrl);
+    
+    const ws = new WebSocket(wsUrl); 
 
-    // The RLS policy strictly requires the topic to be 'room:<id>:messages'
-    const channelName = `room:${chatId}:messages`;
+    ws.onopen = () => {
+      console.log("WS Connected");
+      setIsConnected(true);
+    };
 
-    console.log("🔌 Connecting to:", channelName);
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        console.log("WS Message:", data);
+        
+        setMessages((prev) => {
+          // Dedup logic
+          if (prev.find(m => m.id === data.id)) return prev;
+          return [...prev, data];
+        });
+      } catch (err) {
+        console.error("WS Parse Error", err);
+      }
+    };
 
-    const channel = supabase
-      .channel(channelName)
-      .on('postgres_changes', { 
-          event: 'INSERT', 
-          schema: 'public', 
-          table: 'messages', 
-          filter: `chat_id=eq.${chatId}` 
-      }, (payload) => {
-          console.log("📩 Msg:", payload);
-          const newMsg = payload.new;
+    ws.onclose = (event) => {
+      console.log("WS Disconnected", event.code, event.reason);
+      setIsConnected(false);
+      // Optional: Reconnect logic could be added here
+    };
 
-          setMessages(prev => {
-              // Deduplicate: Check if we already have this ID
-              if (prev.find(m => m.id === newMsg.id)) return prev;
-              
-              // Deduplicate: Check if we optimistically added it (same content + sender + recent)
-              // (This handles the case where real ID comes back different from temp ID)
-              const isOptimistic = prev.find(m => 
-                  m.sender_id === newMsg.sender_id && 
-                  m.content === newMsg.content &&
-                  typeof m.id === 'string' && m.id.includes('.') // Temp IDs are floats
-              );
+    ws.onerror = (err) => {
+      console.error("WS Error:", err);
+      setIsConnected(false);
+    };
 
-              if (isOptimistic) {
-                  // Replace optimistic message with real one
-                  return prev.map(m => m === isOptimistic ? newMsg : m);
-              }
-
-              return [...prev, newMsg];
-          });
-      })
-      .subscribe((status) => {
-        console.log("Status:", status);
-        if (status === 'SUBSCRIBED') setIsConnected(true);
-        if (status === 'CHANNEL_ERROR') {
-            setIsConnected(false);
-            toast.error("Chat connection failed. Check permissions.");
-        }
-      });
-
-    return () => { supabase.removeChannel(channel); };
-  }, [chatId]);
+    socketRef.current = ws;
+  };
 
   // 3. Auto-Scroll
   useEffect(() => {
@@ -141,31 +155,32 @@ export default function Chat() {
     const content = newMessage.trim();
     if (!content && !mediaUrl) return;
 
-    // Optimistic UI
-    const tempId = Math.random().toString();
-    const optimisticMsg = {
-        id: tempId,
-        chat_id: chatId,
-        sender_id: user.id,
-        content,
-        media_url: mediaUrl,
-        media_type: mediaType,
-        created_at: new Date().toISOString()
-    };
-
-    setMessages(prev => [...prev, optimisticMsg]);
-    setNewMessage("");
-
-    try {
-        const { data: { session } } = await supabase.auth.getSession();
-        await fetch(`${API_BASE_URL}/api/chats/${chatId}/messages`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${session.access_token}` },
-            body: JSON.stringify({ content, media_url: mediaUrl, media_type: mediaType })
-        });
-    } catch (e) { 
-        toast.error("Failed to send");
-        setMessages(prev => prev.filter(m => m.id !== tempId));
+    if (socketRef.current && socketRef.current.readyState === WebSocket.OPEN) {
+        const payload = {
+            content: content,
+            media_url: mediaUrl,
+            media_type: mediaType
+        };
+        socketRef.current.send(JSON.stringify(payload));
+        setNewMessage("");
+    } else {
+        toast.error("Connection lost. Reconnecting...");
+        // Fallback: Use HTTP endpoint if WS is down
+        // This ensures message isn't lost if socket momentarily dropped
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            await fetch(`${API_BASE_URL}/api/chats/${chatId}/messages`, {
+                method: "POST",
+                headers: { 
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`
+                },
+                body: JSON.stringify({ content, media_url: mediaUrl, media_type: mediaType })
+            });
+            setNewMessage("");
+        } catch (e) {
+            toast.error("Failed to send message via fallback.");
+        }
     }
   };
 
@@ -181,6 +196,7 @@ export default function Chat() {
           const { data } = supabase.storage.from('chat_media').getPublicUrl(fileName);
           const type = file.type.startsWith('image/') ? 'image' : 'file';
           
+          // Send via WS
           await handleSend(data.publicUrl, type);
       } catch (err) {
           toast.error("Upload failed");
@@ -206,11 +222,11 @@ export default function Chat() {
             </Avatar>
             <div>
                 <h3 className="font-bold text-white text-sm">{otherUser?.name || "User"}</h3>
-                <p className="text-xs text-emerald-400 flex items-center gap-1">
+                <p className="text-xs flex items-center gap-1">
                     {isConnected ? (
-                        <><span className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"/> Online</>
+                        <span className="text-emerald-400 flex items-center gap-1"><Wifi className="w-3 h-3"/> Live</span>
                     ) : (
-                        <><Wifi className="w-3 h-3 text-slate-500"/> Connecting...</>
+                        <span className="text-red-400 flex items-center gap-1"><WifiOff className="w-3 h-3"/> Offline</span>
                     )}
                 </p>
             </div>
@@ -223,19 +239,20 @@ export default function Chat() {
             {messages.length === 0 && <div className="text-center text-slate-500 text-sm mt-10">Start the conversation...</div>}
             {messages.map((msg, i) => {
                 const isMe = msg.sender_id === user?.id;
-                const isOptimistic = typeof msg.id === 'string' && msg.id.startsWith('0.');
-
                 return (
                     <div key={msg.id || i} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[75%] px-4 py-3 rounded-2xl text-sm space-y-2 ${
                             isMe ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white/10 text-slate-200 rounded-tl-none'
-                        } ${isOptimistic ? 'opacity-70' : 'opacity-100'}`}>
+                        }`}>
                             {msg.media_url && (
                                 msg.media_type === 'image' ? 
                                 <img src={msg.media_url} alt="attachment" className="rounded-lg max-h-48 object-cover border border-white/10 w-full" /> :
                                 <a href={msg.media_url} target="_blank" rel="noreferrer" className="flex items-center gap-2 underline text-xs text-white/80 hover:text-white"><FileText className="w-4 h-4"/> Attachment</a>
                             )}
                             {msg.content && <p>{msg.content}</p>}
+                            <span className="text-[10px] opacity-50 block text-right pt-1">
+                                {new Date(msg.created_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                            </span>
                         </div>
                     </div>
                 )
