@@ -4,7 +4,7 @@ import uuid
 import logging
 import asyncio
 from typing import Optional, List, Any, Dict
-from datetime import datetime
+from datetime import date, datetime
 
 import asyncpg
 import redis.asyncio as redis
@@ -16,10 +16,12 @@ from fastapi import (
     WebSocket,
     WebSocketDisconnect,
     Request,
+    Body,
     Path,
     Query,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from jose import jwt, JWTError
 from pydantic import BaseModel, Field
 
@@ -502,12 +504,14 @@ async def upsert_worker_profile(
     params_insert = ["$1"]
 
     set_parts = []
+    vals_update: List[Any] = []
     idx = 2
 
     for k, v in fields.items():
         cols_insert.append(k)
         params_insert.append(f"${idx}")
         vals_insert.append(v)
+
         set_parts.append(f"{k} = EXCLUDED.{k}")
         idx += 1
 
@@ -1229,30 +1233,34 @@ async def websocket_chat(
     user_id = uuid.UUID(payload["sub"])
 
     # membership check
+    conn: asyncpg.Connection = await app.state.db_pool.acquire()
     try:
-        async with app.state.db_pool.acquire() as conn:
-            job = await conn.fetchrow(
-                """
-                SELECT j.customer_id, j.worker_id
-                FROM public.chats c
-                JOIN public.jobs j ON j.id = c.job_id
-                WHERE c.id = $1
-                """,
-                uuid.UUID(chat_id),
-            )
+        job = await conn.fetchrow(
+            """
+            SELECT j.customer_id, j.worker_id
+            FROM public.chats c
+            JOIN public.jobs j ON j.id = c.job_id
+            WHERE c.id = $1
+            """,
+            uuid.UUID(chat_id),
+        )
+        if not job or user_id not in (job["customer_id"], job["worker_id"]):
+            await app.state.db_pool.release(conn)
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
     except Exception:
+        await app.state.db_pool.release(conn)
         await websocket.close(code=status.WS_1011_INTERNAL_ERROR)
         return
-
-    if not job or user_id not in (job["customer_id"], job["worker_id"]):
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
+    finally:
+        # will reacquire per write when needed
+        await app.state.db_pool.release(conn)
 
     r: Optional[redis.Redis] = getattr(app.state, "redis", None)
-    pubsub = None
-    reader_task: Optional[asyncio.Task] = None
-
-    if r:
+    if not r:
+        # Without Redis, just echo between this client and DB
+        channel_name = None
+    else:
         channel_name = f"chat:{chat_id}"
         pubsub = r.pubsub()
         await pubsub.subscribe(channel_name)
@@ -1267,14 +1275,13 @@ async def websocket_chat(
                 pass
 
         reader_task = asyncio.create_task(reader())
-    else:
-        channel_name = None
 
     try:
         while True:
             incoming = await websocket.receive_text()
             # insert into DB
-            async with app.state.db_pool.acquire() as conn:
+            conn = await app.state.db_pool.acquire()
+            try:
                 row = await conn.fetchrow(
                     """
                     INSERT INTO public.messages (chat_id, sender_id, content)
@@ -1285,6 +1292,8 @@ async def websocket_chat(
                     user_id,
                     incoming,
                 )
+            finally:
+                await app.state.db_pool.release(conn)
 
             payload_out = {
                 "id": str(row["id"]),
@@ -1304,10 +1313,9 @@ async def websocket_chat(
     except WebSocketDisconnect:
         pass
     finally:
-        if r and pubsub:
-            if reader_task:
-                reader_task.cancel()
-            await pubsub.unsubscribe()
+        if r and channel_name:
+            reader_task.cancel()
+            await pubsub.unsubscribe(channel_name)
             await pubsub.close()
         await websocket.close()
 
@@ -1449,12 +1457,11 @@ async def get_complaints(
 
     if status_filter:
         base_query += " AND c.status = $2::public.complaint_status"
+        params.append(status_filter)
 
     base_query += " ORDER BY c.created_at DESC"
 
-    rows = await conn.fetch(base_query, *params) if not status_filter else await conn.fetch(
-        base_query, min_severity, status_filter
-    )
+    rows = await conn.fetch(base_query, *params)
 
     return {"ok": True, "data": [dict(r) for r in rows]}
 
