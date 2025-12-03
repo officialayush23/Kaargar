@@ -9,6 +9,9 @@
 **Current Version:** 3.3.0 (Stable)
 
 ---
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+
 
 ## 1. System Architecture Overview
 

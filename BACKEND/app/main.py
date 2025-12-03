@@ -25,6 +25,10 @@ from fastapi.responses import JSONResponse
 from jose import jwt, JWTError
 from pydantic import BaseModel, Field
 
+from dotenv import load_dotenv
+load_dotenv()
+
+
 # -------------------------------------------------------------------
 # Config
 # -------------------------------------------------------------------
@@ -222,7 +226,10 @@ class ProfileUpdate(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
-    gender: Optional[str] = Field(None, regex="^(male|female|other)$")
+    gender: Optional[str] = Field(
+        default=None,
+        pattern="^(male|female|other)$",
+    )
 
 
 class WorkerProfileUpdate(BaseModel):
