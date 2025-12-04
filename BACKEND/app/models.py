@@ -96,7 +96,7 @@ class JobCreate(BaseModel):
     pincode: Optional[str] = None
 
 class JobStatusUpdate(BaseModel):
-    status: JobStatus # Strict Enum
+    status: str # Strict Enum
 
 class BookJobDetails(JobCreate):
     pass

@@ -24,7 +24,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import Headback from "../components/Headback";
 import { API_BASE_URL } from "../config";
-import NotificationListener from "@/components/NotificationListener";
+import NotificationListener from "../components/use_ui/AuthenticatedLayout";
 
 export default function UserPosted() {
   const navigate = useNavigate();
