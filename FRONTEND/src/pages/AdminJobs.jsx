@@ -47,13 +47,18 @@ export default function AdminJobs() {
 
   const getStatusColor = (status) => {
       const map = {
+          'draft': 'bg-gray-500/10 text-gray-400 border-gray-500/20',
           'open': 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
           'bidding': 'bg-blue-500/10 text-blue-400 border-blue-500/20',
-          'in_progress': 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-          'completed': 'bg-slate-500/10 text-slate-400 border-slate-500/20',
-          'cancelled': 'bg-red-500/10 text-red-400 border-red-500/20'
+          'assigned': 'bg-purple-500/10 text-purple-400 border-purple-500/20',
+          'pending_acceptance': 'bg-orange-500/10 text-orange-400 border-orange-500/20',
+          'in_progress': 'bg-indigo-500/10 text-indigo-400 border-indigo-500/20',
+          'completed': 'bg-green-600/10 text-green-500 border-green-600/20',
+          'cancelled': 'bg-red-500/10 text-red-400 border-red-500/20',
+          'disputed': 'bg-red-600/20 text-red-500 border-red-600/40 animate-pulse',
+          'requested': 'bg-amber-500/10 text-amber-400 border-amber-500/20'
       };
-      return map[status] || 'bg-gray-500/10 text-gray-400 border-gray-500/20';
+      return map[status] || 'bg-slate-500/10 text-slate-400 border-slate-500/20';
   }
 
   return (

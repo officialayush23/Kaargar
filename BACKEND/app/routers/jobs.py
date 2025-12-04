@@ -95,41 +95,73 @@ async def create_job(
     user: dict = Depends(require_db_user),
     conn: asyncpg.Connection = Depends(get_db),
 ):
+    """Standard Job Post"""
     uid = user["id"]
-    loc_expr = "NULL"
-    params = [uid]
-    idx = 2
     
-    if not payload.is_remote and payload.lat and payload.lon:
-        loc_expr = f"ST_SetSRID(ST_MakePoint(${idx+1}, ${idx})::geography, 4326)"
-        params.extend([payload.lat, payload.lon])
-        idx += 2
+    # Determine location expression and params based on presence of lat/lon
+    if not payload.is_remote and payload.lat is not None and payload.lon is not None:
+        # 14 params + 2 for lat/lon = 16 total params
+        # ST_SetSRID(ST_MakePoint(lon, lat), 4326) -> lon is $15, lat is $14
+        loc_expr = "ST_SetSRID(ST_MakePoint($15, $14)::geography, 4326)"
         
+        params = [
+            uid,                        # $1
+            payload.title,              # $2
+            payload.description,        # $3
+            payload.category,           # $4
+            payload.profession_required,# $5
+            payload.services_required or [], # $6
+            payload.is_remote,          # $7
+            payload.budget_min_cents,   # $8
+            payload.budget_max_cents,   # $9
+            payload.price_type,         # $10
+            payload.address_text,       # $11
+            payload.city,               # $12
+            payload.pincode,            # $13
+            payload.lat,                # $14
+            payload.lon                 # $15
+        ]
+    else:
+        loc_expr = "NULL"
+        params = [
+            uid,
+            payload.title,
+            payload.description,
+            payload.category,
+            payload.profession_required,
+            payload.services_required or [],
+            payload.is_remote,
+            payload.budget_min_cents,
+            payload.budget_max_cents,
+            payload.price_type,
+            payload.address_text,
+            payload.city,
+            payload.pincode
+        ]
+
     query = f"""
     INSERT INTO public.jobs (
       customer_id, title, description, category, profession_required, services_required,
-      job_location, is_remote, budget_min_cents, budget_max_cents, price_type,
-      address_text, city, pincode
+      is_remote, budget_min_cents, budget_max_cents, price_type,
+      address_text, city, pincode, job_location
     ) VALUES (
-      $1, ${idx}, ${idx+1}, ${idx+2}, ${idx+3}, ${idx+4},
-      {loc_expr}, ${idx+5}, ${idx+6}, ${idx+7}, ${idx+8}::public.price_type,
-      ${idx+9}, ${idx+10}, ${idx+11}
+      $1, $2, $3, $4, $5, $6,
+      $7, $8, $9, $10::public.price_type,
+      $11, $12, $13, {loc_expr}
     ) RETURNING *;
     """
-    params.extend([
-        payload.title, payload.description, payload.category, payload.profession_required,
-        payload.services_required or [], payload.is_remote, payload.budget_min_cents,
-        payload.budget_max_cents, payload.price_type, payload.address_text,
-        payload.city, payload.pincode
-    ])
     
-    row = await conn.fetchrow(query, *params)
-    return {"ok": True, "data": dict(row)}
+    try:
+        row = await conn.fetchrow(query, *params)
+        return {"ok": True, "data": dict(row)}
+    except Exception as e:
+        logger.error(f"Create Job Error: {e}")
+        raise HTTPException(500, f"Failed to create job: {str(e)}")
 
 @router.post("/api/jobs/book")
 async def book_job(
     payload: BookJobRequest,
-    background_tasks: BackgroundTasks, # Fix: Use BackgroundTasks
+    background_tasks: BackgroundTasks,
     user: dict = Depends(require_db_user),
     conn: asyncpg.Connection = Depends(get_db),
     r: Optional[redis.Redis] = Depends(get_redis),
@@ -153,32 +185,41 @@ async def book_job(
             raise HTTPException(400, "Worker unavailable/unverified")
 
         # 2. Create Job
-        loc_expr = "NULL"
-        params = [customer_id]
-        idx = 2
-        if not jd.is_remote and jd.lat and jd.lon:
-            loc_expr = f"ST_SetSRID(ST_MakePoint(${idx+1}, ${idx})::geography, 4326)"
-            params.extend([jd.lat, jd.lon])
-            idx += 2
+        # Construct params list explicitly
+        params = [
+            customer_id,              # $1
+            jd.title,                 # $2
+            jd.description,           # $3
+            jd.category,              # $4
+            jd.profession_required,   # $5
+            jd.services_required or [], # $6
+            jd.is_remote,             # $7
+            jd.budget_min_cents,      # $8
+            jd.budget_max_cents,      # $9
+            jd.price_type,            # $10
+            jd.address_text,          # $11
+            jd.city,                  # $12
+            jd.pincode                # $13
+        ]
+
+        if not jd.is_remote and jd.lat is not None and jd.lon is not None:
+            loc_expr = "ST_SetSRID(ST_MakePoint($15, $14)::geography, 4326)"
+            params.append(jd.lat) # $14
+            params.append(jd.lon) # $15
+        else:
+            loc_expr = "NULL"
             
         query = f"""
         INSERT INTO public.jobs (
           customer_id, title, description, category, profession_required, services_required,
-          job_location, is_remote, budget_min_cents, budget_max_cents, price_type,
-          address_text, city, pincode
+          is_remote, budget_min_cents, budget_max_cents, price_type,
+          address_text, city, pincode, job_location
         ) VALUES (
-          $1, ${idx}, ${idx+1}, ${idx+2}, ${idx+3}, ${idx+4},
-          {loc_expr}, ${idx+5}, ${idx+6}, ${idx+7}, ${idx+8}::public.price_type,
-          ${idx+9}, ${idx+10}, ${idx+11}
+          $1, $2, $3, $4, $5, $6,
+          $7, $8, $9, $10::public.price_type,
+          $11, $12, $13, {loc_expr}
         ) RETURNING id
         """
-        
-        params.extend([
-            jd.title, jd.description, jd.category, jd.profession_required,
-            jd.services_required or [], jd.is_remote, jd.budget_min_cents,
-            jd.budget_max_cents, jd.price_type, jd.address_text,
-            jd.city, jd.pincode
-        ])
         
         job_row = await conn.fetchrow(query, *params)
         job_id = job_row["id"]

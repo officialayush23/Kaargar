@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { 
-    Loader2, CheckCircle, Ban, FileText, ExternalLink, RefreshCw, Briefcase, RotateCcw
+    Loader2, CheckCircle, Ban, FileText, ExternalLink, RefreshCw, Briefcase, RotateCcw, AlertTriangle
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,13 +46,11 @@ export default function AdminComplaints() {
   };
 
   const handleResolve = async (status, complaintId = null) => {
-    // If ID passed directly (quick action), use it. Otherwise use selectedComplaint.id
     const targetId = complaintId || selectedComplaint?.id;
-    
     if (!targetId) return;
 
     if (!notes && status !== 'investigating') {
-        return toast.warning("Please add a resolution note.");
+        return toast.warning("Resolution note required.");
     }
     
     setResolving(true);
@@ -66,13 +64,12 @@ export default function AdminComplaints() {
             },
             body: JSON.stringify({
                 status: status,
-                resolution_notes: notes || (status === 'investigating' ? "Marked as investigating" : "Resolved by admin")
+                resolution_notes: notes || (status === 'investigating' ? "Investigating" : "Resolved")
             })
         });
 
         if (res.ok) {
-            const statusText = status.replace('resolved_', '').replace('_', ' ');
-            toast.success(`Complaint marked as ${statusText}`);
+            toast.success("Status Updated");
             setResolveOpen(false);
             setNotes("");
             fetchComplaints(); 
@@ -94,9 +91,9 @@ export default function AdminComplaints() {
   };
 
   const getSeverityBadge = (level) => {
-    if (level >= 4) return <Badge className="bg-red-500/20 text-red-400 border-red-500/50 hover:bg-red-500/30">High Severity</Badge>;
-    if (level >= 2) return <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/50 hover:bg-orange-500/30">Medium</Badge>;
-    return <Badge variant="secondary" className="bg-blue-500/20 text-blue-400 border-blue-500/50 hover:bg-blue-500/30">Low</Badge>;
+    if (level >= 4) return <Badge className="bg-red-500/20 text-red-400 border-red-500/50">High</Badge>;
+    if (level >= 2) return <Badge className="bg-orange-500/20 text-orange-400 border-orange-500/50">Medium</Badge>;
+    return <Badge className="bg-blue-500/20 text-blue-400 border-blue-500/50">Low</Badge>;
   };
 
   const getStatusBadge = (status) => {
@@ -119,28 +116,18 @@ export default function AdminComplaints() {
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-            <h2 className="text-3xl font-bold text-white tracking-tight">Disputes & Complaints</h2>
-            <p className="text-slate-400 text-sm mt-1">Manage reports filed by users and workers.</p>
-        </div>
+        <h2 className="text-3xl font-bold text-white tracking-tight">Disputes & Complaints</h2>
         <div className="flex gap-3">
             <Button variant="outline" size="sm" onClick={fetchComplaints} className="border-white/10 text-slate-300 hover:bg-white/5">
                 <RefreshCw className="w-4 h-4 mr-2"/> Refresh
             </Button>
             <Badge variant="outline" className="text-white border-white/20 px-3 py-1 h-9 flex items-center">
-            {complaints.filter((c) => c.status === "pending").length} Pending
+              {complaints.filter((c) => c.status === "pending").length} Pending
             </Badge>
         </div>
       </div>
 
       <div className="grid gap-4">
-        {complaints.length === 0 && (
-            <div className="text-center py-16 border border-dashed border-white/10 rounded-xl bg-[#001c2b]/50">
-                <CheckCircle className="w-12 h-12 mx-auto text-slate-600 mb-3"/>
-                <p className="text-slate-400">No complaints found.</p>
-            </div>
-        )}
-
         {complaints.map((c) => (
           <Card key={c.id} className="bg-[#001c2b] border-white/10 shadow-md hover:border-white/20 transition-all">
             <CardHeader className="pb-3">
@@ -166,14 +153,13 @@ export default function AdminComplaints() {
                 {c.description}
               </div>
 
-              {/* Evidence Section */}
               {c.evidence_files && c.evidence_files.length > 0 && (
                   <div className="space-y-2 bg-white/5 p-3 rounded-lg border border-white/5">
                       <p className="text-xs text-gray-500 uppercase font-bold flex items-center gap-1"><FileText className="w-3 h-3"/> Evidence Provided</p>
                       <div className="flex gap-2 overflow-x-auto pb-1">
                           {c.evidence_files.map((url, i) => (
                               <a href={url} target="_blank" key={i} rel="noreferrer" className="block relative group">
-                                  <img src={url} className="h-20 w-20 rounded border border-white/20 object-cover group-hover:opacity-80 transition-opacity" onError={(e) => e.target.style.display='none'} />
+                                  <img src={url} className="h-20 w-20 rounded border border-white/20 object-cover hover:opacity-80 transition-opacity" onError={(e) => e.target.style.display='none'} />
                                   <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded"><ExternalLink className="w-4 h-4 text-white"/></div>
                               </a>
                           ))}
@@ -186,14 +172,14 @@ export default function AdminComplaints() {
                     <span className="text-slate-500 block">Reporter</span>
                     <div className="flex items-center gap-2 text-cyan-300">
                         <div className="w-2 h-2 rounded-full bg-cyan-500"></div>
-                        {c.reporter_name || "Unknown"} <span className="text-slate-600">({c.reporter_email})</span>
+                        {c.reporter_name || "Unknown"}
                     </div>
                 </div>
                 <div className="space-y-1">
                     <span className="text-slate-500 block">Target User</span>
                     <div className="flex items-center gap-2 text-red-300">
                         <div className="w-2 h-2 rounded-full bg-red-500"></div>
-                        {c.target_name || "Unknown"} <span className="text-slate-600">({c.target_email})</span>
+                        {c.target_name || "Unknown"}
                     </div>
                 </div>
                 <div className="text-gray-600 sm:ml-auto sm:text-right self-end">
@@ -201,20 +187,18 @@ export default function AdminComplaints() {
                 </div>
               </div>
               
-              {/* Resolution Info */}
-              {c.status !== 'pending' && c.status !== 'investigating' && c.resolution_notes && (
+              {c.status !== 'pending' && c.resolution_notes && (
                   <div className="bg-emerald-900/20 border border-emerald-500/20 p-3 rounded text-xs text-emerald-200 mt-2">
                       <strong>Admin Note:</strong> {c.resolution_notes}
                   </div>
               )}
             </CardContent>
 
-            {/* Actions Footer */}
             {(c.status === "pending" || c.status === "investigating") && (
               <CardFooter className="bg-[#001520] border-t border-white/5 pt-4 flex gap-3 justify-end rounded-b-xl">
                  {c.status === 'pending' && (
                     <Button size="sm" variant="outline" className="border-amber-500/30 text-amber-400 hover:bg-amber-500/10 hover:text-amber-300" onClick={() => handleResolve('investigating', c.id)}>
-                        Mark Investigating
+                        <AlertTriangle className="w-3 h-3 mr-2"/> Mark Investigating
                     </Button>
                  )}
                 <Button size="sm" variant="secondary" className="bg-white/5 hover:bg-white/10 text-gray-300 border border-white/10" onClick={() => openResolveDialog(c)}>
@@ -233,10 +217,9 @@ export default function AdminComplaints() {
                 <DialogTitle>Resolve Complaint</DialogTitle>
                 <DialogDescription className="text-gray-400">Take action on this report. This cannot be undone.</DialogDescription>
             </DialogHeader>
-            
             <div className="space-y-4 py-2">
                 <div className="space-y-2">
-                    <label className="text-xs font-bold uppercase text-gray-500">Resolution Notes (Required)</label>
+                    <label className="text-xs font-bold uppercase text-gray-500">Resolution Notes</label>
                     <Textarea 
                         value={notes} 
                         onChange={(e) => setNotes(e.target.value)} 
@@ -245,7 +228,6 @@ export default function AdminComplaints() {
                     />
                 </div>
             </div>
-
             <DialogFooter className="flex flex-col gap-2">
                 <div className="flex gap-2 w-full">
                     <Button variant="ghost" onClick={() => setResolveOpen(false)} className="text-gray-400 hover:text-white flex-1">Cancel</Button>
@@ -265,7 +247,7 @@ export default function AdminComplaints() {
                         onClick={() => handleResolve('resolved_refunded')}
                         className="border-emerald-500/50 text-emerald-400 hover:bg-emerald-500/10 flex-1"
                     >
-                        <RotateCcw className="w-4 h-4 mr-2"/> Refund (Manual)
+                        <RotateCcw className="w-4 h-4 mr-2"/> Refund
                     </Button>
                     <Button 
                         variant="destructive" 

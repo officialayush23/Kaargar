@@ -4,7 +4,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 from enum import Enum
 
-# --- Enums ---
+# --- Enums (Matched to SQL) ---
 class WorkerType(str, Enum):
     individual = 'individual'
     freelancer = 'freelancer'
@@ -15,6 +15,31 @@ class WorkerType(str, Enum):
 class WorkerTier(str, Enum):
     general = 'general'
     professional = 'professional'
+
+class JobStatus(str, Enum):
+    draft = 'draft'
+    open = 'open'
+    bidding = 'bidding'
+    assigned = 'assigned'
+    pending_acceptance = 'pending_acceptance'
+    in_progress = 'in_progress'
+    completed = 'completed'
+    cancelled = 'cancelled'
+    disputed = 'disputed'
+    requested = 'requested'
+
+class ComplaintStatus(str, Enum):
+    pending = 'pending'
+    investigating = 'investigating'
+    resolved_refunded = 'resolved_refunded'
+    resolved_dismissed = 'resolved_dismissed'
+    resolved_banned = 'resolved_banned'
+
+class KycStatus(str, Enum):
+    none = 'none'
+    pending = 'pending'
+    verified = 'verified'
+    rejected = 'rejected'
 
 class Gender(str, Enum):
     male = 'male'
@@ -53,7 +78,7 @@ class LocationUpdate(BaseModel):
     lat: float
     lon: float
 
-# --- Jobs & Marketplace ---
+# --- Jobs ---
 class JobCreate(BaseModel):
     title: str
     description: Optional[str] = None
@@ -71,7 +96,14 @@ class JobCreate(BaseModel):
     pincode: Optional[str] = None
 
 class JobStatusUpdate(BaseModel):
-    status: str
+    status: JobStatus # Strict Enum
+
+class BookJobDetails(JobCreate):
+    pass
+
+class BookJobRequest(BaseModel):
+    worker_id: UUID
+    job_details: BookJobDetails
 
 class BidCreate(BaseModel):
     amount_cents: int
@@ -81,14 +113,6 @@ class HireRequest(BaseModel):
     job_id: UUID
     bid_id: UUID
 
-class BookJobDetails(JobCreate):
-    pass
-
-class BookJobRequest(BaseModel):
-    worker_id: UUID
-    job_details: BookJobDetails
-
-# --- Job Execution ---
 class JobProofSubmit(BaseModel):
     worker_comment: Optional[str] = None
     worker_proof_imgs: List[str] = [] 
@@ -98,40 +122,18 @@ class JobProofApprove(BaseModel):
     customer_comment: Optional[str] = None
     rating: int = Field(..., ge=1, le=5)
 
-# --- Governance & Ratings ---
-class RatingCreate(BaseModel):
-    job_id: UUID
-    target_id: UUID
-    rating: int = Field(..., ge=1, le=5)
-    comment: Optional[str] = None
+# --- Admin ---
+class AdminKycReview(BaseModel):
+    status: KycStatus
+    reason: Optional[str] = None
 
-class ComplaintCreate(BaseModel):
-    target_user_id: Optional[UUID] = None
-    job_id: Optional[UUID] = None
-    complaint_type: str
-    severity_level: int = 1
-    subject: str
-    description: Optional[str] = None
-    evidence_files: Optional[List[str]] = None
-
-# --- KYC & Admin ---
-class KycDocCreate(BaseModel):
-    doc_type: str
-    doc_subtype: Optional[str] = None
-    storage_path: str
-    doc_number: Optional[str] = None
+class AdminComplaintUpdate(BaseModel):
+    status: ComplaintStatus
+    resolution_notes: Optional[str] = None
 
 class AdminFlagUpdate(BaseModel):
     is_flagged: bool
     reason: Optional[str] = None
-
-class AdminKycReview(BaseModel):
-    status: str
-    reason: Optional[str] = None
-
-class AdminComplaintUpdate(BaseModel):
-    status: str
-    resolution_notes: Optional[str] = None
 
 # --- Misc ---
 class PushTokenCreate(BaseModel):
@@ -139,6 +141,6 @@ class PushTokenCreate(BaseModel):
     device_type: Optional[str] = None
 
 class MessageCreate(BaseModel):
-    content: Optional[str] = None # Made optional for media-only messages
+    content: Optional[str] = None
     media_url: Optional[str] = None
     media_type: Optional[str] = None
