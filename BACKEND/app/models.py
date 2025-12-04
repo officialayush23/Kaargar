@@ -122,6 +122,22 @@ class JobProofApprove(BaseModel):
     customer_comment: Optional[str] = None
     rating: int = Field(..., ge=1, le=5)
 
+# --- Governance & Ratings ---
+class RatingCreate(BaseModel):
+    job_id: UUID
+    target_id: UUID
+    rating: int = Field(..., ge=1, le=5)
+    comment: Optional[str] = None
+
+class ComplaintCreate(BaseModel):
+    target_user_id: Optional[UUID] = None
+    job_id: Optional[UUID] = None
+    complaint_type: str
+    severity_level: int = 1
+    subject: str
+    description: Optional[str] = None
+    evidence_files: Optional[List[str]] = None
+
 # --- Admin ---
 class AdminKycReview(BaseModel):
     status: KycStatus
