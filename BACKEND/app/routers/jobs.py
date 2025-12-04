@@ -1,8 +1,9 @@
 import json
+import logging
 import redis.asyncio as redis
 from uuid import UUID
 from typing import Optional, List
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 import asyncpg
 from app.dependencies import get_db, require_db_user, require_worker, get_redis
 from app.models import (
@@ -11,16 +12,18 @@ from app.models import (
 )
 
 router = APIRouter(tags=["Jobs & Marketplace"])
+logger = logging.getLogger("kaargar")
 
 # --- Helper ---
-async def notify(r: redis.Redis, user_id: UUID, event_type: str, payload: dict):
+async def notify_bg(r: redis.Redis, user_id: UUID, event_type: str, payload: dict):
+    """Background task for Redis notifications"""
     if r and user_id:
         try:
             await r.publish(f"notifications:{user_id}", json.dumps({"type": event_type, **payload}))
         except Exception as e:
-            print(f"Redis publish error: {e}")
+            logger.error(f"Redis Notification Failed: {e}")
 
-# --- SEARCH (Placed first to avoid route conflict) ---
+# --- SEARCH ---
 @router.get("/api/jobs/search")
 async def search_jobs(
     lat: float = Query(...),
@@ -35,12 +38,15 @@ async def search_jobs(
     user: dict = Depends(require_db_user),
 ):
     services_arr = [s.strip() for s in services.split(",")] if services else None
-    rows = await conn.fetch(
-        "SELECT * FROM public.search_jobs_v4($1, $2, $3, $4, $5, $6, $7, $8)",
-        lat, lon, radius_meters, query, min_budget, profession, services_arr, only_open
-    )
-    return {"ok": True, "data": [dict(r) for r in rows]}
-
+    try:
+        rows = await conn.fetch(
+            "SELECT * FROM public.search_jobs_v4($1, $2, $3, $4, $5, $6, $7, $8)",
+            lat, lon, radius_meters, query, min_budget, profession, services_arr, only_open
+        )
+        return {"ok": True, "data": [dict(r) for r in rows]}
+    except Exception as e:
+        logger.error(f"Search Jobs Error: {e}")
+        raise HTTPException(500, "Search failed")
 
 # --- Me Endpoints ---
 
@@ -89,7 +95,6 @@ async def create_job(
     user: dict = Depends(require_db_user),
     conn: asyncpg.Connection = Depends(get_db),
 ):
-    """Standard Job Post"""
     uid = user["id"]
     loc_expr = "NULL"
     params = [uid]
@@ -124,56 +129,86 @@ async def create_job(
 @router.post("/api/jobs/book")
 async def book_job(
     payload: BookJobRequest,
+    background_tasks: BackgroundTasks, # Fix: Use BackgroundTasks
     user: dict = Depends(require_db_user),
     conn: asyncpg.Connection = Depends(get_db),
     r: Optional[redis.Redis] = Depends(get_redis),
 ):
-    customer_id = user["id"]
-    jd = payload.job_details
-    worker = await conn.fetchrow("SELECT u.id, wp.accepts_direct_hire, wp.is_online, wp.kyc_status, u.role FROM public.users u JOIN public.worker_profiles wp ON wp.user_id = u.id WHERE u.id = $1", payload.worker_id)
-    
-    if not worker: raise HTTPException(404, "Worker not found")
-    if worker["role"] != "worker" or worker["kyc_status"] != "verified": raise HTTPException(400, "Worker unavailable/unverified")
+    try:
+        customer_id = user["id"]
+        jd = payload.job_details
 
-    loc_expr = "NULL"
-    params = [customer_id]
-    idx = 2
-    if not jd.is_remote and jd.lat and jd.lon:
-        loc_expr = f"ST_SetSRID(ST_MakePoint(${idx+1}, ${idx})::geography, 4326)"
-        params.extend([jd.lat, jd.lon])
-        idx += 2
+        # 1. Check Worker
+        worker = await conn.fetchrow(
+            """
+            SELECT u.id, wp.accepts_direct_hire, wp.is_online, wp.kyc_status, u.role
+            FROM public.users u
+            JOIN public.worker_profiles wp ON wp.user_id = u.id
+            WHERE u.id = $1
+            """,
+            payload.worker_id
+        )
+        if not worker: raise HTTPException(404, "Worker not found")
+        if worker["role"] != "worker" or worker["kyc_status"] != "verified":
+            raise HTTPException(400, "Worker unavailable/unverified")
+
+        # 2. Create Job
+        loc_expr = "NULL"
+        params = [customer_id]
+        idx = 2
+        if not jd.is_remote and jd.lat and jd.lon:
+            loc_expr = f"ST_SetSRID(ST_MakePoint(${idx+1}, ${idx})::geography, 4326)"
+            params.extend([jd.lat, jd.lon])
+            idx += 2
+            
+        query = f"""
+        INSERT INTO public.jobs (
+          customer_id, title, description, category, profession_required, services_required,
+          job_location, is_remote, budget_min_cents, budget_max_cents, price_type,
+          address_text, city, pincode
+        ) VALUES (
+          $1, ${idx}, ${idx+1}, ${idx+2}, ${idx+3}, ${idx+4},
+          {loc_expr}, ${idx+5}, ${idx+6}, ${idx+7}, ${idx+8}::public.price_type,
+          ${idx+9}, ${idx+10}, ${idx+11}
+        ) RETURNING id
+        """
         
-    query = f"""
-    INSERT INTO public.jobs (
-      customer_id, title, description, category, profession_required, services_required,
-      job_location, is_remote, budget_min_cents, budget_max_cents, price_type,
-      address_text, city, pincode
-    ) VALUES (
-      $1, ${idx}, ${idx+1}, ${idx+2}, ${idx+3}, ${idx+4},
-      {loc_expr}, ${idx+5}, ${idx+6}, ${idx+7}, ${idx+8}::public.price_type,
-      ${idx+9}, ${idx+10}, ${idx+11}
-    ) RETURNING id
-    """
-    params.extend([
-        jd.title, jd.description, jd.category, jd.profession_required,
-        jd.services_required or [], jd.is_remote, jd.budget_min_cents,
-        jd.budget_max_cents, jd.price_type, jd.address_text,
-        jd.city, jd.pincode
-    ])
-    job_row = await conn.fetchrow(query, *params)
-    job_id = job_row["id"]
+        params.extend([
+            jd.title, jd.description, jd.category, jd.profession_required,
+            jd.services_required or [], jd.is_remote, jd.budget_min_cents,
+            jd.budget_max_cents, jd.price_type, jd.address_text,
+            jd.city, jd.pincode
+        ])
+        
+        job_row = await conn.fetchrow(query, *params)
+        job_id = job_row["id"]
 
-    is_direct = worker["accepts_direct_hire"] and worker["is_online"]
-    msg_type = "direct_hire" if is_direct else "job_request"
-    msg = f"New {msg_type.replace('_', ' ')}: {jd.title}"
-    
-    if is_direct:
-        await conn.execute("UPDATE public.jobs SET worker_id = $1, status = 'assigned' WHERE id = $2", payload.worker_id, job_id)
-    else:
-        await conn.execute("UPDATE public.jobs SET requested_worker_id = $1, status = 'requested' WHERE id = $2", payload.worker_id, job_id)
+        # 3. Handle Direct Hire vs Request
+        is_direct = worker["accepts_direct_hire"] and worker["is_online"]
+        
+        if is_direct:
+            await conn.execute("UPDATE public.jobs SET worker_id = $1, status = 'assigned' WHERE id = $2", payload.worker_id, job_id)
+            msg_type = "direct_hire"
+            msg = f"New Direct Job: {jd.title}"
+        else:
+            await conn.execute("UPDATE public.jobs SET requested_worker_id = $1, status = 'requested' WHERE id = $2", payload.worker_id, job_id)
+            msg_type = "job_request"
+            msg = f"New Job Request: {jd.title}"
 
-    if r: await notify(r, payload.worker_id, msg_type, {"job_id": str(job_id), "message": msg})
-    return {"ok": True, "job_id": str(job_id), "type": "direct" if is_direct else "request"}
+        # 4. Notification (Background)
+        if r:
+            background_tasks.add_task(
+                notify_bg, r, payload.worker_id, msg_type, 
+                {"job_id": str(job_id), "message": msg}
+            )
+
+        return {"ok": True, "job_id": str(job_id), "type": "direct" if is_direct else "request"}
+
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Book Job Failed: {e}")
+        raise HTTPException(500, f"Server Error: {str(e)}")
 
 @router.get("/api/jobs/{job_id}")
 async def get_job(job_id: UUID, user: dict = Depends(require_db_user), conn: asyncpg.Connection = Depends(get_db)):
@@ -199,6 +234,7 @@ async def get_job(job_id: UUID, user: dict = Depends(require_db_user), conn: asy
     if not row: raise HTTPException(404, "Job not found")
     
     data = dict(row)
+    # Handle JSONB deserialization
     if isinstance(data.get('bill_details'), str):
         try: data['bill_details'] = json.loads(data['bill_details'])
         except: data['bill_details'] = []
@@ -209,6 +245,7 @@ async def get_job(job_id: UUID, user: dict = Depends(require_db_user), conn: asy
 async def update_job_status(
     job_id: UUID, 
     payload: JobStatusUpdate, 
+    background_tasks: BackgroundTasks,
     user: dict = Depends(require_db_user), 
     conn: asyncpg.Connection = Depends(get_db),
     r: Optional[redis.Redis] = Depends(get_redis)
@@ -242,7 +279,10 @@ async def update_job_status(
             else: msg = f"Job '{current_job['title']}' status: {payload.status}"
 
         if recipient_id:
-            await notify(r, recipient_id, "job_status_update", {"job_id": str(job_id), "message": msg, "new_status": payload.status})
+            background_tasks.add_task(
+                notify_bg, r, recipient_id, "job_status_update", 
+                {"job_id": str(job_id), "message": msg, "new_status": payload.status}
+            )
 
     return {"ok": True, "data": dict(row)}
 
@@ -275,6 +315,7 @@ async def list_bids(job_id: UUID, user: dict = Depends(require_db_user), conn: a
 async def place_bid(
     job_id: UUID,
     payload: BidCreate,
+    background_tasks: BackgroundTasks,
     worker: dict = Depends(require_worker),
     conn: asyncpg.Connection = Depends(get_db),
     r: Optional[redis.Redis] = Depends(get_redis),
@@ -300,13 +341,17 @@ async def place_bid(
 
     if r:
         msg = f"Job auto-assigned" if auto_accept else f"New bid: {payload.amount_cents/100}"
-        await notify(r, job["customer_id"], "bid", {"job_id": str(job_id), "message": msg})
+        background_tasks.add_task(
+            notify_bg, r, job["customer_id"], "bid", 
+            {"job_id": str(job_id), "message": msg}
+        )
 
     return {"ok": True, "bid_id": str(bid["id"]), "auto_accepted": auto_accept}
 
 @router.post("/api/jobs/hire")
 async def hire_worker(
     payload: HireRequest,
+    background_tasks: BackgroundTasks,
     user: dict = Depends(require_db_user),
     conn: asyncpg.Connection = Depends(get_db),
     r: Optional[redis.Redis] = Depends(get_redis),
@@ -324,7 +369,10 @@ async def hire_worker(
         await conn.execute("INSERT INTO public.wallet_transactions (user_id, amount_cents, type, description, related_job_id) VALUES ($1, $2, 'job_payment', 'Escrow Lock', $3)", uid, -data["amount_cents"], payload.job_id)
 
     if r:
-        await notify(r, data["worker_id"], "hired", {"job_id": str(payload.job_id), "message": f"Hired for {data['title']}"})
+        background_tasks.add_task(
+            notify_bg, r, data["worker_id"], "hired", 
+            {"job_id": str(payload.job_id), "message": f"Hired for {data['title']}"}
+        )
 
     return {"ok": True, "status": "assigned"}
 
@@ -334,14 +382,14 @@ async def hire_worker(
 async def submit_work(
     job_id: UUID,
     payload: JobProofSubmit,
+    background_tasks: BackgroundTasks,
     worker: dict = Depends(require_worker),
     conn: asyncpg.Connection = Depends(get_db),
     r: Optional[redis.Redis] = Depends(get_redis),
 ):
     job = await conn.fetchrow("SELECT status, worker_id, customer_id, title FROM public.jobs WHERE id = $1", job_id)
     if not job or job["worker_id"] != worker["id"]: raise HTTPException(403, "Not your job")
-    if job["status"] not in ("assigned", "in_progress"): raise HTTPException(400, "Job not active")
-
+    
     async with conn.transaction():
         await conn.execute(
             """
@@ -354,7 +402,10 @@ async def submit_work(
         await conn.execute("UPDATE public.jobs SET status = 'pending_acceptance' WHERE id = $1", job_id)
 
     if r:
-        await notify(r, job["customer_id"], "work_submitted", {"job_id": str(job_id), "message": f"Work submitted for {job['title']}"})
+        background_tasks.add_task(
+            notify_bg, r, job["customer_id"], "work_submitted", 
+            {"job_id": str(job_id), "message": f"Work submitted for {job['title']}"}
+        )
         
     return {"ok": True}
 
@@ -362,6 +413,7 @@ async def submit_work(
 async def approve_work(
     job_id: UUID,
     payload: JobProofApprove,
+    background_tasks: BackgroundTasks,
     user: dict = Depends(require_db_user),
     conn: asyncpg.Connection = Depends(get_db),
     r: Optional[redis.Redis] = Depends(get_redis),
@@ -383,6 +435,9 @@ async def approve_work(
             await conn.execute("INSERT INTO public.wallet_transactions (user_id, amount_cents, type, description, related_job_id) VALUES ($1, $2, 'job_payment', 'Job Payment Received', $3)", job["worker_id"], amount, job_id)
 
     if r:
-        await notify(r, job["worker_id"], "payment_received", {"job_id": str(job_id), "message": f"Payment released for {job['title']}"})
+        background_tasks.add_task(
+            notify_bg, r, job["worker_id"], "payment_received", 
+            {"job_id": str(job_id), "message": f"Payment released for {job['title']}"}
+        )
 
     return {"ok": True}
