@@ -24,7 +24,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import Headback from "../components/Headback";
 import { API_BASE_URL } from "../config";
-import NotificationListener from "../components/use_ui/AuthenticatedLayout";
+import NotificationListener from "@/components/NotificationListener";
 
 export default function UserPosted() {
   const navigate = useNavigate();
@@ -141,7 +141,7 @@ export default function UserPosted() {
 
   const formatCurrency = (cents) => {
     if (!cents) return "₹0";
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(cents / 100);
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(cents / 100);
   };
 
   const getStatusColor = (status) => {
@@ -257,7 +257,7 @@ export default function UserPosted() {
                            </Avatar>
                            <div>
                              <div className="flex items-center gap-2">
-                                 <h4 className="font-bold text-white text-lg">{bid.full_name}</h4>
+                                 <h4 className="font-bold text-white text-lg">{bid.full_name || "Worker"}</h4>
                                  <div className="flex text-amber-400 text-xs items-center bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
                                      <Star className="w-3 h-3 fill-current mr-1"/>
                                      <span className="font-bold">{bid.rating || "New"}</span>
@@ -267,7 +267,7 @@ export default function UserPosted() {
                                {bid.professions && bid.professions.map(p => (
                                    <Badge key={p} variant="outline" className="text-[10px] border-white/20 text-slate-400 bg-white/5">{p}</Badge>
                                ))}
-                               <span className="text-xs text-slate-500">{bid.experience_years} Yrs Exp</span>
+                               <span className="text-xs text-slate-500">{bid.experience_years || 0} Yrs Exp</span>
                              </div>
                            </div>
                         </div>
@@ -328,7 +328,7 @@ const JobCard = ({ job, onDelete, onViewBids, getStatusColor, formatCurrency, na
              ) : (
                <div className="flex items-center gap-2 text-sm text-slate-300">
                  <Users className="w-4 h-4 text-slate-500" /> 
-                 Waiting for applicants
+                 {job.bid_count !== undefined ? `${job.bid_count} Bids` : "Waiting for applicants"}
                </div>
              )}
           </div>
