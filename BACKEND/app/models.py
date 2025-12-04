@@ -138,6 +138,13 @@ class ComplaintCreate(BaseModel):
     description: Optional[str] = None
     evidence_files: Optional[List[str]] = None
 
+# --- KYC ---
+class KycDocCreate(BaseModel):
+    doc_type: str
+    doc_subtype: Optional[str] = None
+    storage_path: str
+    doc_number: Optional[str] = None
+
 # --- Admin ---
 class AdminKycReview(BaseModel):
     status: KycStatus
