@@ -1,7 +1,25 @@
 from typing import Optional, List, Any, Dict
-from datetime import datetime
+from datetime import datetime, date
 from uuid import UUID
 from pydantic import BaseModel, Field
+from enum import Enum
+
+# --- Enums ---
+class WorkerType(str, Enum):
+    individual = 'individual'
+    freelancer = 'freelancer'
+    part_time = 'part_time'
+    company = 'company'
+    agency = 'agency'
+
+class WorkerTier(str, Enum):
+    general = 'general'
+    professional = 'professional'
+
+class Gender(str, Enum):
+    male = 'male'
+    female = 'female'
+    other = 'other'
 
 # --- User & Profile ---
 class ProfileUpdate(BaseModel):
@@ -12,11 +30,12 @@ class ProfileUpdate(BaseModel):
     city: Optional[str] = None
     state: Optional[str] = None
     pincode: Optional[str] = None
-    gender: Optional[str] = Field(default=None, pattern="^(male|female|other)$")
+    gender: Optional[Gender] = None
+    dob: Optional[date] = None
 
 class WorkerProfileUpdate(BaseModel):
-    worker_type: Optional[str] = None
-    tier: Optional[str] = None
+    worker_type: Optional[WorkerType] = None
+    tier: Optional[WorkerTier] = None
     professions: Optional[List[str]] = None
     services: Optional[List[str]] = None
     skills: Optional[List[str]] = None
@@ -120,4 +139,6 @@ class PushTokenCreate(BaseModel):
     device_type: Optional[str] = None
 
 class MessageCreate(BaseModel):
-    content: str
+    content: Optional[str] = None # Made optional for media-only messages
+    media_url: Optional[str] = None
+    media_type: Optional[str] = None

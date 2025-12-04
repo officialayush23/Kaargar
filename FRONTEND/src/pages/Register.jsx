@@ -3,9 +3,9 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/lib/supabaseClient"; // Adjust path to your client
-import { toast } from "sonner"; // Shadcn/Sonner toast
-import { Loader2, Save, User, MapPin, Phone, Calendar } from "lucide-react";
+import { supabase } from "@/lib/supabaseClient"; 
+import { toast } from "sonner"; 
+import { Loader2, Save, User, MapPin, Phone, Calendar, ArrowLeft } from "lucide-react";
 
 import {
   Card,
@@ -34,7 +34,9 @@ import {
 } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { API_BASE_URL } from "../config";
+
 // --- VALIDATION SCHEMA ---
 const profileSchema = z.object({
   full_name: z.string().min(2, "Name must be at least 2 characters."),
@@ -53,6 +55,7 @@ export default function Register() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
+  const [avatarUrl, setAvatarUrl] = useState("");
 
   // Initialize Form
   const form = useForm({
@@ -84,8 +87,13 @@ export default function Register() {
         });
         
         if (res.ok) {
-          const data = await res.json();
-          const user = data.user;
+          const apiData = await res.json();
+          const user = apiData.data.user; // Corrected path
+          
+          // Set Avatar from DB or Social Provider
+          const displayAvatar = user.avatar_url || session.user?.user_metadata?.avatar_url || session.user?.user_metadata?.picture;
+          setAvatarUrl(displayAvatar);
+
           // Reset form with existing data if available
           form.reset({
             full_name: user.full_name || "",
@@ -126,9 +134,6 @@ export default function Register() {
 
       toast.success("Profile updated successfully!");
       navigate("/home");
-      
-      // Redirect based on completion or just stay here
-      // navigate("/home"); 
     } catch (error) {
       toast.error("Error updating profile. Please try again.");
       console.error(error);
@@ -137,23 +142,43 @@ export default function Register() {
     }
   };
 
+  const getInitials = (name) => name ? name.charAt(0).toUpperCase() : "U";
+
   if (fetching) {
     return (
-      <div className="flex items-center justify-center h-screen bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <div className="flex items-center justify-center h-screen bg-slate-900">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-transparent py-10 px-4 sm:px-6 lg:px-8 flex justify-center">
-      {/* Card background removed (transparent) so it adopts the page/theme background */}
-      <Card className="w-full max-w-2xl shadow-lg border-0 bg-card sm:border ">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold tracking-tight">Complete your Profile</CardTitle>
-          <CardDescription>
-            Update your personal details and address to continue.
-          </CardDescription>
+    <div className="min-h-screen py-10 px-4 sm:px-6 lg:px-8 flex justify-center">
+      
+      <Card className="w-full max-w-2xl shadow-2xl border  bg-slate-900 text-slate-100 font-sans selection:bg-blue-500/30 ">
+        <CardHeader className="space-y-4 pb-2">
+          <Button 
+            variant="ghost" 
+            onClick={() => navigate("/home")} 
+            className="w-fit -ml-2 text-slate-400 hover:text-white hover:bg-white/10 h-8 px-2"
+          >
+            <ArrowLeft className="w-4 h-4 mr-2"/> Back
+          </Button>
+
+          <div className="flex flex-col items-center gap-4">
+            <Avatar className="h-24 w-24 border-4 border-slate-800 shadow-xl">
+              <AvatarImage src={avatarUrl} className="object-cover" />
+              <AvatarFallback className="text-2xl bg-slate-800 text-blue-400 font-bold">
+                {getInitials(form.getValues("full_name"))}
+              </AvatarFallback>
+            </Avatar>
+            <div className="text-center">
+              <CardTitle className="text-2xl font-bold tracking-tight text-white">Complete your Profile</CardTitle>
+              <CardDescription className="text-slate-400">
+                Update your personal details to get verified.
+              </CardDescription>
+            </div>
+          </div>
         </CardHeader>
         
         <CardContent>
@@ -162,11 +187,11 @@ export default function Register() {
               
               {/* --- SECTION 1: IDENTITY --- */}
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                <div className="flex items-center gap-2 text-sm font-semibold text-blue-400">
                   <User className="w-4 h-4" />
                   <h3>Personal Details</h3>
                 </div>
-                <Separator />
+                <Separator className="bg-white/10" />
                 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {/* Full Name */}
@@ -175,9 +200,9 @@ export default function Register() {
                     name="full_name"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Full Name</FormLabel>
+                        <FormLabel className="text-slate-300">Full Name</FormLabel>
                         <FormControl>
-                          <Input placeholder="John Doe" {...field} />
+                          <Input placeholder="John Doe" {...field} className="bg-white/5 border-white/10 text-white focus-visible:ring-blue-500" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -190,11 +215,11 @@ export default function Register() {
                     name="phone"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Phone Number</FormLabel>
+                        <FormLabel className="text-slate-300">Phone Number</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Phone className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input className="pl-9" placeholder="9876543210" {...field} />
+                            <Phone className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+                            <Input className="pl-10 bg-white/5 border-white/10 text-white focus-visible:ring-blue-500" placeholder="9876543210" {...field} />
                           </div>
                         </FormControl>
                         <FormMessage />
@@ -208,22 +233,19 @@ export default function Register() {
                     name="gender"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Gender</FormLabel>
-                        <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormLabel className="text-slate-300">Gender</FormLabel>
+                        <Select onValueChange={field.onChange} defaultValue={field.value} value={field.value}>
                           <FormControl>
-                            <SelectTrigger>
+                            <SelectTrigger className="bg-white/5 border-white/10 text-white focus:ring-blue-500">
                               <SelectValue placeholder="Select gender" />
                             </SelectTrigger>
                           </FormControl>
-                          <SelectContent>
+                          <SelectContent className="bg-slate-900 border-white/10 text-white">
                             <SelectItem value="male">Male</SelectItem>
                             <SelectItem value="female">Female</SelectItem>
                             <SelectItem value="other">Other</SelectItem>
                           </SelectContent>
                         </Select>
-                        <FormDescription className="text-xs">
-                          Required for safety verification.
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}
@@ -235,11 +257,11 @@ export default function Register() {
                     name="dob"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Date of Birth</FormLabel>
+                        <FormLabel className="text-slate-300">Date of Birth</FormLabel>
                         <FormControl>
                           <div className="relative">
-                            <Calendar className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
-                            <Input type="date" className="pl-9 block" {...field} />
+                            <Calendar className="absolute left-3 top-3 h-4 w-4 text-slate-500" />
+                            <Input type="date" className="pl-10 block bg-white/5 border-white/10 text-white focus-visible:ring-blue-500 dark-calendar" {...field} />
                           </div>
                         </FormControl>
                         <FormMessage />
@@ -251,22 +273,22 @@ export default function Register() {
 
               {/* --- SECTION 2: ADDRESS --- */}
               <div className="space-y-4">
-                <div className="flex items-center gap-2 text-sm font-semibold text-primary">
+                <div className="flex items-center gap-2 text-sm font-semibold text-blue-400">
                   <MapPin className="w-4 h-4" />
                   <h3>Address</h3>
                 </div>
-                <Separator />
+                <Separator className="bg-white/10" />
 
                 <FormField
                   control={form.control}
                   name="address_text"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel>Street Address</FormLabel>
+                      <FormLabel className="text-slate-300">Street Address</FormLabel>
                       <FormControl>
                         <Textarea 
                           placeholder="Flat No, Building, Street Area..." 
-                          className="resize-none" 
+                          className="resize-none bg-white/5 border-white/10 text-white focus-visible:ring-blue-500 min-h-[80px]" 
                           {...field} 
                         />
                       </FormControl>
@@ -281,9 +303,9 @@ export default function Register() {
                     name="city"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>City</FormLabel>
+                        <FormLabel className="text-slate-300">City</FormLabel>
                         <FormControl>
-                          <Input placeholder="Srinagar" {...field} />
+                          <Input placeholder="Srinagar" {...field} className="bg-white/5 border-white/10 text-white focus-visible:ring-blue-500" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -294,9 +316,9 @@ export default function Register() {
                     name="state"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>State</FormLabel>
+                        <FormLabel className="text-slate-300">State</FormLabel>
                         <FormControl>
-                          <Input placeholder="J&K" {...field} />
+                          <Input placeholder="J&K" {...field} className="bg-white/5 border-white/10 text-white focus-visible:ring-blue-500" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -307,9 +329,9 @@ export default function Register() {
                     name="pincode"
                     render={({ field }) => (
                       <FormItem>
-                        <FormLabel>Pincode</FormLabel>
+                        <FormLabel className="text-slate-300">Pincode</FormLabel>
                         <FormControl>
-                          <Input placeholder="190001" {...field} />
+                          <Input placeholder="190001" {...field} className="bg-white/5 border-white/10 text-white focus-visible:ring-blue-500" />
                         </FormControl>
                         <FormMessage />
                       </FormItem>
@@ -319,9 +341,8 @@ export default function Register() {
               </div>
 
               <div className="pt-4">
-                <Button type="submit" className="w-full md:w-auto" disabled={loading}>
-                  {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  <Save className="mr-2 h-4 w-4" />
+                <Button type="submit" className="w-full md:w-auto bg-blue-600 hover:bg-blue-500 text-white font-bold h-12 px-8 rounded-xl shadow-lg shadow-blue-900/20" disabled={loading}>
+                  {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
                   Save Changes
                 </Button>
               </div>

@@ -9,7 +9,8 @@ import {
   IndianRupee, 
   Loader2, 
   ArrowLeft,
-  LocateFixed
+  LocateFixed,
+  Zap
 } from "lucide-react";
 import { API_BASE_URL } from "../config";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ import {
 import { Switch } from "@/components/ui/switch";
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -34,6 +36,7 @@ export default function JobPost() {
   const [date, setDate] = useState(null);
   const [loading, setLoading] = useState(false);
   const [fetchingLocation, setFetchingLocation] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
 
   // Form Setup
   const { register, control, handleSubmit, setValue, watch, formState: { errors } } = useForm({
@@ -48,7 +51,7 @@ export default function JobPost() {
       budget: "",
       pay_type: "fixed",
       is_remote: false,
-      lat: 21.1458, // Default Nagpur
+      lat: 21.1458, 
       lon: 79.0882
     }
   });
@@ -66,32 +69,31 @@ export default function JobPost() {
         });
         
         if (res.ok) {
-          const data = await res.json();
-          const u = data.user;
-          // Auto-fill address if available
+          const apiData = await res.json();
+          const u = apiData.data.user;
           if (u.address_text) setValue("address_text", u.address_text);
           if (u.city) setValue("city", u.city);
           if (u.pincode) setValue("pincode", u.pincode);
         }
 
-        // B. Get Live Geolocation (Crucial for Search)
+        // B. Get Live Geolocation
         navigator.geolocation.getCurrentPosition(
           (pos) => {
             setValue("lat", pos.coords.latitude);
             setValue("lon", pos.coords.longitude);
             setFetchingLocation(false);
-            toast.success("Location detected");
           },
           (err) => {
             console.warn("Location denied:", err);
             setFetchingLocation(false);
-            toast.info("Using default location. Enable GPS for better matching.");
+            toast.info("Using default location.");
           }
         );
 
       } catch (e) {
         console.error(e);
-        setFetchingLocation(false);
+      } finally {
+        setInitialLoading(false);
       }
     };
     init();
@@ -99,17 +101,16 @@ export default function JobPost() {
 
   // 2. Submit Handler
   const onSubmit = async (values) => {
+    if (!values.profession_required) return toast.error("Please select a profession category");
+    
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
 
-      // Format Services String to Array
       const servicesList = values.services_required 
         ? values.services_required.split(",").map(s => s.trim()).filter(s => s)
         : [];
 
-      // Append Date info to description since DB schema puts schedule in description or separate table
-      // For now, we rely on the job creation payload structure
       let desc = values.description;
       if (date) desc += `\n\nPreferred Date: ${format(date, "PPP")}`;
 
@@ -118,17 +119,17 @@ export default function JobPost() {
         description: desc,
         profession_required: values.profession_required,
         services_required: servicesList,
-        category: values.profession_required, // Mapping profession to category
+        category: values.profession_required,
         
-        // Location Data
         lat: values.lat,
         lon: values.lon,
         address_text: values.address_text,
         city: values.city,
         pincode: values.pincode,
 
-        // Budget (Converted to Cents)
+        // Budget acts as the "Auto Accept" threshold for Fixed Price jobs
         budget_max_cents: parseInt(values.budget) * 100, 
+        price_type: "fixed",
         
         is_remote: values.is_remote
       };
@@ -148,8 +149,7 @@ export default function JobPost() {
       }
 
       toast.success("Job Posted Successfully!");
-      // Redirect to the management page to see bids
-      navigate("/my_postings");
+      navigate("/my_postings"); // Or Home
 
     } catch (err) {
       toast.error(err.message);
@@ -157,6 +157,17 @@ export default function JobPost() {
       setLoading(false);
     }
   };
+
+  if (initialLoading) {
+    return (
+      <div className="min-h-screen bg-slate-950 p-6 flex justify-center pt-20">
+        <div className="max-w-3xl w-full space-y-6">
+            <Skeleton className="h-10 w-48 bg-white/10" />
+            <Skeleton className="h-[400px] w-full rounded-2xl bg-white/5" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans selection:bg-blue-500/30 relative overflow-hidden">
@@ -169,20 +180,19 @@ export default function JobPost() {
 
       <div className="max-w-3xl mx-auto p-4 py-8 relative z-10">
         
-        {/* Header */}
         <div className="flex items-center gap-4 mb-8">
           <Button variant="ghost" onClick={() => navigate("/home")} className="text-slate-400 hover:text-white hover:bg-white/5 rounded-full w-10 h-10 p-0">
             <ArrowLeft className="w-5 h-5" />
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-white">Post a Job</h1>
-            <p className="text-slate-400 text-sm">Get offers from verified professionals nearby.</p>
+            <p className="text-slate-400 text-sm">Get offers from verified professionals.</p>
           </div>
         </div>
 
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
 
-          {/* ---------------------- Job Details ---------------------- */}
+          {/* --- Job Details --- */}
           <section className="p-6 border border-white/10 rounded-2xl bg-white/5 backdrop-blur-xl shadow-xl space-y-6">
             <div className="flex items-center gap-2 text-blue-400 mb-2">
               <Briefcase className="w-5 h-5" />
@@ -195,12 +205,12 @@ export default function JobPost() {
                 <Input
                   {...register("title", { required: true })}
                   placeholder="e.g. Fix bathroom tap"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500/50"
+                  className="bg-white/5 border-white/10 text-white focus:border-blue-500/50"
                 />
               </div>
 
               <div className="space-y-2">
-                <Label className="text-slate-300">Category / Profession</Label>
+                <Label className="text-slate-300">Profession Required</Label>
                 <Controller
                   control={control}
                   name="profession_required"
@@ -208,7 +218,7 @@ export default function JobPost() {
                   render={({ field }) => (
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <SelectTrigger className="bg-white/5 border-white/10 text-white">
-                        <SelectValue placeholder="Select profession" />
+                        <SelectValue placeholder="Select..." />
                       </SelectTrigger>
                       <SelectContent className="bg-slate-900 border-white/10 text-white">
                         <SelectItem value="plumber">Plumber</SelectItem>
@@ -228,8 +238,8 @@ export default function JobPost() {
               <Label className="text-slate-300">Description</Label>
               <Textarea
                 {...register("description", { required: true })}
-                placeholder="Describe the problem or task in detail..."
-                className="min-h-[120px] bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500/50 resize-none"
+                placeholder="Describe the problem in detail..."
+                className="min-h-[120px] bg-white/5 border-white/10 text-white resize-none"
               />
             </div>
 
@@ -238,12 +248,12 @@ export default function JobPost() {
               <Input
                 {...register("services_required")}
                 placeholder="e.g. Tap Repair, Pipe Fitting (Comma separated)"
-                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500/50"
+                className="bg-white/5 border-white/10 text-white"
               />
             </div>
           </section>
 
-          {/* ---------------------- Location ---------------------- */}
+          {/* --- Location --- */}
           <section className="p-6 border border-white/10 rounded-2xl bg-white/5 backdrop-blur-xl shadow-xl space-y-6">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2 text-blue-400">
@@ -262,51 +272,48 @@ export default function JobPost() {
               <Input 
                 {...register("address_text", { required: true })}
                 placeholder="Flat No, Building, Area"
-                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500/50"
+                className="bg-white/5 border-white/10 text-white"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label className="text-slate-300">City</Label>
-                <Input 
-                  {...register("city", { required: true })}
-                  placeholder="City"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500/50"
-                />
+                <Input {...register("city", { required: true })} className="bg-white/5 border-white/10 text-white" />
               </div>
               <div className="space-y-2">
                 <Label className="text-slate-300">Pincode</Label>
-                <Input 
-                  {...register("pincode", { required: true })}
-                  placeholder="Pincode"
-                  className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500/50"
-                />
+                <Input {...register("pincode", { required: true })} className="bg-white/5 border-white/10 text-white" />
               </div>
             </div>
           </section>
 
-          {/* ---------------------- Budget & Schedule ---------------------- */}
+          {/* --- Budget & Auto-Accept --- */}
           <section className="grid md:grid-cols-2 gap-6">
             
-            {/* Budget Card */}
             <div className="p-6 border border-white/10 rounded-2xl bg-white/5 backdrop-blur-xl shadow-xl space-y-6">
               <div className="flex items-center gap-2 text-blue-400 mb-2">
                 <IndianRupee className="w-5 h-5" />
-                <h2 className="text-lg font-semibold tracking-wide uppercase text-xs">Budget</h2>
+                <h2 className="text-lg font-semibold tracking-wide uppercase text-xs">Budget & Pricing</h2>
               </div>
               
               <div className="space-y-2">
-                 <Label className="text-slate-300">Estimated Budget (₹)</Label>
+                 <div className="flex items-center justify-between">
+                    <Label className="text-slate-300">Auto-Assign Price (₹)</Label>
+                    <span className="text-[10px] text-emerald-400 flex items-center gap-1"><Zap className="w-3 h-3"/> Instant Hire</span>
+                 </div>
                  <Input 
                    type="number" 
                    {...register("budget", { required: true, min: 1 })}
                    placeholder="500"
-                   className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500/50"
+                   className="bg-white/5 border-white/10 text-white text-lg font-bold"
                  />
+                 <p className="text-xs text-slate-500">
+                    If a worker bids this amount or less, they will be <strong>automatically assigned</strong> to the job.
+                 </p>
               </div>
               
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex items-center justify-between pt-2 border-t border-white/5">
                 <Label className="text-slate-300">Remote Job?</Label>
                 <Controller
                   control={control}

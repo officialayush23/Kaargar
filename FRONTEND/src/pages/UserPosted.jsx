@@ -3,13 +3,14 @@ import { useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabaseClient";
 import { 
   ArrowLeft, Loader2, Trash2, Users, CheckCircle2, Clock, 
-  AlertCircle, Briefcase, User, IndianRupee, Calendar
+  AlertCircle, Briefcase, User, IndianRupee, Calendar, Zap, Star
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Drawer,
   DrawerClose,
@@ -23,6 +24,8 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import Headback from "../components/Headback";
 import { API_BASE_URL } from "../config";
+import NotificationListener from "../components/use_ui/AuthenticatedLayout";
+
 export default function UserPosted() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState(true);
@@ -35,7 +38,6 @@ export default function UserPosted() {
   const [bidsDrawerOpen, setBidsDrawerOpen] = useState(false);
   const [hiringId, setHiringId] = useState(null);
 
-  // 1. Fetch Jobs
   const fetchJobs = async () => {
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -61,7 +63,6 @@ export default function UserPosted() {
     fetchJobs();
   }, []);
 
-  // 2. Fetch Bids for a Job
   const handleViewBids = async (job) => {
     setSelectedJob(job);
     setBidsDrawerOpen(true);
@@ -75,7 +76,7 @@ export default function UserPosted() {
       
       if (res.ok) {
         const data = await res.json();
-        setBids(data.bids || []);
+        setBids(data.data || []);
       }
     } catch (err) {
       toast.error("Could not load bids");
@@ -84,7 +85,6 @@ export default function UserPosted() {
     }
   };
 
-  // 3. Hire a Worker from Bids
   const handleHireBid = async (bidId) => {
     setHiringId(bidId);
     try {
@@ -104,11 +104,11 @@ export default function UserPosted() {
       if (res.ok) {
         toast.success("Worker Hired Successfully!");
         setBidsDrawerOpen(false);
-        fetchJobs(); // Refresh list
-        // Navigate to status page for immediate interaction
+        fetchJobs(); 
         navigate(`/status/${selectedJob.id}`);
       } else {
-        toast.error("Failed to hire worker");
+        const err = await res.json();
+        toast.error(err.detail || "Failed to hire worker");
       }
     } catch (err) {
       toast.error("Network error");
@@ -117,7 +117,6 @@ export default function UserPosted() {
     }
   };
 
-  // 4. Delete Job
   const handleDeleteJob = async (jobId) => {
     if (!confirm("Are you sure you want to delete this job?")) return;
     
@@ -140,7 +139,6 @@ export default function UserPosted() {
     }
   };
 
-  // Helper: Format Currency
   const formatCurrency = (cents) => {
     if (!cents) return "₹0";
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', minimumFractionDigits: 0 }).format(cents / 100);
@@ -161,8 +159,8 @@ export default function UserPosted() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-20 relative overflow-x-hidden">
       <Headback />
+      <NotificationListener />
 
-      {/* Header */}
       <div className="relative z-20 px-6 py-6 flex items-center gap-4 max-w-5xl mx-auto">
         <Button variant="ghost" size="icon" onClick={() => navigate("/home")} className="text-slate-400 hover:text-white hover:bg-white/10 rounded-full">
           <ArrowLeft className="w-6 h-6" />
@@ -172,7 +170,24 @@ export default function UserPosted() {
 
       <div className="max-w-5xl mx-auto px-4 relative z-10">
         {loading ? (
-          <div className="flex justify-center py-20"><Loader2 className="animate-spin text-blue-500 h-8 w-8" /></div>
+          <div className="space-y-4">
+             <Skeleton className="h-10 w-64 bg-white/10 mb-6 rounded-lg" />
+             {[1, 2, 3].map(i => (
+                <div key={i} className="bg-white/5 border border-white/10 rounded-2xl p-4 h-32 flex flex-col justify-between">
+                   <div className="flex justify-between">
+                      <div className="space-y-2">
+                         <Skeleton className="h-6 w-48 bg-white/10" />
+                         <Skeleton className="h-4 w-24 bg-white/10" />
+                      </div>
+                      <Skeleton className="h-6 w-20 bg-white/10 rounded-full" />
+                   </div>
+                   <div className="flex justify-end gap-2">
+                      <Skeleton className="h-9 w-24 bg-white/10 rounded-lg" />
+                      <Skeleton className="h-9 w-24 bg-white/10 rounded-lg" />
+                   </div>
+                </div>
+             ))}
+          </div>
         ) : jobs.length === 0 ? (
           <div className="text-center py-16 bg-white/5 rounded-2xl border border-dashed border-white/10">
             <Briefcase className="w-12 h-12 mx-auto text-slate-600 mb-4" />
@@ -182,16 +197,16 @@ export default function UserPosted() {
           </div>
         ) : (
           <Tabs defaultValue="active" className="w-full">
-            <TabsList className="bg-white/5 border border-white/10 mb-6 w-full justify-start overflow-x-auto no-scrollbar">
-              <TabsTrigger value="active" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white">Active & Open</TabsTrigger>
-              <TabsTrigger value="completed" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white">History</TabsTrigger>
+            <TabsList className="bg-white/5 border border-white/10 mb-6 w-full justify-start overflow-x-auto no-scrollbar h-12 p-1 rounded-xl">
+              <TabsTrigger value="active" className="data-[state=active]:bg-blue-600 data-[state=active]:text-white rounded-lg h-full px-6">Active & Open</TabsTrigger>
+              <TabsTrigger value="completed" className="data-[state=active]:bg-emerald-600 data-[state=active]:text-white rounded-lg h-full px-6">History</TabsTrigger>
             </TabsList>
 
             <TabsContent value="active" className="space-y-4">
-              {jobs.filter(j => ['open', 'bidding', 'assigned', 'in_progress', 'pending_acceptance'].includes(j.status)).map(job => (
+              {jobs.filter(j => ['open', 'bidding', 'assigned', 'in_progress', 'pending_acceptance', 'requested'].includes(j.status)).map(job => (
                 <JobCard key={job.id} job={job} onDelete={handleDeleteJob} onViewBids={handleViewBids} getStatusColor={getStatusColor} formatCurrency={formatCurrency} navigate={navigate} />
               ))}
-              {jobs.filter(j => ['open', 'bidding', 'assigned', 'in_progress', 'pending_acceptance'].includes(j.status)).length === 0 && (
+              {jobs.filter(j => ['open', 'bidding', 'assigned', 'in_progress', 'pending_acceptance', 'requested'].includes(j.status)).length === 0 && (
                 <p className="text-slate-500 text-center py-8">No active jobs.</p>
               )}
             </TabsContent>
@@ -208,7 +223,6 @@ export default function UserPosted() {
         )}
       </div>
 
-      {/* --- BIDS DRAWER --- */}
       <Drawer open={bidsDrawerOpen} onOpenChange={setBidsDrawerOpen}>
         <DrawerContent className="bg-slate-950 border-t border-white/10 text-white max-h-[85vh]">
           <div className="mx-auto w-full max-w-2xl h-full flex flex-col">
@@ -219,34 +233,53 @@ export default function UserPosted() {
             
             <ScrollArea className="flex-1 p-4">
               {bidsLoading ? (
-                 <div className="flex justify-center py-10"><Loader2 className="animate-spin text-blue-500" /></div>
+                 <div className="space-y-4">
+                    {[1,2].map(i => (
+                       <div key={i} className="bg-white/5 rounded-xl p-4 flex gap-4">
+                          <Skeleton className="h-12 w-12 rounded-full bg-white/10" />
+                          <div className="flex-1 space-y-2">
+                             <Skeleton className="h-4 w-1/3 bg-white/10" />
+                             <Skeleton className="h-3 w-1/2 bg-white/10" />
+                          </div>
+                       </div>
+                    ))}
+                 </div>
               ) : bids.length === 0 ? (
                  <div className="text-center py-10 text-slate-500">No bids received yet.</div>
               ) : (
                  <div className="space-y-4">
                    {bids.map((bid) => (
-                     <div key={bid.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
-                        <div className="flex gap-4 items-center">
+                     <div key={bid.id} className="bg-white/5 border border-white/10 rounded-xl p-4 flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between hover:bg-white/[0.07] transition-colors">
+                        <div className="flex gap-4 items-center w-full sm:w-auto">
                            <Avatar className="h-12 w-12 border border-white/10">
                              <AvatarImage src={bid.avatar_url} />
-                             <AvatarFallback className="bg-slate-800 text-blue-400 font-bold">{bid.worker_name?.[0]}</AvatarFallback>
+                             <AvatarFallback className="bg-slate-800 text-blue-400 font-bold">{bid.full_name?.[0] || "U"}</AvatarFallback>
                            </Avatar>
                            <div>
-                             <h4 className="font-bold text-white text-lg">{bid.worker_name}</h4>
-                             <div className="flex gap-2 mt-1">
-                               <Badge variant="outline" className="text-[10px] border-white/20 text-slate-400">{bid.worker_type}</Badge>
+                             <div className="flex items-center gap-2">
+                                 <h4 className="font-bold text-white text-lg">{bid.full_name}</h4>
+                                 <div className="flex text-amber-400 text-xs items-center bg-amber-500/10 px-1.5 py-0.5 rounded border border-amber-500/20">
+                                     <Star className="w-3 h-3 fill-current mr-1"/>
+                                     <span className="font-bold">{bid.rating || "New"}</span>
+                                 </div>
+                             </div>
+                             <div className="flex flex-wrap gap-2 mt-1">
+                               {bid.professions && bid.professions.map(p => (
+                                   <Badge key={p} variant="outline" className="text-[10px] border-white/20 text-slate-400 bg-white/5">{p}</Badge>
+                               ))}
+                               <span className="text-xs text-slate-500">{bid.experience_years} Yrs Exp</span>
                              </div>
                            </div>
                         </div>
-                        <div className="flex-1 w-full sm:w-auto pl-0 sm:pl-4 border-l-0 sm:border-l border-white/10">
-                          <p className="text-sm text-slate-300 italic mb-2">"{bid.message}"</p>
-                          <div className="flex items-center justify-between">
-                             <span className="text-xl font-bold text-emerald-400">{formatCurrency(bid.amount_cents)}</span>
+                        <div className="flex-1 w-full sm:w-auto pl-0 sm:pl-4 border-l-0 sm:border-l border-white/10 flex flex-col sm:items-end gap-3 mt-3 sm:mt-0">
+                          {bid.message && <p className="text-sm text-slate-300 italic line-clamp-2 sm:text-right w-full">"{bid.message}"</p>}
+                          <div className="flex items-center justify-between w-full sm:w-auto gap-4">
+                             <span className="text-xl font-bold text-emerald-400 font-mono">{formatCurrency(bid.amount_cents)}</span>
                              <Button 
                                size="sm" 
                                onClick={() => handleHireBid(bid.id)} 
                                disabled={hiringId === bid.id}
-                               className="bg-blue-600 hover:bg-blue-500 text-white font-semibold"
+                               className="bg-blue-600 hover:bg-blue-500 text-white font-semibold px-6 h-10"
                              >
                                {hiringId === bid.id ? <Loader2 className="w-4 h-4 animate-spin" /> : "Hire"}
                              </Button>
@@ -258,7 +291,7 @@ export default function UserPosted() {
               )}
             </ScrollArea>
             <DrawerFooter>
-              <DrawerClose asChild><Button variant="outline" className="border-white/10 text-slate-400">Close</Button></DrawerClose>
+              <DrawerClose asChild><Button variant="outline" className="border-white/10 text-slate-400 hover:bg-white/10 hover:text-white">Close</Button></DrawerClose>
             </DrawerFooter>
           </div>
         </DrawerContent>
@@ -267,7 +300,6 @@ export default function UserPosted() {
   );
 }
 
-// Sub-Component for Job Card
 const JobCard = ({ job, onDelete, onViewBids, getStatusColor, formatCurrency, navigate }) => {
   const isPending = ['open', 'bidding'].includes(job.status);
   const isOngoing = ['assigned', 'in_progress', 'pending_acceptance'].includes(job.status);
@@ -296,25 +328,20 @@ const JobCard = ({ job, onDelete, onViewBids, getStatusColor, formatCurrency, na
              ) : (
                <div className="flex items-center gap-2 text-sm text-slate-300">
                  <Users className="w-4 h-4 text-slate-500" /> 
-                 {job.bid_count} Bids Received
+                 Waiting for applicants
                </div>
              )}
           </div>
           <div className="text-right">
              <p className="text-xs text-slate-500 uppercase">Budget</p>
-             <p className="text-lg font-bold text-emerald-400">{formatCurrency(job.amount_cents)}</p>
+             <p className="text-lg font-bold text-emerald-400">{formatCurrency(job.budget_max_cents)}</p>
           </div>
         </div>
       </CardContent>
       <CardFooter className="pt-0 flex gap-3 justify-end border-t border-white/5 p-4">
         {isPending && (
           <>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={() => onDelete(job.id)}
-              className="text-red-400 hover:text-red-300 hover:bg-red-900/20 h-9"
-            >
+            <Button variant="ghost" size="sm" onClick={() => onDelete(job.id)} className="text-red-400 hover:text-red-300 hover:bg-red-900/20 h-9">
               <Trash2 className="w-4 h-4 mr-2" /> Delete
             </Button>
             <Button size="sm" onClick={() => onViewBids(job)} className="bg-blue-600 hover:bg-blue-500 text-white h-9">
@@ -324,12 +351,7 @@ const JobCard = ({ job, onDelete, onViewBids, getStatusColor, formatCurrency, na
         )}
         
         {isOngoing && (
-           <Button 
-             size="sm" 
-             variant="secondary"
-             onClick={() => navigate(`/status/${job.id}`)}
-             className="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/30 h-9"
-           >
+           <Button size="sm" variant="secondary" onClick={() => navigate(`/status/${job.id}`)} className="bg-emerald-600/20 text-emerald-400 hover:bg-emerald-600/30 border border-emerald-500/30 h-9">
              Track Status
            </Button>
         )}

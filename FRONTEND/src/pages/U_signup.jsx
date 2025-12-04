@@ -1,4 +1,3 @@
-// src/pages/U_signup.jsx
 import React, { useState } from "react";
 import {
   Card,
@@ -14,10 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useNavigate } from "react-router-dom";
 import { signUpWithEmail, signInWithProvider } from "../auth/AuthHandler";
-// Prefer alias if configured:
-import { postLoginUpsert } from "@/lib/authSync";
-// If alias not set up, use this instead and remove the line above:
-// import { postLoginUpsert } from "../lib/authSync";
+import { postLoginUpsert, updateUserProfile } from "@/lib/authSync";
 import { toast } from "sonner";
 
 const U_signup = () => {
@@ -39,13 +35,15 @@ const U_signup = () => {
         return;
       }
 
-      // If Supabase returned a session (depends on email confirmation settings)
+      // If session exists (email auto-confirmed or disabled confirm), sync backend
       if (data?.session) {
         try {
+          // 1. Create User Row
           await postLoginUpsert();
+          // 2. Sync Name (FastAPI upsert doesn't capture metadata automatically yet)
+          await updateUserProfile({ full_name: name });
         } catch (upErr) {
-          console.error("upsert_user after signup failed:", upErr);
-          // Not fatal; user may still need to verify email anyway
+          console.error("Backend sync failed:", upErr);
         }
       }
 
@@ -65,6 +63,8 @@ const U_signup = () => {
     e?.preventDefault?.();
     setBusy(true);
     try {
+      // Note: Google will redirect, so this block may not complete here.
+      // The AuthCallback page handles the upsert logic for redirects.
       const { data, error } = await signInWithProvider(
         "google",
         `${window.location.origin}/auth/callback`
@@ -72,18 +72,6 @@ const U_signup = () => {
       if (error) {
         toast.error(error.message || "Google sign-in failed");
         return;
-      }
-
-      // Redirect flow: browser goes to /auth/callback → no more code runs.
-      // Non-redirect (session returned): sync + go home.
-      if (data?.session) {
-        try {
-          await postLoginUpsert();
-        } catch (upErr) {
-          console.error("upsert_user after google signup failed:", upErr);
-          toast.error("Signup succeeded but backend sync failed");
-        }
-        navigate("/home");
       }
     } catch (err) {
       console.error("google err", err);
@@ -99,7 +87,7 @@ const U_signup = () => {
         <CardHeader>
           <CardTitle>Create your account</CardTitle>
           <CardDescription>
-            Enter your email below to create your account
+            Enter your details below to create your account
           </CardDescription>
           <CardAction>
             <Button variant="link" onClick={() => navigate("/login")}>

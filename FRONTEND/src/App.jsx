@@ -23,6 +23,14 @@ import User from './pages/User'
 import Worker from './pages/Worker'
 import Chat from './pages/Chats'
 import Admin from './pages/Admin' // New Import
+import AuthenticatedLayout from './components/use_ui/AuthenticatedLayout'
+import Wallet from './pages/Wallets'
+import AdminLayout from './components/use_ui/AdminLayout'
+import AdminDashboard from './pages/AdminDashboard'
+import AdminUsers from './pages/AdminUsers'
+import AdminComplaints from './pages/AdminComplaints'
+import AdminKYC from './pages/AdminKYC'
+import AdminJobs from './pages/AdminJobs'
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -54,14 +62,20 @@ const App = () => {
     <>
       <div>
         <Background />
+
         <ScrollToTop />
+
 
         <Routes location={location} key={location.pathname}>
           {/* Auth */}
           <Route path='/login' element={<TabUW />} />
           <Route path='/signup' element={<U_signup />} />
-  
+
+
+
           <Route path='/auth/callback' element={<AuthCallback />} />
+
+
 
           {/* Core */}
           <Route path='/' element={<User />} />
@@ -77,14 +91,27 @@ const App = () => {
           <Route path='/post_job' element={<JobPost />} />
           <Route path='/my_postings' element={<UserPosted />} />
           <Route path='/dashboard' element={<Dashboard />} />
+          <Route path='/wallet' element={<Wallet />} />
 
           {/* Job Actions */}
           <Route path='/status/:jobId' element={<JobStatus />} />
           <Route path='/chat/:jobId' element={<Chat />} />
-          
+
+
           {/* Admin */}
-          <Route path='/admin' element={<Admin />} />
+        
+
+
+          <Route path='/admin' element={<AdminLayout/>}>
+            <Route index element={<AdminDashboard />} />
+            <Route path='users' element={<AdminUsers />} />
+            <Route path='kyc' element={<AdminKYC />} />
+            <Route path='complaints' element={<AdminComplaints />} />
+            <Route path='jobs' element={<AdminJobs />} />
+          </Route>
+
         </Routes>
+
       </div>
     </>
   )
