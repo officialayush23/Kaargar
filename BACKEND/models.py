@@ -379,7 +379,7 @@ class JobEvent(Base):
     actor_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 8))
     lon: Mapped[Decimal | None] = mapped_column(Numeric(11, 8))
-    metadata: Mapped[dict] = mapped_column(JSONB, default={})
+    meta: Mapped[dict] = mapped_column("metadata", JSONB, default={})
     note: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = now()
 

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Your Kaargar OTP</title>
+<style>
+  body { margin:0; padding:0; background:#07090F; font-family:'DM Sans',Arial,sans-serif; }
+  .wrap { max-width:480px; margin:40px auto; padding:0 16px; }
+  .card { background:#0D1117; border:1px solid rgba(255,255,255,0.08); border-radius:20px; padding:40px 32px; text-align:center; }
+  .logo { font-size:28px; font-weight:800; color:#4B7BFF; letter-spacing:-1px; margin-bottom:8px; }
+  .tagline { color:#475569; font-size:13px; margin-bottom:32px; }
+  .greeting { color:#94A3B8; font-size:15px; margin-bottom:24px; }
+  .otp-box { background:#141B26; border:1px solid rgba(75,123,255,0.3); border-radius:16px; padding:24px; margin:24px 0; }
+  .otp { font-family:'Courier New',monospace; font-size:42px; font-weight:700; letter-spacing:12px; color:#F0F4FF; }
+  .validity { color:#475569; font-size:13px; margin-top:8px; }
+  .note { color:#475569; font-size:12px; margin-top:24px; line-height:1.6; }
+  .footer { color:#334155; font-size:11px; margin-top:32px; text-align:center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="card">
+    <div class="logo">kaargar</div>
+    <div class="tagline">Hyperlocal Services — Pune</div>
+    <div class="greeting">Here's your one-time password</div>
+    <div class="otp-box">
+      <div class="otp">{{ otp }}</div>
+      <div class="validity">Valid for 10 minutes</div>
+    </div>
+    <div class="note">
+      Never share this OTP with anyone.<br>
+      Kaargar will never ask for your OTP.
+    </div>
+  </div>
+  <div class="footer">© 2025 Kaargar. Pune, India.</div>
+</div>
+</body>
+</html>

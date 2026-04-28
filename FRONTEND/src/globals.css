@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --bg-base:      #07090F;
+  --bg-surface:   #0D1117;
+  --bg-elevated:  #141B26;
+  --bg-glass:     rgba(13, 17, 23, 0.75);
+  --brand:        #4B7BFF;
+  --brand-hover:  #6B94FF;
+  --instant:      #22C55E;
+  --discovery:    #F59E0B;
+  --text-primary:   #F0F4FF;
+  --text-secondary: #94A3B8;
+  --text-muted:     #475569;
+  --border:         rgba(255,255,255,0.08);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg-base);
+  color: var(--text-primary);
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 2px; }
+
+/* Glass morphism utilities */
+.glass {
+  background: rgba(13,17,23,0.75);
+  backdrop-filter: blur(20px) saturate(160%);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255,255,255,0.07);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.glass-light {
+  background: rgba(20,27,38,0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255,255,255,0.05);
+}
+
+.glass-strong {
+  background: rgba(13,17,23,0.92);
+  backdrop-filter: blur(32px) saturate(180%);
+  -webkit-backdrop-filter: blur(32px) saturate(180%);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+
+/* Liquid button effect */
+.btn-liquid {
+  position: relative;
+  overflow: hidden;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.btn-liquid::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.btn-liquid:hover::before { opacity: 1; }
+.btn-liquid::after {
+  content: '';
+  position: absolute;
+  bottom: -2px; left: 50%; transform: translateX(-50%);
+  width: 60%; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.btn-liquid:hover::after { opacity: 1; }
+
+/* Brand glow button */
+.btn-brand {
+  background: linear-gradient(135deg, #4B7BFF, #6B94FF);
+  box-shadow: 0 0 20px rgba(75,123,255,0.4), inset 0 1px 0 rgba(255,255,255,0.2);
+  transition: all 0.3s ease;
+}
+.btn-brand:hover {
+  box-shadow: 0 0 32px rgba(75,123,255,0.6), inset 0 1px 0 rgba(255,255,255,0.25);
+  transform: translateY(-1px);
+}
+
+/* Instant glow */
+.btn-instant {
+  background: linear-gradient(135deg, #22C55E, #16A34A);
+  box-shadow: 0 0 20px rgba(34,197,94,0.4);
+}
+.btn-instant:hover {
+  box-shadow: 0 0 32px rgba(34,197,94,0.6);
+  transform: translateY(-1px);
+}
+
+/* Discovery glow */
+.btn-discovery {
+  background: linear-gradient(135deg, #F59E0B, #D97706);
+  box-shadow: 0 0 20px rgba(245,158,11,0.4);
+}
+.btn-discovery:hover {
+  box-shadow: 0 0 32px rgba(245,158,11,0.6);
+  transform: translateY(-1px);
+}
+
+/* Glow halos behind mode content */
+.instant-glow {
+  background: radial-gradient(ellipse at 50% 0%, rgba(34,197,94,0.15) 0%, transparent 70%);
+}
+.discovery-glow {
+  background: radial-gradient(ellipse at 50% 0%, rgba(245,158,11,0.15) 0%, transparent 70%);
+}
+
+/* Card hover */
+.card-hover {
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+}
+
+/* Shimmer skeleton */
+.shimmer {
+  background: linear-gradient(90deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.07) 50%, rgba(255,255,255,0.03) 100%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+/* Mobile safe area */
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 16px); }

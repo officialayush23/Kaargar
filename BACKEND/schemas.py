@@ -464,3 +464,11 @@ class Paginated(BaseModel):
 class SuccessResponse(BaseModel):
     success: bool = True
     message: str = "OK"
+
+
+class MediaUploadResponse(BaseModel):
+    url: str
+    path: str
+    bucket: str
+    media_id: Optional[str] = None
+    media_type: Optional[str] = None
