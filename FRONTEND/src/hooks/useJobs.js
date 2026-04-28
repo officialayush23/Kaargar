@@ -11,6 +11,9 @@ export function useMyJobs(status = 'active') {
   })
 }
 
+// Alias used across pages
+export const useJobs = useMyJobs
+
 export function useJob(jobId) {
   return useQuery({
     queryKey: ['job', jobId],

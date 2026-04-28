@@ -1,11 +1,14 @@
 """
-Workers router — profile CRUD, status, location, services, analytics.
+Workers router.
+
+IMPORTANT: All static-path routes (/profile, /me/*, /status, /location, /documents)
+MUST be declared before the dynamic /{worker_id} route, otherwise FastAPI matches
+/{worker_id} first and treats the literal string as a UUID — causing 404/422 errors.
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, text
-from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from typing import Optional
 from decimal import Decimal
@@ -19,82 +22,28 @@ from schemas import (
     WorkerDocumentResponse, DocumentUpload, ServiceCreate, ServiceUpdate,
     ServiceResponse, WorkerAnalyticsResponse, SuccessResponse,
 )
-from dependencies import get_current_user, require_worker
+from dependencies import get_current_user
 
 router = APIRouter()
 
 
-# ── Public endpoints ──────────────────────────────────────────
+# ═══════════════════════════════════════════════════════════
+# SELF / AUTHENTICATED WORKER ROUTES  (must be before /{id})
+# ═══════════════════════════════════════════════════════════
 
-@router.get("/{worker_id}", response_model=WorkerPublicResponse)
-async def get_worker(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(WorkerProfile, User)
-        .join(User, User.id == WorkerProfile.user_id)
-        .where(WorkerProfile.id == worker_id)
-    )
-    row = result.first()
-    if not row:
-        raise HTTPException(404, "Worker not found")
-    wp, u = row
-    data = WorkerPublicResponse.model_validate(wp)
-    data.full_name = u.full_name
-    data.avatar_url = u.avatar_url
-    return data
-
-
-@router.get("/{worker_id}/services", response_model=list[ServiceResponse])
-async def get_worker_services(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(Service)
-        .where(Service.worker_id == worker_id, Service.is_active == True)
-    )
-    return result.scalars().all()
-
-
-@router.get("/{worker_id}/media")
-async def get_worker_media(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(
-        select(ServiceMedia)
-        .where(ServiceMedia.worker_id == worker_id)
-        .order_by(ServiceMedia.sort_order, ServiceMedia.created_at.desc())
-    )
-    media = result.scalars().all()
-    return [
-        {
-            "id": str(m.id),
-            "type": m.type,
-            "url": m.cloudinary_url,
-            "thumbnail_url": m.thumbnail_url,
-            "caption": m.caption,
-            "is_featured": m.is_featured,
-            "view_count": m.view_count,
-            "sort_order": m.sort_order,
-            "created_at": m.created_at.isoformat(),
-        }
-        for m in media
-    ]
-
-
-@router.get("/{worker_id}/reviews")
-async def get_worker_reviews(
-    worker_id: uuid.UUID,
-    page: int = Query(1, ge=1),
+@router.get("/profile", response_model=WorkerProfileResponse)
+async def get_my_profile(
+    user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from models import Review, User as ReviewUser
-    limit = 20
-    offset = (page - 1) * limit
     result = await db.execute(
-        select(Review)
-        .where(Review.worker_id == worker_id, Review.is_visible == True)
-        .order_by(Review.created_at.desc())
-        .offset(offset).limit(limit)
+        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
     )
-    return result.scalars().all()
+    wp = result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    return wp
 
-
-# ── Worker self endpoints ─────────────────────────────────────
 
 @router.post("/profile", response_model=WorkerProfileResponse)
 async def create_profile(
@@ -137,10 +86,19 @@ async def update_profile(
     )
     wp = result.scalar_one_or_none()
     if not wp:
-        raise HTTPException(404, "Worker profile not found")
+        raise HTTPException(404, "Worker profile not found — create one first via POST /workers/profile")
 
-    for field, value in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_none=True)
+    for field, value in updates.items():
         setattr(wp, field, value)
+
+    # Also allow updating full_name on the user record
+    if hasattr(body, 'full_name') and body.full_name:  # type: ignore[attr-defined]
+        user_result = await db.execute(select(User).where(User.id == user.id))
+        u = user_result.scalar_one_or_none()
+        if u:
+            u.full_name = body.full_name  # type: ignore[attr-defined]
+
     await db.commit()
     await db.refresh(wp)
     return wp
@@ -157,7 +115,7 @@ async def update_status(
     )
     wp = result.scalar_one_or_none()
     if not wp:
-        raise HTTPException(404)
+        raise HTTPException(404, "Worker profile not found")
     wp.status = body.status
     await db.commit()
     return SuccessResponse(message=f"Status set to {body.status}")
@@ -169,7 +127,6 @@ async def update_location(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    # Rate limit via Redis
     try:
         import redis.asyncio as aioredis
         from config import get_settings
@@ -188,7 +145,7 @@ async def update_location(
     )
     wp = result.scalar_one_or_none()
     if not wp:
-        raise HTTPException(404)
+        raise HTTPException(404, "Worker profile not found")
 
     from models import WorkerLocation
     geom = ST_SetSRID(ST_MakePoint(body.lon, body.lat), 4326)
@@ -231,7 +188,7 @@ async def upload_document(
     )
     wp = result.scalar_one_or_none()
     if not wp:
-        raise HTTPException(404)
+        raise HTTPException(404, "Worker profile not found")
 
     from models import WorkerDocument
     doc = WorkerDocument(
@@ -247,7 +204,49 @@ async def upload_document(
     return doc
 
 
-# ── Worker services CRUD ──────────────────────────────────────
+@router.get("/me/status")
+async def get_my_status(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(WorkerProfile.status).where(WorkerProfile.user_id == user.id)
+    )
+    status = result.scalar_one_or_none()
+    return {"status": status or "offline"}
+
+
+@router.get("/me/media")
+async def get_my_media(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
+    )
+    wp = result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    media_result = await db.execute(
+        select(ServiceMedia)
+        .where(ServiceMedia.worker_id == wp.id)
+        .order_by(ServiceMedia.sort_order, ServiceMedia.created_at.desc())
+    )
+    return [
+        {
+            "id": str(m.id),
+            "type": m.type,
+            "url": m.cloudinary_url,
+            "thumbnail_url": m.thumbnail_url,
+            "caption": m.caption,
+            "is_featured": m.is_featured,
+            "view_count": m.view_count,
+            "sort_order": m.sort_order,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in media_result.scalars().all()
+    ]
+
 
 @router.get("/me/services", response_model=list[ServiceResponse])
 async def get_my_services(
@@ -259,7 +258,7 @@ async def get_my_services(
     )
     wp = result.scalar_one_or_none()
     if not wp:
-        raise HTTPException(404)
+        raise HTTPException(404, "Worker profile not found")
     svcs = await db.execute(select(Service).where(Service.worker_id == wp.id))
     return svcs.scalars().all()
 
@@ -275,7 +274,7 @@ async def create_service(
     )
     wp = result.scalar_one_or_none()
     if not wp:
-        raise HTTPException(404)
+        raise HTTPException(404, "Worker profile not found")
     svc = Service(worker_id=wp.id, **body.model_dump())
     db.add(svc)
     await db.commit()
@@ -295,7 +294,7 @@ async def update_service(
     )
     wp = result.scalar_one_or_none()
     if not wp:
-        raise HTTPException(404)
+        raise HTTPException(404, "Worker profile not found")
     svc_result = await db.execute(
         select(Service).where(Service.id == service_id, Service.worker_id == wp.id)
     )
@@ -320,13 +319,13 @@ async def delete_service(
     )
     wp = result.scalar_one_or_none()
     if not wp:
-        raise HTTPException(404)
+        raise HTTPException(404, "Worker profile not found")
     svc_result = await db.execute(
         select(Service).where(Service.id == service_id, Service.worker_id == wp.id)
     )
     svc = svc_result.scalar_one_or_none()
     if not svc:
-        raise HTTPException(404)
+        raise HTTPException(404, "Service not found")
     await db.delete(svc)
     await db.commit()
     return SuccessResponse(message="Service deleted")
@@ -334,6 +333,7 @@ async def delete_service(
 
 @router.get("/me/analytics", response_model=WorkerAnalyticsResponse)
 async def get_analytics(
+    period: str = Query("today", pattern="^(today|week|month|all)$"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -342,14 +342,13 @@ async def get_analytics(
     )
     wp = wp_result.scalar_one_or_none()
     if not wp:
-        raise HTTPException(404)
+        raise HTTPException(404, "Worker profile not found")
 
     result = await db.execute(
         select(WorkerAnalytics).where(WorkerAnalytics.worker_id == wp.id)
     )
     analytics = result.scalar_one_or_none()
     if not analytics:
-        # Return zeros if no analytics yet
         return WorkerAnalyticsResponse(
             total_earnings=Decimal("0"),
             total_jobs=0,
@@ -362,3 +361,74 @@ async def get_analytics(
             avg_job_value=Decimal("0"),
         )
     return analytics
+
+
+# ═══════════════════════════════════════════════════════════
+# PUBLIC ROUTES — dynamic /{worker_id} MUST come last
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/{worker_id}", response_model=WorkerPublicResponse)
+async def get_worker(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(WorkerProfile, User)
+        .join(User, User.id == WorkerProfile.user_id)
+        .where(WorkerProfile.id == worker_id)
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Worker not found")
+    wp, u = row
+    data = WorkerPublicResponse.model_validate(wp)
+    data.full_name = u.full_name
+    data.avatar_url = u.avatar_url
+    return data
+
+
+@router.get("/{worker_id}/services", response_model=list[ServiceResponse])
+async def get_worker_services(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Service)
+        .where(Service.worker_id == worker_id, Service.is_active == True)  # noqa: E712
+    )
+    return result.scalars().all()
+
+
+@router.get("/{worker_id}/media")
+async def get_worker_media(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(ServiceMedia)
+        .where(ServiceMedia.worker_id == worker_id)
+        .order_by(ServiceMedia.sort_order, ServiceMedia.created_at.desc())
+    )
+    return [
+        {
+            "id": str(m.id),
+            "type": m.type,
+            "url": m.cloudinary_url,
+            "thumbnail_url": m.thumbnail_url,
+            "caption": m.caption,
+            "is_featured": m.is_featured,
+            "view_count": m.view_count,
+            "sort_order": m.sort_order,
+            "created_at": m.created_at.isoformat(),
+        }
+        for m in result.scalars().all()
+    ]
+
+
+@router.get("/{worker_id}/reviews")
+async def get_worker_reviews(
+    worker_id: uuid.UUID,
+    page: int = Query(1, ge=1),
+    db: AsyncSession = Depends(get_db),
+):
+    from models import Review
+    limit = 20
+    offset = (page - 1) * limit
+    result = await db.execute(
+        select(Review)
+        .where(Review.worker_id == worker_id, Review.is_visible == True)  # noqa: E712
+        .order_by(Review.created_at.desc())
+        .offset(offset).limit(limit)
+    )
+    return result.scalars().all()

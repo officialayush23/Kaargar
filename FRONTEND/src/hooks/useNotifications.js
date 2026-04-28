@@ -3,20 +3,24 @@ import { useEffect } from 'react'
 import { api } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
-import { useAppStore } from '@/stores/app'
 
 export function useNotifications() {
   const { user } = useAuthStore()
-  const { incrementNotif } = useAppStore()
   const qc = useQueryClient()
 
   const query = useQuery({
     queryKey: ['notifications'],
     queryFn: async () => {
       const { data } = await api.get('/notifications')
-      return data
+      return Array.isArray(data) ? data : []
     },
     enabled: !!user,
+    staleTime: 30_000,
+  })
+
+  const markAllMutation = useMutation({
+    mutationFn: () => api.patch('/notifications/read-all'),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   })
 
   // Supabase Realtime subscription
@@ -31,20 +35,19 @@ export function useNotifications() {
         filter: `user_id=eq.${user.id}`,
       }, () => {
         qc.invalidateQueries({ queryKey: ['notifications'] })
-        incrementNotif()
       })
       .subscribe()
 
     return () => supabase.removeChannel(channel)
   }, [user?.id])
 
-  return query
-}
+  const notifications = query.data ?? []
+  const unreadCount = notifications.filter(n => !n.is_read).length
 
-export function useMarkAllRead() {
-  const qc = useQueryClient()
-  return useMutation({
-    mutationFn: async () => api.patch('/notifications/read-all'),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
-  })
+  return {
+    ...query,
+    notifications,
+    unreadCount,
+    markAllRead: markAllMutation.mutate,
+  }
 }

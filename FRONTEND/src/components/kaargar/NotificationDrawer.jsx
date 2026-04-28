@@ -1,18 +1,14 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { Bell, X, CheckCheck } from 'lucide-react'
 import { formatRelativeTime } from '@/lib/utils'
-import { useNotifications, useMarkAllRead } from '@/hooks/useNotifications'
-import { useAppStore } from '@/stores/app'
+import { useNotifications } from '@/hooks/useNotifications'
 import { Button } from '@/components/ui/button'
 
 export function NotificationDrawer({ open, onClose }) {
-  const { data: notifs = [], isLoading } = useNotifications()
-  const { mutate: markAll } = useMarkAllRead()
-  const { clearNotif } = useAppStore()
+  const { notifications: notifs = [], isLoading, markAllRead } = useNotifications()
 
   const handleMarkAll = () => {
-    markAll()
-    clearNotif()
+    markAllRead()
   }
 
   return (

@@ -1,9 +1,13 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mail, ArrowRight, RefreshCw, Loader2 } from 'lucide-react'
-import { api } from '@/lib/api'
+import { Mail, ArrowRight, RefreshCw, ShieldCheck, ChevronLeft } from 'lucide-react'
+import { Background } from '@/components/glass/Background'
+import { GlassCard } from '@/components/glass/GlassCard'
+import { GlassButton } from '@/components/glass/GlassButton'
+import { GlassInput } from '@/components/glass/GlassInput'
 import { useAuthStore } from '@/stores/auth'
+import { api } from '@/lib/api'
 import { toast } from 'sonner'
 
 const OTP_LENGTH = 6
@@ -12,29 +16,32 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const { setAuth } = useAuthStore()
 
-  const [step, setStep] = useState('email') // 'email' | 'otp'
+  const [step, setStep] = useState('email')
   const [email, setEmail] = useState('')
   const [otp, setOtp] = useState('')
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [resendTimer, setResendTimer] = useState(0)
 
-  const sendOtp = async (e) => {
-    e.preventDefault()
+  async function sendOtp() {
     if (!email.trim()) return
+    setError('')
     setLoading(true)
     try {
       await api.post('/auth/send-otp', { email: email.trim().toLowerCase() })
       setStep('otp')
+      startResendTimer()
       toast.success('OTP sent to your email')
-    } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Failed to send OTP')
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to send OTP. Try again.')
     } finally {
       setLoading(false)
     }
   }
 
-  const verifyOtp = async (e) => {
-    e.preventDefault()
+  async function verifyOtp() {
     if (otp.length !== OTP_LENGTH) return
+    setError('')
     setLoading(true)
     try {
       const { data } = await api.post('/auth/verify-otp', {
@@ -42,138 +49,219 @@ export default function LoginPage() {
         token: otp,
       })
       setAuth(data.access_token, data.user)
+      toast.success('Welcome to Kaargar!')
       navigate(data.user.role === 'worker' ? '/worker' : '/', { replace: true })
-    } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Invalid OTP')
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Invalid OTP. Please try again.')
       setOtp('')
     } finally {
       setLoading(false)
     }
   }
 
+  function startResendTimer() {
+    setResendTimer(60)
+    const id = setInterval(() => {
+      setResendTimer(t => {
+        if (t <= 1) { clearInterval(id); return 0 }
+        return t - 1
+      })
+    }, 1000)
+  }
+
   return (
-    <div className="min-h-screen bg-[--bg-base] flex flex-col items-center justify-center px-6 relative overflow-hidden">
-      {/* Ambient glow */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-1/3 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 rounded-full bg-brand/10 blur-[80px]" />
-      </div>
+    <div className="min-h-screen flex items-center justify-center p-4 relative">
+      <Background />
+
+      <div
+        className="fixed inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 40%, rgba(59,130,246,0.10) 0%, transparent 70%)' }}
+      />
 
       <motion.div
+        className="w-full max-w-sm"
         initial={{ opacity: 0, y: 24 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="w-full max-w-sm"
+        transition={{ type: 'spring', stiffness: 280, damping: 26 }}
       >
-        {/* Logo */}
-        <div className="text-center mb-10">
-          <h1 className="font-syne font-bold text-4xl text-[--text-primary] tracking-tight">kaargar</h1>
-          <p className="text-[--text-muted] text-sm mt-2">Hyperlocal services, Pune</p>
+        <div className="flex flex-col items-center mb-8">
+          <motion.div
+            className="w-14 h-14 rounded-2xl bg-gradient-to-br from-azure to-azure-dim flex items-center justify-center mb-4"
+            style={{ boxShadow: '0 0 32px rgba(59,130,246,0.4)' }}
+            animate={{ boxShadow: ['0 0 32px rgba(59,130,246,0.4)', '0 0 48px rgba(59,130,246,0.6)', '0 0 32px rgba(59,130,246,0.4)'] }}
+            transition={{ repeat: Infinity, duration: 3 }}
+          >
+            <span className="text-white font-bold text-2xl font-syne">K</span>
+          </motion.div>
+          <h1 className="text-2xl font-bold font-syne gradient-text-hero">Kaargar</h1>
+          <p className="text-sm text-white/40 mt-1">Hyperlocal services, Pune</p>
         </div>
 
-        <AnimatePresence mode="wait">
-          {step === 'email' ? (
-            <motion.form
-              key="email"
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: 20 }}
-              onSubmit={sendOtp}
-              className="space-y-4"
-            >
-              <div className="glass rounded-2xl p-6 space-y-4">
+        <GlassCard className="p-6">
+          <AnimatePresence mode="wait">
+            {step === 'email' ? (
+              <motion.div
+                key="email-step"
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: 20 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+                className="space-y-5"
+              >
                 <div>
-                  <label className="text-xs font-medium text-[--text-muted] uppercase tracking-wider block mb-2">
-                    Email address
-                  </label>
-                  <div className="relative">
-                    <Mail size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[--text-muted]" />
-                    <input
-                      type="email"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      required
-                      autoFocus
-                      className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-4 py-3 text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none focus:border-brand/50 focus:bg-white/8 transition-all text-sm"
-                    />
-                  </div>
+                  <h2 className="text-lg font-semibold font-syne text-white/90">Sign in</h2>
+                  <p className="text-sm text-white/40 mt-0.5">Enter your email to continue</p>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={loading || !email.trim()}
-                  className="btn-brand w-full py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <>
-                      Continue <ArrowRight size={16} />
-                    </>
-                  )}
-                </button>
-              </div>
+                <GlassInput
+                  type="email"
+                  label="Email address"
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={e => { setEmail(e.target.value); setError('') }}
+                  onKeyDown={e => e.key === 'Enter' && sendOtp()}
+                  icon={Mail}
+                  error={error}
+                  autoFocus
+                />
 
-              <p className="text-center text-xs text-[--text-muted]">
-                We'll send a one-time code to your inbox
-              </p>
-            </motion.form>
-          ) : (
-            <motion.form
-              key="otp"
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{ opacity: 0, x: -20 }}
-              onSubmit={verifyOtp}
-              className="space-y-4"
-            >
-              <div className="glass rounded-2xl p-6 space-y-4">
+                <GlassButton
+                  variant="brand"
+                  size="lg"
+                  className="w-full"
+                  loading={loading}
+                  onClick={sendOtp}
+                  icon={ArrowRight}
+                  iconPosition="right"
+                  disabled={!email.trim()}
+                >
+                  Send OTP
+                </GlassButton>
+
+                <p className="text-center text-xs text-white/25">
+                  By continuing you agree to our Terms &amp; Privacy Policy
+                </p>
+              </motion.div>
+            ) : (
+              <motion.div
+                key="otp-step"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+                className="space-y-5"
+              >
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <label className="text-xs font-medium text-[--text-muted] uppercase tracking-wider">
-                      Enter OTP
-                    </label>
-                    <span className="text-xs text-[--text-secondary]">{email}</span>
-                  </div>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
-                    maxLength={OTP_LENGTH}
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, OTP_LENGTH))}
-                    placeholder="000000"
-                    autoFocus
-                    className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-4 text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none focus:border-brand/50 transition-all text-2xl font-mono tracking-[0.5em] text-center"
-                  />
+                  <button
+                    onClick={() => { setStep('email'); setOtp(''); setError('') }}
+                    className="flex items-center gap-1 text-xs text-white/40 hover:text-white/70 transition-colors mb-3"
+                  >
+                    <ChevronLeft className="h-3.5 w-3.5" />
+                    Back
+                  </button>
+                  <h2 className="text-lg font-semibold font-syne text-white/90">Check your email</h2>
+                  <p className="text-sm text-white/40 mt-0.5">
+                    Sent to <span className="text-white/70">{email}</span>
+                  </p>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={loading || otp.length !== OTP_LENGTH}
-                  className="btn-brand w-full py-3 rounded-xl font-medium text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  {loading ? (
-                    <Loader2 size={16} className="animate-spin" />
-                  ) : (
-                    <>
-                      Verify & Sign in <ArrowRight size={16} />
-                    </>
-                  )}
-                </button>
+                <OtpBoxes value={otp} onChange={setOtp} length={OTP_LENGTH} onComplete={verifyOtp} />
 
-                <button
-                  type="button"
-                  onClick={() => { setStep('email'); setOtp('') }}
-                  className="w-full flex items-center justify-center gap-1.5 text-xs text-[--text-muted] hover:text-[--text-secondary] transition-colors py-1"
+                {error && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-xs text-red-400 text-center"
+                  >
+                    {error}
+                  </motion.p>
+                )}
+
+                <GlassButton
+                  variant="brand"
+                  size="lg"
+                  className="w-full"
+                  loading={loading}
+                  onClick={verifyOtp}
+                  icon={ShieldCheck}
+                  iconPosition="left"
+                  disabled={otp.length !== OTP_LENGTH}
                 >
-                  <RefreshCw size={12} /> Change email or resend
-                </button>
-              </div>
-            </motion.form>
-          )}
-        </AnimatePresence>
+                  Verify Code
+                </GlassButton>
+
+                <div className="text-center">
+                  {resendTimer > 0 ? (
+                    <p className="text-xs text-white/30">
+                      Resend in <span className="text-white/50 font-mono">{resendTimer}s</span>
+                    </p>
+                  ) : (
+                    <button
+                      onClick={() => { sendOtp(); setOtp('') }}
+                      className="flex items-center gap-1.5 text-xs text-azure hover:text-azure-light transition-colors mx-auto"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                      Resend OTP
+                    </button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </GlassCard>
       </motion.div>
+    </div>
+  )
+}
+
+function OtpBoxes({ value, onChange, length, onComplete }) {
+  const digits = value.split('').concat(Array(length).fill('')).slice(0, length)
+
+  function handleChange(index, char) {
+    const clean = char.replace(/\D/g, '').slice(-1)
+    const arr = digits.slice()
+    arr[index] = clean
+    const next = arr.join('')
+    onChange(next)
+    if (clean && index < length - 1) {
+      document.getElementById('otp-' + (index + 1))?.focus()
+    }
+    if (next.length === length) onComplete?.()
+  }
+
+  function handleKeyDown(index, e) {
+    if (e.key === 'Backspace' && !digits[index] && index > 0) {
+      document.getElementById('otp-' + (index - 1))?.focus()
+    }
+  }
+
+  function handlePaste(e) {
+    const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, length)
+    onChange(text)
+    if (text.length === length) onComplete?.()
+    document.getElementById('otp-' + Math.min(text.length, length - 1))?.focus()
+    e.preventDefault()
+  }
+
+  return (
+    <div className="flex gap-2.5 justify-center">
+      {digits.map((d, i) => (
+        <motion.input
+          key={i}
+          id={'otp-' + i}
+          type="text"
+          inputMode="numeric"
+          maxLength={1}
+          value={d}
+          onChange={e => handleChange(i, e.target.value)}
+          onKeyDown={e => handleKeyDown(i, e)}
+          onPaste={handlePaste}
+          whileFocus={{ scale: 1.05 }}
+          className="w-11 text-center text-lg font-bold font-mono glass-input rounded-xl text-white"
+          style={{ height: '52px' }}
+          autoFocus={i === 0}
+        />
+      ))}
     </div>
   )
 }

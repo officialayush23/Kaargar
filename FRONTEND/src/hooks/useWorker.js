@@ -33,6 +33,21 @@ export function useUpdateStatus() {
   })
 }
 
+export function useWorkerStatus() {
+  return useQuery({
+    queryKey: ['worker', 'status'],
+    queryFn: async () => {
+      try {
+        const { data } = await api.get('/workers/me/status')
+        return data
+      } catch {
+        return { status: 'offline' }
+      }
+    },
+    refetchInterval: 15_000,
+  })
+}
+
 export function useWorkerMedia(workerId) {
   return useQuery({
     queryKey: ['worker', workerId, 'media'],

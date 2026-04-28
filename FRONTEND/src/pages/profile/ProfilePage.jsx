@@ -1,29 +1,37 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Loader2 } from 'lucide-react'
+import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Pencil, Check } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { ProfilePhotoUpload } from '@/components/kaargar/MediaUpload'
+import { GlassCard } from '@/components/glass/GlassCard'
+import { GlassButton } from '@/components/glass/GlassButton'
+import { GlassInput } from '@/components/glass/GlassInput'
 import { getInitials } from '@/lib/utils'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
-function MenuItem({ icon: Icon, label, sub, onClick, danger }) {
+function MenuItem({ icon: Icon, label, sub, onClick, danger, color }) {
   return (
-    <button
+    <motion.button
       onClick={onClick}
-      className="w-full flex items-center gap-4 px-4 py-4 hover:bg-white/3 transition-colors rounded-xl text-left"
+      whileHover={{ x: 2 }}
+      className="w-full flex items-center gap-3 px-4 py-3.5 transition-colors text-left"
     >
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${danger ? 'bg-red-500/10' : 'bg-white/5'}`}>
-        <Icon size={17} className={danger ? 'text-red-400' : 'text-[--text-muted]'} />
+      <div className={cn(
+        'w-9 h-9 rounded-xl flex items-center justify-center shrink-0',
+        danger ? 'bg-red-500/15' : color ? `${color}/15` : 'bg-white/8'
+      )}>
+        <Icon className={cn('h-4 w-4', danger ? 'text-red-400' : color ? `text-${color}` : 'text-white/50')} />
       </div>
-      <div className="flex-1">
-        <p className={`text-sm font-medium ${danger ? 'text-red-400' : 'text-[--text-primary]'}`}>{label}</p>
-        {sub && <p className="text-xs text-[--text-muted] mt-0.5">{sub}</p>}
+      <div className="flex-1 min-w-0">
+        <p className={cn('text-sm font-medium', danger ? 'text-red-400' : 'text-white/80')}>{label}</p>
+        {sub && <p className="text-xs text-white/35 mt-0.5">{sub}</p>}
       </div>
-      {!danger && <ChevronRight size={16} className="text-[--text-muted]" />}
-    </button>
+      {!danger && <ChevronRight className="h-4 w-4 text-white/25" />}
+    </motion.button>
   )
 }
 
@@ -34,11 +42,7 @@ export default function ProfilePage() {
   const [name, setName] = useState(user?.full_name || '')
   const [savingName, setSavingName] = useState(false)
 
-  const handlePhotoSuccess = (url) => {
-    updateUser({ avatar_url: url })
-  }
-
-  const handleSaveName = async () => {
+  async function handleSaveName() {
     if (!name.trim()) return
     setSavingName(true)
     try {
@@ -47,84 +51,103 @@ export default function ProfilePage() {
       setEditingName(false)
       toast.success('Name updated')
     } catch {
-      toast.error('Failed to update')
+      toast.error('Failed to update name')
     } finally {
       setSavingName(false)
     }
   }
 
-  const handleLogout = () => {
+  function handleLogout() {
     logout()
     navigate('/login', { replace: true })
   }
 
+  const initials = getInitials(user?.full_name || '') || user?.email?.[0]?.toUpperCase() || 'K'
+
   return (
-    <div className="min-h-full pb-28">
-      {/* Profile header */}
-      <div className="px-4 pt-8 pb-6 flex flex-col items-center gap-4">
-        <ProfilePhotoUpload currentUrl={user?.avatar_url} onSuccess={handlePhotoSuccess}>
-          <div className="relative">
-            <Avatar className="w-24 h-24 border-2 border-white/15">
-              <AvatarImage src={user?.avatar_url} />
-              <AvatarFallback className="bg-brand/20 text-brand font-bold text-2xl">
-                {getInitials(user?.full_name || '')}
-              </AvatarFallback>
-            </Avatar>
-            <div className="absolute bottom-0 right-0 w-7 h-7 rounded-full bg-brand border-2 border-[--bg-base] flex items-center justify-center">
-              <User size={12} className="text-white" />
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold font-syne gradient-text-hero">Profile</h1>
+        <p className="text-sm text-white/40 mt-0.5">Manage your account</p>
+      </div>
+
+      {/* Avatar + name */}
+      <GlassCard className="p-6">
+        <div className="flex items-center gap-4">
+          <ProfilePhotoUpload currentUrl={user?.avatar_url} onSuccess={url => updateUser({ avatar_url: url })}>
+            <div className="relative cursor-pointer">
+              <Avatar className="w-16 h-16 border-2 border-white/15">
+                <AvatarImage src={user?.avatar_url} />
+                <AvatarFallback className="text-lg font-bold">{initials}</AvatarFallback>
+              </Avatar>
+              <div className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-azure border-2 border-void flex items-center justify-center">
+                <Pencil className="h-2.5 w-2.5 text-white" />
+              </div>
             </div>
+          </ProfilePhotoUpload>
+
+          <div className="flex-1 min-w-0">
+            {editingName ? (
+              <div className="flex items-center gap-2">
+                <GlassInput
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSaveName()}
+                  className="text-sm py-1.5"
+                  autoFocus
+                />
+                <button
+                  onClick={handleSaveName}
+                  disabled={savingName}
+                  className="p-1.5 rounded-lg bg-azure/20 text-azure hover:bg-azure/30 transition-colors"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            ) : (
+              <button onClick={() => setEditingName(true)} className="text-left w-full group">
+                <div className="flex items-center gap-2">
+                  <p className="text-base font-semibold font-syne text-white/90">
+                    {user?.full_name || 'Add your name'}
+                  </p>
+                  <Pencil className="h-3 w-3 text-white/30 group-hover:text-white/60 transition-colors" />
+                </div>
+                <p className="text-sm text-white/40">{user?.email}</p>
+              </button>
+            )}
           </div>
-        </ProfilePhotoUpload>
+        </div>
 
-        {editingName ? (
-          <div className="flex items-center gap-2">
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onBlur={handleSaveName}
-              autoFocus
-              className="bg-white/5 border border-brand/40 rounded-xl px-3 py-1.5 text-center font-syne font-bold text-lg text-[--text-primary] focus:outline-none w-48"
-            />
-            <button onClick={handleSaveName} disabled={savingName}>
-              {savingName ? <Loader2 size={14} className="animate-spin text-brand" /> : <span className="text-xs text-brand">Save</span>}
-            </button>
+        {typeof isWorker === 'function' && isWorker() && (
+          <div className="mt-4 pt-4 border-t border-white/10">
+            <GlassButton
+              variant="brand"
+              size="sm"
+              className="w-full"
+              onClick={() => navigate('/worker')}
+            >
+              Go to Worker Dashboard
+            </GlassButton>
           </div>
-        ) : (
-          <button onClick={() => setEditingName(true)} className="text-center">
-            <h2 className="font-syne font-bold text-xl text-[--text-primary]">{user?.full_name || 'Your name'}</h2>
-            <p className="text-xs text-[--text-muted] mt-0.5">Tap to edit name</p>
-          </button>
         )}
+      </GlassCard>
 
-        <p className="text-sm text-[--text-secondary]">{user?.email}</p>
-
-        {isWorker() && (
-          <button
-            onClick={() => navigate('/worker')}
-            className="btn-brand px-6 py-2.5 rounded-xl text-sm font-medium"
-          >
-            Worker Dashboard
-          </button>
-        )}
-      </div>
-
-      {/* Menu */}
-      <div className="px-4 space-y-1">
-        <p className="text-xs font-semibold text-[--text-muted] uppercase tracking-wider px-4 mb-2">Account</p>
-        <div className="glass rounded-2xl overflow-hidden divide-y divide-white/5">
-          <MenuItem icon={Briefcase} label="My bookings" onClick={() => navigate('/bookings')} />
+      {/* Account section */}
+      <div>
+        <p className="text-xs text-white/30 uppercase tracking-widest font-medium mb-2 px-1">Account</p>
+        <GlassCard className="divide-y divide-white/8 overflow-hidden">
+          <MenuItem icon={Briefcase} label="My Bookings" sub="View all service requests" onClick={() => navigate('/bookings')} />
           <MenuItem icon={Bell} label="Notifications" sub="Manage alerts" onClick={() => {}} />
-          <MenuItem icon={Shield} label="Privacy & safety" onClick={() => {}} />
-        </div>
-
-        <div className="pt-4">
-          <div className="glass rounded-2xl overflow-hidden">
-            <MenuItem icon={LogOut} label="Sign out" danger onClick={handleLogout} />
-          </div>
-        </div>
-
-        <p className="text-center text-xs text-[--text-muted] pt-6">kaargar v1.0 · Pune</p>
+          <MenuItem icon={Shield} label="Privacy & Safety" onClick={() => {}} />
+        </GlassCard>
       </div>
+
+      {/* Sign out */}
+      <GlassCard className="overflow-hidden">
+        <MenuItem icon={LogOut} label="Sign out" danger onClick={handleLogout} />
+      </GlassCard>
+
+      <p className="text-center text-xs text-white/20 pb-2">Kaargar v1.0 · Pune, Maharashtra</p>
     </div>
   )
 }
