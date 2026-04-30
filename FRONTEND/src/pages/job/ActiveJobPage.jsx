@@ -62,16 +62,14 @@ function RatingModal({ open, jobId, onSubmit, onClose }) {
               whileTap={{ scale: 0.9 }}
             >
               <Star
-                className={cn(
-                  'h-9 w-9 transition-colors',
-                  s <= rating ? 'text-amber-400 fill-amber-400' : 'text-white/20'
-                )}
+                className={cn('h-9 w-9 transition-colors', s <= rating ? 'text-amber-400 fill-amber-400' : '')}
+                style={s <= rating ? {} : { color: 'var(--text-muted)' }}
               />
             </motion.button>
           ))}
         </div>
         <GlassTextarea
-          placeholder="Share your experience (optional)…"
+          placeholder="Share your experience (optional)..."
           value={text}
           onChange={e => setText(e.target.value)}
           rows={3}
@@ -126,7 +124,7 @@ export default function ActiveJobPage() {
               </div>
               <div className="flex-1">
                 <p className={cn('font-semibold text-sm', cfg.color)}>{cfg.label}</p>
-                <p className="text-xs text-white/40 mt-0.5">{job.category?.name} · {job.location_address}</p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{job.category?.name} · {job.location_address}</p>
               </div>
               <motion.div
                 className={cn('w-2.5 h-2.5 rounded-full', cfg.dot)}
@@ -154,12 +152,12 @@ export default function ActiveJobPage() {
               <AvatarFallback className="font-bold text-base">{getInitials(worker.full_name)}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="font-semibold text-white/90 font-syne">{worker.full_name}</p>
+              <p className="font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>{worker.full_name}</p>
               <div className="flex items-center gap-1.5 mt-0.5">
                 <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
                 <span className="text-sm text-amber-400 font-medium">{worker.avg_rating?.toFixed(1) || '4.8'}</span>
-                <span className="text-xs text-white/25">·</span>
-                <span className="text-xs text-white/40">{worker.total_jobs || 0} jobs</span>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>·</span>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{worker.total_jobs || 0} jobs</span>
               </div>
               <div className="flex items-center gap-1 mt-1">
                 <Shield className="h-3 w-3 text-azure" />
@@ -179,18 +177,19 @@ export default function ActiveJobPage() {
               <motion.button
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
-                className="w-10 h-10 rounded-xl bg-white/8 border border-white/15 flex items-center justify-center"
+                className="w-10 h-10 rounded-xl flex items-center justify-center"
+                style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}
                 onClick={() => toast.info('Call feature coming soon')}
               >
-                <Phone className="h-4 w-4 text-white/50" />
+                <Phone className="h-4 w-4" style={{ color: 'var(--text-secondary)' }} />
               </motion.button>
             </div>
           </div>
 
           {job?.location_address && (
-            <div className="mt-4 pt-4 border-t border-white/10 flex items-center gap-2">
+            <div className="mt-4 pt-4 flex items-center gap-2" style={{ borderTop: '1px solid var(--g-border)' }}>
               <MapPin className="h-3.5 w-3.5 text-azure shrink-0" />
-              <span className="text-xs text-white/50">{job.location_address}</span>
+              <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{job.location_address}</span>
             </div>
           )}
         </GlassCard>
@@ -199,7 +198,7 @@ export default function ActiveJobPage() {
       {/* Job timeline */}
       {job && (
         <GlassCard className="p-5">
-          <p className="text-xs text-white/30 uppercase tracking-widest font-medium mb-5">Job progress</p>
+          <p className="text-xs uppercase tracking-widest font-medium mb-5" style={{ color: 'var(--text-muted)' }}>Job progress</p>
           <JobStatusTimeline status={job.status} />
         </GlassCard>
       )}
@@ -214,14 +213,14 @@ export default function ActiveJobPage() {
             <GlassCard glow glowColor="green" className="p-5 border-emerald-500/25 bg-emerald-500/5">
               <div className="flex justify-between items-center">
                 <div>
-                  <p className="text-xs text-white/40">Total charged</p>
+                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Total charged</p>
                   <p className="font-mono font-bold text-2xl text-emerald-400 mt-0.5">
                     {formatCurrency(finalAmount)}
                   </p>
                 </div>
                 <CheckCircle className="h-8 w-8 text-emerald-400" />
               </div>
-              <p className="text-xs text-white/30 mt-3">
+              <p className="text-xs mt-3" style={{ color: 'var(--text-muted)' }}>
                 Payment held in escrow — released to worker in 48 hours
               </p>
             </GlassCard>

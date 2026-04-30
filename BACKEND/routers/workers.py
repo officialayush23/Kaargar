@@ -15,12 +15,18 @@ from decimal import Decimal
 import uuid
 
 from database import get_db
-from models import User, WorkerProfile, WorkerCategory, WorkerAnalytics, Service, ServiceMedia
+from models import (
+    User, WorkerProfile, WorkerCategory, WorkerAnalytics, Service, ServiceMedia,
+    Package, PackageService as PackageServiceModel, Offer, PackageOrder, PackageUsage,
+)
 from schemas import (
     WorkerProfileCreate, WorkerProfileUpdate, WorkerProfileResponse,
     WorkerPublicResponse, WorkerStatusUpdate, WorkerLocationUpdate,
     WorkerDocumentResponse, DocumentUpload, ServiceCreate, ServiceUpdate,
     ServiceResponse, WorkerAnalyticsResponse, SuccessResponse,
+    PackageCreate, PackageUpdate, PackageResponse, PackageItemResponse,
+    OfferCreate, OfferUpdate, OfferResponse,
+    PackageOrderCreate, PackageOrderResponse, PackageUsageResponse,
 )
 from dependencies import get_current_user
 from services.storage import get_public_url, BUCKET_DOCUMENTS
@@ -431,6 +437,436 @@ async def get_analytics(
 
 
 # ═══════════════════════════════════════════════════════════
+# PACKAGES — worker management
+# ═══════════════════════════════════════════════════════════
+
+async def _get_worker_profile(user: User, db: AsyncSession) -> WorkerProfile:
+    """Helper: get worker profile or raise 404."""
+    result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    return wp
+
+
+def _serialize_package(pkg: Package) -> dict:
+    items = []
+    for item in (pkg.items or []):
+        svc = item.service
+        items.append({
+            "service_id": str(item.service_id),
+            "quantity": item.quantity,
+            "redeem_type": item.redeem_type,
+            "service": {
+                "id": str(svc.id),
+                "title": svc.title,
+                "price": float(svc.price),
+                "service_mode": svc.service_mode,
+                "visit_fee": float(svc.visit_fee) if svc.visit_fee else None,
+            } if svc else None,
+        })
+    return {
+        "id": str(pkg.id),
+        "worker_id": str(pkg.worker_id),
+        "title": pkg.title,
+        "description": pkg.description,
+        "original_price": float(pkg.original_price),
+        "discounted_price": float(pkg.discounted_price),
+        "redemption_type": pkg.redemption_type,
+        "validity_days": pkg.validity_days,
+        "is_active": pkg.is_active,
+        "valid_from": pkg.valid_from.isoformat() if pkg.valid_from else None,
+        "valid_until": pkg.valid_until.isoformat() if pkg.valid_until else None,
+        "total_bookings": pkg.total_bookings,
+        "created_at": pkg.created_at.isoformat(),
+        "items": items,
+    }
+
+
+@router.get("/me/packages")
+async def get_my_packages(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp = await _get_worker_profile(user, db)
+    result = await db.execute(
+        select(Package)
+        .where(Package.worker_id == wp.id)
+        .order_by(Package.created_at.desc())
+    )
+    pkgs = result.scalars().all()
+    # Eager-load items
+    for pkg in pkgs:
+        await db.refresh(pkg, ["items"])
+        for item in pkg.items:
+            await db.refresh(item, ["service"])
+    return [_serialize_package(p) for p in pkgs]
+
+
+@router.post("/me/packages")
+async def create_package(
+    body: PackageCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp = await _get_worker_profile(user, db)
+
+    # Verify all services belong to this worker
+    for item in body.items:
+        svc_result = await db.execute(
+            select(Service).where(Service.id == item.service_id, Service.worker_id == wp.id)
+        )
+        if not svc_result.scalar_one_or_none():
+            raise HTTPException(400, f"Service {item.service_id} not found in your catalog")
+
+    pkg = Package(
+        worker_id=wp.id,
+        title=body.title,
+        description=body.description,
+        original_price=body.original_price,
+        discounted_price=body.discounted_price,
+        redemption_type=body.redemption_type,
+        validity_days=body.validity_days,
+        valid_from=body.valid_from,
+        valid_until=body.valid_until,
+    )
+    db.add(pkg)
+    await db.flush()
+
+    for item in body.items:
+        db.add(PackageServiceModel(
+            package_id=pkg.id,
+            service_id=item.service_id,
+            quantity=item.quantity,
+            redeem_type=item.redeem_type,
+        ))
+
+    await db.commit()
+    await db.refresh(pkg, ["items"])
+    for item in pkg.items:
+        await db.refresh(item, ["service"])
+    return _serialize_package(pkg)
+
+
+@router.patch("/me/packages/{package_id}")
+async def update_package(
+    package_id: uuid.UUID,
+    body: PackageUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp = await _get_worker_profile(user, db)
+    result = await db.execute(
+        select(Package).where(Package.id == package_id, Package.worker_id == wp.id)
+    )
+    pkg = result.scalar_one_or_none()
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+
+    updates = body.model_dump(exclude_none=True, exclude={"items"})
+    for k, v in updates.items():
+        setattr(pkg, k, v)
+
+    # Re-sync items if provided
+    if body.items is not None:
+        # Delete existing
+        existing = await db.execute(
+            select(PackageServiceModel).where(PackageServiceModel.package_id == pkg.id)
+        )
+        for item in existing.scalars().all():
+            await db.delete(item)
+        await db.flush()
+        # Re-add
+        for item in body.items:
+            svc_result = await db.execute(
+                select(Service).where(Service.id == item.service_id, Service.worker_id == wp.id)
+            )
+            if not svc_result.scalar_one_or_none():
+                raise HTTPException(400, f"Service {item.service_id} not found")
+            db.add(PackageServiceModel(
+                package_id=pkg.id,
+                service_id=item.service_id,
+                quantity=item.quantity,
+                redeem_type=item.redeem_type,
+            ))
+
+    await db.commit()
+    await db.refresh(pkg, ["items"])
+    for item in pkg.items:
+        await db.refresh(item, ["service"])
+    return _serialize_package(pkg)
+
+
+@router.delete("/me/packages/{package_id}", response_model=SuccessResponse)
+async def delete_package(
+    package_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp = await _get_worker_profile(user, db)
+    result = await db.execute(
+        select(Package).where(Package.id == package_id, Package.worker_id == wp.id)
+    )
+    pkg = result.scalar_one_or_none()
+    if not pkg:
+        raise HTTPException(404, "Package not found")
+    await db.delete(pkg)
+    await db.commit()
+    return SuccessResponse(message="Package deleted")
+
+
+# ═══════════════════════════════════════════════════════════
+# OFFERS — worker management
+# ═══════════════════════════════════════════════════════════
+
+@router.get("/me/offers", response_model=list[OfferResponse])
+async def get_my_offers(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp = await _get_worker_profile(user, db)
+    result = await db.execute(
+        select(Offer)
+        .where(Offer.worker_id == wp.id)
+        .order_by(Offer.created_at.desc())
+    )
+    return result.scalars().all()
+
+
+@router.post("/me/offers", response_model=OfferResponse)
+async def create_offer(
+    body: OfferCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp = await _get_worker_profile(user, db)
+
+    # Validate service/package ownership
+    if body.service_id:
+        svc = await db.execute(
+            select(Service).where(Service.id == body.service_id, Service.worker_id == wp.id)
+        )
+        if not svc.scalar_one_or_none():
+            raise HTTPException(400, "Service not found in your catalog")
+    if body.package_id:
+        pkg = await db.execute(
+            select(Package).where(Package.id == body.package_id, Package.worker_id == wp.id)
+        )
+        if not pkg.scalar_one_or_none():
+            raise HTTPException(400, "Package not found in your catalog")
+
+    offer = Offer(
+        worker_id=wp.id,
+        service_id=body.service_id,
+        package_id=body.package_id,
+        title=body.title,
+        description=body.description,
+        discount_type=body.discount_type,
+        discount_value=body.discount_value,
+        min_order_value=body.min_order_value,
+        promo_code=body.promo_code,
+        valid_until=body.valid_until,
+        usage_limit=body.usage_limit,
+    )
+    db.add(offer)
+    await db.commit()
+    await db.refresh(offer)
+    return offer
+
+
+@router.patch("/me/offers/{offer_id}", response_model=OfferResponse)
+async def update_offer(
+    offer_id: uuid.UUID,
+    body: OfferUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp = await _get_worker_profile(user, db)
+    result = await db.execute(
+        select(Offer).where(Offer.id == offer_id, Offer.worker_id == wp.id)
+    )
+    offer = result.scalar_one_or_none()
+    if not offer:
+        raise HTTPException(404, "Offer not found")
+    for k, v in body.model_dump(exclude_none=True).items():
+        setattr(offer, k, v)
+    await db.commit()
+    await db.refresh(offer)
+    return offer
+
+
+@router.delete("/me/offers/{offer_id}", response_model=SuccessResponse)
+async def delete_offer(
+    offer_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp = await _get_worker_profile(user, db)
+    result = await db.execute(
+        select(Offer).where(Offer.id == offer_id, Offer.worker_id == wp.id)
+    )
+    offer = result.scalar_one_or_none()
+    if not offer:
+        raise HTTPException(404, "Offer not found")
+    await db.delete(offer)
+    await db.commit()
+    return SuccessResponse(message="Offer deleted")
+
+
+# ═══════════════════════════════════════════════════════════
+# PACKAGE ORDERS — user purchases + tracking
+# ═══════════════════════════════════════════════════════════
+
+@router.post("/packages/{package_id}/order")
+async def purchase_package(
+    package_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """User purchases a package — creates a PackageOrder."""
+    result = await db.execute(
+        select(Package).where(Package.id == package_id, Package.is_active == True)  # noqa: E712
+    )
+    pkg = result.scalar_one_or_none()
+    if not pkg:
+        raise HTTPException(404, "Package not found or inactive")
+
+    from datetime import datetime, timezone, timedelta
+    expires_at = None
+    if pkg.validity_days:
+        expires_at = datetime.now(timezone.utc) + timedelta(days=pkg.validity_days)
+
+    order = PackageOrder(
+        user_id=user.id,
+        package_id=pkg.id,
+        worker_id=pkg.worker_id,
+        status="active",
+        total_paid=pkg.discounted_price,
+        expires_at=expires_at,
+    )
+    db.add(order)
+    await db.commit()
+    await db.refresh(order)
+    return {
+        "id": str(order.id),
+        "package_id": str(order.package_id),
+        "worker_id": str(order.worker_id),
+        "status": order.status,
+        "total_paid": float(order.total_paid),
+        "expires_at": order.expires_at.isoformat() if order.expires_at else None,
+        "purchased_at": order.purchased_at.isoformat(),
+    }
+
+
+@router.get("/me/package-orders")
+async def get_my_package_orders(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get all package orders for the current user."""
+    result = await db.execute(
+        select(PackageOrder)
+        .where(PackageOrder.user_id == user.id)
+        .order_by(PackageOrder.purchased_at.desc())
+    )
+    orders = result.scalars().all()
+
+    out = []
+    for order in orders:
+        await db.refresh(order, ["package", "usages"])
+        if order.package:
+            await db.refresh(order.package, ["items"])
+            for item in order.package.items:
+                await db.refresh(item, ["service"])
+
+        # Count usages per service
+        usage_map: dict = {}
+        for usage in order.usages:
+            sid = str(usage.service_id)
+            usage_map[sid] = usage_map.get(sid, 0) + 1
+
+        items_with_remaining = []
+        if order.package:
+            for item in order.package.items:
+                sid = str(item.service_id)
+                used = usage_map.get(sid, 0)
+                remaining = max(0, item.quantity - used)
+                svc = item.service
+                items_with_remaining.append({
+                    "service_id": sid,
+                    "service_title": svc.title if svc else "Unknown",
+                    "quantity": item.quantity,
+                    "used": used,
+                    "remaining": remaining,
+                    "redeem_type": item.redeem_type,
+                })
+
+        from datetime import datetime, timezone, timedelta
+        days_remaining = None
+        if order.expires_at:
+            delta = order.expires_at - datetime.now(timezone.utc)
+            days_remaining = max(0, delta.days)
+
+        out.append({
+            "id": str(order.id),
+            "package_id": str(order.package_id),
+            "worker_id": str(order.worker_id),
+            "status": order.status,
+            "total_paid": float(order.total_paid),
+            "expires_at": order.expires_at.isoformat() if order.expires_at else None,
+            "days_remaining": days_remaining,
+            "purchased_at": order.purchased_at.isoformat(),
+            "package_title": order.package.title if order.package else None,
+            "items": items_with_remaining,
+        })
+    return out
+
+
+@router.get("/me/package-orders/{order_id}")
+async def get_package_order(
+    order_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(PackageOrder).where(PackageOrder.id == order_id, PackageOrder.user_id == user.id)
+    )
+    order = result.scalar_one_or_none()
+    if not order:
+        raise HTTPException(404, "Order not found")
+
+    await db.refresh(order, ["package", "usages"])
+    if order.package:
+        await db.refresh(order.package, ["items"])
+        for item in order.package.items:
+            await db.refresh(item, ["service"])
+
+    usages_out = [
+        {"id": str(u.id), "service_id": str(u.service_id), "job_id": str(u.job_id) if u.job_id else None, "used_at": u.used_at.isoformat()}
+        for u in order.usages
+    ]
+
+    from datetime import datetime, timezone
+    days_remaining = None
+    if order.expires_at:
+        delta = order.expires_at - datetime.now(timezone.utc)
+        days_remaining = max(0, delta.days)
+
+    return {
+        "id": str(order.id),
+        "package_id": str(order.package_id),
+        "worker_id": str(order.worker_id),
+        "status": order.status,
+        "total_paid": float(order.total_paid),
+        "expires_at": order.expires_at.isoformat() if order.expires_at else None,
+        "days_remaining": days_remaining,
+        "purchased_at": order.purchased_at.isoformat(),
+        "package": _serialize_package(order.package) if order.package else None,
+        "usages": usages_out,
+    }
+
+
+# ═══════════════════════════════════════════════════════════
 # PUBLIC ROUTES — dynamic /{worker_id} MUST come last
 # ═══════════════════════════════════════════════════════════
 
@@ -449,6 +885,32 @@ async def get_worker(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     data.full_name = u.full_name
     data.avatar_url = u.avatar_url
     return data
+
+
+@router.get("/{worker_id}/packages")
+async def get_worker_packages(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(Package).where(Package.worker_id == worker_id, Package.is_active == True)  # noqa: E712
+    )
+    pkgs = result.scalars().all()
+    for pkg in pkgs:
+        await db.refresh(pkg, ["items"])
+        for item in pkg.items:
+            await db.refresh(item, ["service"])
+    return [_serialize_package(p) for p in pkgs]
+
+
+@router.get("/{worker_id}/offers", response_model=list[OfferResponse])
+async def get_worker_offers(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+    from datetime import datetime, timezone
+    result = await db.execute(
+        select(Offer).where(
+            Offer.worker_id == worker_id,
+            Offer.is_active == True,  # noqa: E712
+            Offer.valid_until > datetime.now(timezone.utc),
+        )
+    )
+    return result.scalars().all()
 
 
 @router.get("/{worker_id}/services", response_model=list[ServiceResponse])

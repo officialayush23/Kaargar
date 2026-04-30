@@ -169,24 +169,28 @@ class DocumentUpload(BaseModel):
 
 # ── SERVICES ──────────────────────────────────────────────────
 class ServiceCreate(BaseModel):
-    category_id: Optional[UUID] = None 
+    category_id: Optional[UUID] = None
     title: str = Field(..., max_length=150)
     description: Optional[str] = None
-    price: Decimal = Field(default=Decimal("0.0"), alias="hourly_rate")  
-    price_type: str = "hourly"
+    price: Decimal = Field(default=Decimal("0.0"), alias="hourly_rate")
+    price_type: str = "fixed"
     duration_min: Optional[int] = None
-    
+    service_mode: str = Field(default="both", pattern="^(walkin|onsite|both)$")
+    visit_fee: Optional[Decimal] = None
+
     model_config = ConfigDict(populate_by_name=True)
 
 
 class ServiceUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    price: Optional[Decimal] = Field(default=None, alias="hourly_rate")  
+    price: Optional[Decimal] = Field(default=None, alias="hourly_rate")
     price_type: Optional[str] = None
     duration_min: Optional[int] = None
     is_active: Optional[bool] = None
-    
+    service_mode: Optional[str] = Field(default=None, pattern="^(walkin|onsite|both)$")
+    visit_fee: Optional[Decimal] = None
+
     model_config = ConfigDict(populate_by_name=True)
 
 
@@ -200,23 +204,56 @@ class ServiceResponse(KaargarBase):
     price_type: str
     duration_min: Optional[int] = None
     is_active: bool
+    service_mode: str
+    visit_fee: Optional[Decimal] = None
     total_bookings: int
     avg_rating: Decimal
     rating_count: int
     created_at: datetime
-    
+
     @computed_field
     @property
     def hourly_rate(self) -> Decimal:
         return self.price
 
+
 # ── PACKAGES ──────────────────────────────────────────────────
+class PackageItemCreate(BaseModel):
+    service_id: UUID
+    quantity: int = Field(default=1, ge=1, le=50)
+    redeem_type: str = Field(default="repeatable", pattern="^(once|repeatable)$")
+
+
+class PackageItemResponse(KaargarBase):
+    service_id: UUID
+    quantity: int
+    redeem_type: str
+    service: Optional[ServiceResponse] = None
+
+
 class PackageCreate(BaseModel):
-    title: str
+    title: str = Field(..., max_length=150)
     description: Optional[str] = None
     original_price: Decimal
     discounted_price: Decimal
-    service_ids: list[UUID] = []
+    redemption_type: str = Field(default="multi_use", pattern="^(single_use_bundle|multi_use)$")
+    validity_days: Optional[int] = Field(default=None, ge=1)
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    items: list[PackageItemCreate] = []
+
+
+class PackageUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    original_price: Optional[Decimal] = None
+    discounted_price: Optional[Decimal] = None
+    redemption_type: Optional[str] = Field(default=None, pattern="^(single_use_bundle|multi_use)$")
+    validity_days: Optional[int] = None
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
+    is_active: Optional[bool] = None
+    items: Optional[list[PackageItemCreate]] = None
 
 
 class PackageResponse(KaargarBase):
@@ -226,14 +263,81 @@ class PackageResponse(KaargarBase):
     description: Optional[str] = None
     original_price: Decimal
     discounted_price: Decimal
+    redemption_type: str
+    validity_days: Optional[int] = None
     is_active: bool
+    valid_from: Optional[datetime] = None
+    valid_until: Optional[datetime] = None
     total_bookings: int
     created_at: datetime
+    items: list[PackageItemResponse] = []
+
+
+# ── PACKAGE ORDERS ────────────────────────────────────────────
+class PackageOrderCreate(BaseModel):
+    package_id: UUID
+
+
+class PackageUsageResponse(KaargarBase):
+    id: UUID
+    service_id: UUID
+    job_id: Optional[UUID] = None
+    used_at: datetime
+
+
+class PackageOrderResponse(KaargarBase):
+    id: UUID
+    user_id: UUID
+    package_id: UUID
+    worker_id: UUID
+    status: str
+    total_paid: Decimal
+    expires_at: Optional[datetime] = None
+    purchased_at: datetime
+    package: Optional[PackageResponse] = None
+    usages: list[PackageUsageResponse] = []
+
+    @computed_field
+    @property
+    def days_remaining(self) -> Optional[int]:
+        if self.expires_at is None:
+            return None
+        from datetime import timezone
+        now = datetime.now(timezone.utc)
+        delta = self.expires_at - now
+        return max(0, delta.days)
 
 
 # ── OFFERS ────────────────────────────────────────────────────
 class OfferCreate(BaseModel):
     service_id: Optional[UUID] = None
+    package_id: Optional[UUID] = None
+    title: str = Field(..., max_length=150)
+    description: Optional[str] = None
+    discount_type: str = Field(..., pattern="^(percent|flat)$")
+    discount_value: Decimal = Field(..., gt=0)
+    min_order_value: Optional[Decimal] = None
+    promo_code: Optional[str] = Field(default=None, max_length=30)
+    valid_until: datetime
+    usage_limit: Optional[int] = None
+
+
+class OfferUpdate(BaseModel):
+    title: Optional[str] = None
+    description: Optional[str] = None
+    discount_type: Optional[str] = None
+    discount_value: Optional[Decimal] = None
+    min_order_value: Optional[Decimal] = None
+    valid_until: Optional[datetime] = None
+    is_active: Optional[bool] = None
+    usage_limit: Optional[int] = None
+
+
+class OfferResponse(KaargarBase):
+    id: UUID
+    worker_id: UUID
+    service_id: Optional[UUID] = None
+    package_id: Optional[UUID] = None
     title: str
     description: Optional[str] = None
     discount_type: str
@@ -241,18 +345,10 @@ class OfferCreate(BaseModel):
     min_order_value: Optional[Decimal] = None
     promo_code: Optional[str] = None
     valid_until: datetime
-
-
-class OfferResponse(KaargarBase):
-    id: UUID
-    worker_id: UUID
-    title: str
-    discount_type: str
-    discount_value: Decimal
-    promo_code: Optional[str] = None
-    valid_until: datetime
-    is_active: bool
+    usage_limit: Optional[int] = None
     usage_count: int
+    is_active: bool
+    created_at: datetime
 
 
 # ── JOBS ──────────────────────────────────────────────────────

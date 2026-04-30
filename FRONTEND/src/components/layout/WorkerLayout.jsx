@@ -3,7 +3,7 @@ import { Outlet, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LogOut, Moon, Sun, Bell, ChevronRight,
-  LayoutDashboard, Wrench, ImageIcon, TrendingUp, HelpCircle
+  LayoutDashboard, Wrench, ImageIcon, TrendingUp, HelpCircle, Package, Tag
 } from 'lucide-react'
 import { Background } from '@/components/glass/Background'
 import { MobileBottomNav } from '@/components/glass/GlassNavbar'
@@ -27,6 +27,8 @@ function WorkerMenu({ open, onClose }) {
   const menuItems = [
     { label: 'Dashboard',  icon: LayoutDashboard, path: '/worker' },
     { label: 'Services',   icon: Wrench,          path: '/worker/services' },
+    { label: 'Packages',   icon: Package,         path: '/worker/packages' },
+    { label: 'Offers',     icon: Tag,              path: '/worker/offers' },
     { label: 'Portfolio',  icon: ImageIcon,        path: '/worker/media' },
     { label: 'Analytics',  icon: TrendingUp,       path: '/worker/analytics' },
     { label: 'Profile',    icon: ChevronRight,     path: '/worker/profile' },

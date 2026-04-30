@@ -16,11 +16,11 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 const SEARCH_MESSAGES = [
-  'Finding workers near you…',
-  'Checking availability…',
-  'Matching your requirements…',
-  'Almost there…',
-  'Connecting with nearby pros…',
+  'Finding workers near you...',
+  'Checking availability...',
+  'Matching your requirements...',
+  'Almost there...',
+  'Connecting with nearby pros...',
 ]
 
 function RippleRing({ delay = 0, size = 1 }) {
@@ -97,9 +97,7 @@ function SearchingAnimation() {
           >
             <motion.div
               className="w-4 h-4 rounded-full bg-azure"
-              style={{
-                transform: `translateX(${56}px) translateY(-50%)`,
-              }}
+              style={{ transform: `translateX(${56}px) translateY(-50%)` }}
             />
           </motion.div>
         ))}
@@ -113,13 +111,14 @@ function SearchingAnimation() {
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -8 }}
           transition={{ duration: 0.3 }}
-          className="text-lg font-semibold font-syne text-white/90 text-center"
+          className="text-lg font-semibold font-syne text-center"
+          style={{ color: 'var(--text-primary)' }}
         >
           {SEARCH_MESSAGES[msgIdx]}
         </motion.p>
       </AnimatePresence>
 
-      <p className="text-sm text-white/40 mt-2 text-center">
+      <p className="text-sm mt-2 text-center" style={{ color: 'var(--text-muted)' }}>
         Searching within 5 km of your location
       </p>
 
@@ -136,7 +135,7 @@ function SearchingAnimation() {
             </div>
           ))}
         </div>
-        <span className="text-xs text-white/60">12 workers nearby</span>
+        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>12 workers nearby</span>
       </motion.div>
     </div>
   )
@@ -161,10 +160,10 @@ function WorkerFoundCard({ worker, jobId, onChat, onCall }) {
           className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500/40 flex items-center justify-center mx-auto mb-4"
           style={{ boxShadow: '0 0 32px rgba(16,185,129,0.4)' }}
         >
-          <span className="text-3xl">✓</span>
+          <span className="text-3xl">&#10003;</span>
         </motion.div>
-        <h2 className="text-xl font-bold font-syne text-white/90">Worker found!</h2>
-        <p className="text-sm text-white/40 mt-1">Your professional is on the way</p>
+        <h2 className="text-xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>Worker found!</h2>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Your professional is on the way</p>
       </div>
 
       {/* Worker card */}
@@ -177,12 +176,12 @@ function WorkerFoundCard({ worker, jobId, onChat, onCall }) {
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-white/90 font-syne">{worker?.full_name || 'Worker'}</p>
+            <p className="font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>{worker?.full_name || 'Worker'}</p>
             <div className="flex items-center gap-1.5 mt-0.5">
               <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
               <span className="text-sm text-amber-400 font-medium">{worker?.avg_rating?.toFixed(1) || '4.8'}</span>
-              <span className="text-xs text-white/30">·</span>
-              <span className="text-xs text-white/40">{worker?.total_jobs_completed || 0} jobs</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>·</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>{worker?.total_jobs_completed || 0} jobs</span>
             </div>
             <div className="flex items-center gap-1.5 mt-1">
               <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
@@ -192,39 +191,29 @@ function WorkerFoundCard({ worker, jobId, onChat, onCall }) {
         </div>
 
         {/* ETA */}
-        <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+        <div className="mt-4 pt-4 flex items-center justify-between" style={{ borderTop: '1px solid var(--g-border)' }}>
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-azure" />
             <div>
-              <p className="text-xs text-white/40">Estimated arrival</p>
-              <p className="text-sm font-semibold text-white/90">30–45 min</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Estimated arrival</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>30-45 min</p>
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-white/40" />
+            <MapPin className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
             <div>
-              <p className="text-xs text-white/40">Distance</p>
-              <p className="text-sm font-semibold text-white/90">~2.3 km</p>
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Distance</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>~2.3 km</p>
             </div>
           </div>
         </div>
 
         {/* Actions */}
         <div className="mt-4 grid grid-cols-2 gap-3">
-          <GlassButton
-            variant="ghost"
-            icon={Phone}
-            onClick={onCall}
-            className="w-full"
-          >
+          <GlassButton variant="ghost" icon={Phone} onClick={onCall} className="w-full">
             Call
           </GlassButton>
-          <GlassButton
-            variant="brand"
-            icon={MessageCircle}
-            onClick={onChat}
-            className="w-full"
-          >
+          <GlassButton variant="brand" icon={MessageCircle} onClick={onChat} className="w-full">
             Chat
           </GlassButton>
         </div>
@@ -255,7 +244,6 @@ export default function SearchingPage() {
   useEffect(() => {
     if (!jobId) return
 
-    // Poll initial status
     api.get(`/jobs/${jobId}`).then(({ data }) => {
       setJobStatus(data.status)
       if (data.assigned_worker) setWorker(data.assigned_worker)
@@ -264,7 +252,6 @@ export default function SearchingPage() {
       }
     }).catch(() => {})
 
-    // Subscribe to status changes
     channelRef.current = supabase
       .channel(`job:${jobId}`)
       .on('postgres_changes', {
@@ -274,14 +261,11 @@ export default function SearchingPage() {
         filter: `id=eq.${jobId}`,
       }, ({ new: updated }) => {
         setJobStatus(updated.status)
-
         if (updated.status === 'assigned') {
-          // Fetch worker details
           api.get(`/jobs/${jobId}`).then(({ data }) => {
             if (data.assigned_worker) setWorker(data.assigned_worker)
           }).catch(() => {})
         }
-
         if (['en_route', 'arrived', 'started'].includes(updated.status)) {
           navigate(`/job/${jobId}/active`, { replace: true })
         }
@@ -317,8 +301,8 @@ export default function SearchingPage() {
     <div className="min-h-full flex flex-col">
       {/* Header */}
       <div className="flex items-center justify-between py-2 mb-2">
-        <h1 className="text-lg font-semibold font-syne text-white/90">
-          {workerFound ? 'Match found' : 'Searching…'}
+        <h1 className="text-lg font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
+          {workerFound ? 'Match found' : 'Searching...'}
         </h1>
         {!workerFound && (
           <GlassButton
@@ -349,10 +333,12 @@ export default function SearchingPage() {
             animate={{ opacity: 1 }}
             className="flex-1 flex flex-col items-center justify-center py-16 text-center gap-4"
           >
-            <div className="w-16 h-16 rounded-2xl bg-red-500/15 flex items-center justify-center text-3xl">😔</div>
+            <div className="w-16 h-16 rounded-2xl bg-red-500/15 flex items-center justify-center text-3xl">
+              &#128532;
+            </div>
             <div>
-              <h3 className="text-lg font-semibold font-syne text-white/80">No workers found</h3>
-              <p className="text-sm text-white/40 mt-1">All workers are busy. Please try again in a few minutes.</p>
+              <h3 className="text-lg font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>No workers found</h3>
+              <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>All workers are busy. Please try again in a few minutes.</p>
             </div>
             <GlassButton variant="brand" onClick={() => navigate('/')}>
               Go back home

@@ -24,6 +24,8 @@ import WorkerOnboardPage from '@/pages/onboarding/WorkerOnboardPage'
 
 import WorkerDashboard from '@/pages/worker/WorkerDashboard'
 import WorkerServices from '@/pages/worker/WorkerServices'
+import WorkerPackages from '@/pages/worker/WorkerPackages'
+import WorkerOffers from '@/pages/worker/WorkerOffers'
 import WorkerMedia from '@/pages/worker/WorkerMedia'
 import WorkerProfile from '@/pages/worker/WorkerProfile'
 import WorkerAnalytics from '@/pages/worker/WorkerAnalytics'
@@ -113,6 +115,8 @@ export default function App() {
       <Route path="worker" element={<RequireWorker><WorkerLayout /></RequireWorker>}>
         <Route index element={<WorkerDashboard />} />
         <Route path="services" element={<WorkerServices />} />
+        <Route path="packages" element={<WorkerPackages />} />
+        <Route path="offers" element={<WorkerOffers />} />
         <Route path="media" element={<WorkerMedia />} />
         <Route path="profile" element={<WorkerProfile />} />
         <Route path="analytics" element={<WorkerAnalytics />} />

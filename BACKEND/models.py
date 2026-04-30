@@ -192,6 +192,9 @@ class Service(Base):
     created_at: Mapped[datetime] = now()
     updated_at: Mapped[datetime] = now()
 
+    service_mode: Mapped[str] = mapped_column(String(10), default="both")
+    visit_fee: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+
     worker = relationship("WorkerProfile", back_populates="services")
     category = relationship("Category")
 
@@ -236,12 +239,16 @@ class Package(Base):
     description: Mapped[str | None] = mapped_column(Text)
     original_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
     discounted_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    redemption_type: Mapped[str] = mapped_column(String(30), default="multi_use")
+    validity_days: Mapped[int | None] = mapped_column(Integer)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     valid_from: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     total_bookings: Mapped[int] = mapped_column(Integer, default=0)
     created_at: Mapped[datetime] = now()
     updated_at: Mapped[datetime] = now()
+
+    items = relationship("PackageService", back_populates="package", cascade="all, delete-orphan")
 
 
 class PackageService(Base):
@@ -250,6 +257,10 @@ class PackageService(Base):
     package_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("packages.id", ondelete="CASCADE"), primary_key=True)
     service_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("services.id", ondelete="CASCADE"), primary_key=True)
     quantity: Mapped[int] = mapped_column(Integer, default=1)
+    redeem_type: Mapped[str] = mapped_column(String(15), default="repeatable")
+
+    package = relationship("Package", back_populates="items")
+    service = relationship("Service")
 
 
 # ── 12. OFFERS ────────────────────────────────────────────────
@@ -658,3 +669,38 @@ class RefreshToken(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     revoked: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = now()
+
+
+# ── 33. PACKAGE ORDERS ────────────────────────────────────────
+class PackageOrder(Base):
+    __tablename__ = "package_orders"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    package_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("packages.id", ondelete="RESTRICT"), nullable=False)
+    worker_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("worker_profiles.id", ondelete="RESTRICT"), nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="active")
+    total_paid: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    purchased_at: Mapped[datetime] = now()
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = now()
+
+    user = relationship("User")
+    package = relationship("Package")
+    worker = relationship("WorkerProfile")
+    usages = relationship("PackageUsage", back_populates="order")
+
+
+# ── 34. PACKAGE USAGES ────────────────────────────────────────
+class PackageUsage(Base):
+    __tablename__ = "package_usages"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    package_order_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("package_orders.id", ondelete="CASCADE"), nullable=False)
+    service_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("services.id", ondelete="RESTRICT"), nullable=False)
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    used_at: Mapped[datetime] = now()
+
+    order = relationship("PackageOrder", back_populates="usages")
+    service = relationship("Service")

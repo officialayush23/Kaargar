@@ -20,17 +20,20 @@ function MenuItem({ icon: Icon, label, sub, onClick, danger, color }) {
       whileHover={{ x: 2 }}
       className="w-full flex items-center gap-3 px-4 py-3.5 transition-colors text-left"
     >
-      <div className={cn(
-        'w-9 h-9 rounded-xl flex items-center justify-center shrink-0',
-        danger ? 'bg-red-500/15' : color ? `${color}/15` : 'bg-white/8'
-      )}>
-        <Icon className={cn('h-4 w-4', danger ? 'text-red-400' : color ? `text-${color}` : 'text-white/50')} />
+      <div
+        className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+        style={{ background: danger ? 'rgba(239,68,68,0.12)' : 'var(--g-bg)' }}
+      >
+        <Icon
+          className="h-4 w-4"
+          style={{ color: danger ? '#f87171' : 'var(--text-secondary)' }}
+        />
       </div>
       <div className="flex-1 min-w-0">
-        <p className={cn('text-sm font-medium', danger ? 'text-red-400' : 'text-white/80')}>{label}</p>
-        {sub && <p className="text-xs text-white/35 mt-0.5">{sub}</p>}
+        <p className="text-sm font-medium" style={{ color: danger ? '#f87171' : 'var(--text-primary)' }}>{label}</p>
+        {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
       </div>
-      {!danger && <ChevronRight className="h-4 w-4 text-white/25" />}
+      {!danger && <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />}
     </motion.button>
   )
 }
@@ -111,12 +114,12 @@ export default function ProfilePage() {
             ) : (
               <button onClick={() => setEditingName(true)} className="text-left w-full group">
                 <div className="flex items-center gap-2">
-                  <p className="text-base font-semibold font-syne text-white/90">
+                  <p className="text-base font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
                     {user?.full_name || 'Add your name'}
                   </p>
-                  <Pencil className="h-3 w-3 text-white/30 group-hover:text-white/60 transition-colors" />
+                  <Pencil className="h-3 w-3 transition-colors" style={{ color: 'var(--text-muted)' }} />
                 </div>
-                <p className="text-sm text-white/40">{user?.email}</p>
+                <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{user?.email}</p>
               </button>
             )}
           </div>

@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, MapPin, ChevronDown, Bell } from 'lucide-react'
+import { Search, MapPin, ChevronDown, Bell, Sun, Moon } from 'lucide-react'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { CategoryGrid } from '@/components/kaargar/CategoryGrid'
@@ -337,7 +337,7 @@ function DiscoveryContent() {
 ═══════════════════════════════════════════════ */
 export default function HomePage() {
   const navigate = useNavigate()
-  const { mode } = useAppStore()
+  const { mode, theme, toggleTheme } = useAppStore()
   const { user } = useAuthStore()
   const { unreadCount } = useNotifications()
   const [menuOpen, setMenuOpen] = useState(false)
@@ -444,6 +444,29 @@ export default function HomePage() {
               )}
             </button>
 
+            {/* Theme toggle */}
+            <motion.button
+              onClick={toggleTheme}
+              whileTap={{ scale: 0.9 }}
+              style={{
+                width: '36px',
+                height: '36px',
+                borderRadius: '10px',
+                background: 'var(--g-bg)',
+                border: '1px solid var(--g-border)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {theme === 'dark'
+                ? <Sun size={16} style={{ color: '#f59e0b' }} />
+                : <Moon size={16} style={{ color: 'var(--text-secondary)' }} />
+              }
+            </motion.button>
+
             {/* Profile avatar */}
             <motion.button
               onClick={() => setMenuOpen(true)}
@@ -477,7 +500,9 @@ export default function HomePage() {
           transition={{ delay: 0.05 }}
         >
           <h1 className="text-5xl font-black font-syne tracking-tight" style={{
-            background: 'linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 40%, #F59E0B 100%)',
+            background: theme === 'dark'
+              ? 'linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 40%, #F59E0B 100%)'
+              : 'linear-gradient(135deg, #1a1a1a 0%, #374151 40%, #d97706 100%)',
             WebkitBackgroundClip: 'text',
             WebkitTextFillColor: 'transparent',
             backgroundClip: 'text',
