@@ -5,7 +5,7 @@ Kaargar — All Pydantic schemas (request/response models).
 from datetime import datetime
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, computed_field
 from typing import Optional
 
 
@@ -166,23 +166,28 @@ class DocumentUpload(BaseModel):
     file_size_kb: Optional[int] = None
 
 
+
 # ── SERVICES ──────────────────────────────────────────────────
 class ServiceCreate(BaseModel):
-    category_id: UUID
+    category_id: Optional[UUID] = None 
     title: str = Field(..., max_length=150)
     description: Optional[str] = None
-    price: Decimal
-    price_type: str = "fixed"
+    price: Decimal = Field(default=Decimal("0.0"), alias="hourly_rate")  
+    price_type: str = "hourly"
     duration_min: Optional[int] = None
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ServiceUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    price: Optional[Decimal] = None
+    price: Optional[Decimal] = Field(default=None, alias="hourly_rate")  
     price_type: Optional[str] = None
     duration_min: Optional[int] = None
     is_active: Optional[bool] = None
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ServiceResponse(KaargarBase):
@@ -199,7 +204,11 @@ class ServiceResponse(KaargarBase):
     avg_rating: Decimal
     rating_count: int
     created_at: datetime
-
+    
+    @computed_field
+    @property
+    def hourly_rate(self) -> Decimal:
+        return self.price
 
 # ── PACKAGES ──────────────────────────────────────────────────
 class PackageCreate(BaseModel):

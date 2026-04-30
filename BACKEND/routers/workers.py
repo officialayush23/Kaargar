@@ -311,12 +311,26 @@ async def create_service(
     wp = result.scalar_one_or_none()
     if not wp:
         raise HTTPException(404, "Worker profile not found")
-    svc = Service(worker_id=wp.id, **body.model_dump())
+        
+    # Get the payload as a dictionary, ignoring None values
+    dump = body.model_dump(exclude_none=True)
+    
+    # Auto-assign the worker's primary category if frontend didn't send it
+    if "category_id" not in dump:
+        from models import WorkerCategory
+        cat_result = await db.execute(
+            select(WorkerCategory.category_id).where(WorkerCategory.worker_id == wp.id).limit(1)
+        )
+        cat_id = cat_result.scalar_one_or_none()
+        if not cat_id:
+            raise HTTPException(400, "Worker has no categories assigned. Update profile first.")
+        dump["category_id"] = cat_id
+
+    svc = Service(worker_id=wp.id, **dump)
     db.add(svc)
     await db.commit()
     await db.refresh(svc)
     return svc
-
 
 @router.patch("/me/services/{service_id}", response_model=ServiceResponse)
 async def update_service(

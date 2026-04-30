@@ -207,7 +207,7 @@ export default function WorkerDashboard() {
             />
             <StatCard
               label="Rating"
-              value={(analytics?.avg_rating || 0).toFixed(1)}
+              value={Number(analytics?.avg_rating || 0).toFixed(1)}
               sub={`${analytics?.total_reviews || 0} reviews`}
               icon={Star}
               accentColor="#f59e0b"

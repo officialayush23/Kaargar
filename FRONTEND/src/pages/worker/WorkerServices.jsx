@@ -17,8 +17,23 @@ function ServiceForm({ initial, onSave, onCancel }) {
     e.preventDefault()
     if (!title.trim()) return
     setLoading(true)
+    
     try {
-      await onSave({ title: title.trim(), description: description.trim() || undefined, hourly_rate: hourlyRate ? Number(hourlyRate) : undefined })
+      // 1. Start with only the strictly required fields
+      const payload = { 
+        title: title.trim() 
+      }
+      
+      // 2. Only attach optional fields if they actually contain data
+      if (description.trim()) {
+        payload.description = description.trim()
+      }
+      
+      if (hourlyRate && !isNaN(Number(hourlyRate))) {
+        payload.hourly_rate = Number(hourlyRate)
+      }
+
+      await onSave(payload)
     } finally {
       setLoading(false)
     }
@@ -80,6 +95,16 @@ export default function WorkerServices() {
     queryFn: () => api.get('/workers/me/services').then(r => r.data),
   })
 
+  // Helper to extract exact FastAPI validation errors
+  const extractError = (err) => {
+    const detail = err.response?.data?.detail
+    if (Array.isArray(detail)) {
+      const loc = detail[0]?.loc?.slice(1).join('.') || 'Field'
+      return `${loc}: ${detail[0]?.msg}`
+    }
+    return typeof detail === 'string' ? detail : 'Failed to save service'
+  }
+
   const addMut = useMutation({
     mutationFn: (data) => api.post('/workers/me/services', data),
     onSuccess: () => {
@@ -87,7 +112,10 @@ export default function WorkerServices() {
       setShowAdd(false)
       toast.success('Service added')
     },
-    onError: () => toast.error('Failed to add service'),
+    onError: (err) => {
+      console.error("422 Validation Error:", err.response?.data)
+      toast.error(extractError(err))
+    },
   })
 
   const updateMut = useMutation({
@@ -97,7 +125,10 @@ export default function WorkerServices() {
       setEditingId(null)
       toast.success('Updated')
     },
-    onError: () => toast.error('Failed to update'),
+    onError: (err) => {
+      console.error("422 Validation Error:", err.response?.data)
+      toast.error(extractError(err))
+    },
   })
 
   const deleteMut = useMutation({

@@ -60,9 +60,9 @@ export default function WorkerAnalytics() {
   const { data: analytics, isLoading } = useWorkerAnalytics(period)
 
   const maxEarnings = Math.max(
-    analytics?.earnings_today || 0,
-    analytics?.earnings_week || 0,
-    analytics?.earnings_month || 0,
+    Number(analytics?.today_earnings || 0),
+    Number(analytics?.week_earnings || 0),
+    Number(analytics?.month_earnings || 0),
   )
 
   return (
@@ -98,32 +98,32 @@ export default function WorkerAnalytics() {
               icon={TrendingUp}
               label="Earnings"
               value={formatCurrency(
-                period === 'today' ? analytics?.earnings_today :
-                period === 'week' ? analytics?.earnings_week :
-                period === 'month' ? analytics?.earnings_month :
+                period === 'today' ? analytics?.today_earnings :
+                period === 'week' ? analytics?.week_earnings :
+                period === 'month' ? analytics?.month_earnings :
                 analytics?.total_earnings || 0
               )}
-              sub={`${period === 'today' ? analytics?.jobs_today : period === 'week' ? analytics?.jobs_week : period === 'month' ? analytics?.jobs_month : analytics?.total_jobs || 0} jobs`}
+              sub={`${period === 'today' ? analytics?.today_jobs : period === 'week' ? analytics?.week_jobs : period === 'month' ? analytics?.month_jobs : analytics?.total_jobs || 0} jobs`}
               accent="instant"
             />
             <StatBlock
               icon={Star}
               label="Avg rating"
-              value={(analytics?.avg_rating || 0).toFixed(1)}
+              value={Number(analytics?.avg_rating || 0).toFixed(1)}
               sub={`${analytics?.total_reviews || 0} reviews`}
               accent="discovery"
             />
             <StatBlock
               icon={Briefcase}
               label="Acceptance"
-              value={`${Math.round((analytics?.acceptance_rate || 0) * 100)}%`}
+              value={`${Math.round(Number(analytics?.acceptance_rate || 0) * 100)}%`}
               sub="of offers accepted"
               accent="brand"
             />
             <StatBlock
               icon={Clock}
               label="Completion"
-              value={`${Math.round((analytics?.completion_rate || 0) * 100)}%`}
+              value={`${Math.round(Number(analytics?.completion_rate || 0) * 100)}%`}
               sub="jobs completed"
               accent="brand"
             />
@@ -132,9 +132,9 @@ export default function WorkerAnalytics() {
           {/* Earnings breakdown */}
           <div className="glass rounded-2xl p-5 space-y-4">
             <p className="text-xs font-semibold text-[--text-muted] uppercase tracking-wider">Earnings breakdown</p>
-            <EarningsBar label="Today" amount={analytics?.earnings_today || 0} max={maxEarnings} />
-            <EarningsBar label="This week" amount={analytics?.earnings_week || 0} max={maxEarnings} />
-            <EarningsBar label="This month" amount={analytics?.earnings_month || 0} max={maxEarnings} />
+            <EarningsBar label="Today" amount={Number(analytics?.today_earnings || 0)} max={maxEarnings} />
+            <EarningsBar label="This week" amount={Number(analytics?.week_earnings || 0)} max={maxEarnings} />
+            <EarningsBar label="This month" amount={Number(analytics?.month_earnings || 0)} max={maxEarnings} />
           </div>
 
           {/* Cancellation score */}
@@ -143,20 +143,20 @@ export default function WorkerAnalytics() {
               <div className="flex items-center justify-between mb-2">
                 <p className="text-sm font-medium text-[--text-primary]">Reliability score</p>
                 <p className={`text-sm font-mono font-bold ${
-                  analytics.cancellation_score >= 0.8 ? 'text-instant' :
-                  analytics.cancellation_score >= 0.5 ? 'text-discovery' : 'text-red-400'
+                  Number(analytics.cancellation_score) >= 0.8 ? 'text-instant' :
+                  Number(analytics.cancellation_score) >= 0.5 ? 'text-discovery' : 'text-red-400'
                 }`}>
-                  {(analytics.cancellation_score * 100).toFixed(0)}%
+                  {(Number(analytics.cancellation_score) * 100).toFixed(0)}%
                 </p>
               </div>
               <div className="h-2 bg-white/5 rounded-full overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
-                  animate={{ width: `${analytics.cancellation_score * 100}%` }}
+                  animate={{ width: `${Number(analytics.cancellation_score) * 100}%` }}
                   transition={{ duration: 1, ease: 'easeOut' }}
                   className={`h-full rounded-full ${
-                    analytics.cancellation_score >= 0.8 ? 'bg-instant' :
-                    analytics.cancellation_score >= 0.5 ? 'bg-discovery' : 'bg-red-400'
+                    Number(analytics.cancellation_score) >= 0.8 ? 'bg-instant' :
+                    Number(analytics.cancellation_score) >= 0.5 ? 'bg-discovery' : 'bg-red-400'
                   }`}
                 />
               </div>
