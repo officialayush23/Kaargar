@@ -6,51 +6,75 @@ import { useJobs } from '@/hooks/useJobs'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { Skeleton } from '@/components/ui/skeleton'
-import { formatRelativeTime, formatCurrency, JOB_STATUS_COLORS, JOB_STATUS_LABELS } from '@/lib/utils'
+import { formatRelativeTime, formatCurrency, JOB_STATUS_LABELS } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
 const TABS = [
   { id: 'active', label: 'Active' },
-  { id: 'past',   label: 'Past' },
+  { id: 'past',   label: 'Past'   },
 ]
 
 const STATUS_CONFIG = {
-  completed: { icon: CheckCircle, bg: 'bg-emerald-500/15', text: 'text-emerald-400', dot: 'bg-emerald-400' },
-  cancelled:  { icon: XCircle,    bg: 'bg-red-500/15',     text: 'text-red-400',     dot: 'bg-red-400' },
-  default:    { icon: Clock,      bg: 'bg-azure/15',       text: 'text-azure',       dot: 'bg-azure' },
+  completed: { icon: CheckCircle, bgColor: 'rgba(52,211,153,0.12)',  textColor: '#34d399' },
+  cancelled:  { icon: XCircle,    bgColor: 'rgba(248,113,113,0.12)', textColor: '#f87171' },
+  default:    { icon: Clock,      bgColor: 'rgba(59,130,246,0.12)',  textColor: '#60a5fa' },
 }
 
 function JobCard({ job, onClick }) {
-  const cfg = STATUS_CONFIG[job.status] || STATUS_CONFIG.default
+  const cfg  = STATUS_CONFIG[job.status] || STATUS_CONFIG.default
   const Icon = cfg.icon
 
   return (
     <GlassCard onClick={onClick} hover className="p-4">
       <div className="flex items-center gap-3">
-        <div className={cn('w-10 h-10 rounded-xl flex items-center justify-center shrink-0', cfg.bg)}>
-          <Icon className={cn('h-5 w-5', cfg.text)} />
+        {/* Status icon */}
+        <div
+          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: cfg.bgColor }}
+        >
+          <Icon className="h-5 w-5" style={{ color: cfg.textColor }} />
         </div>
 
+        {/* Info */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-white/90 truncate">{job.category?.name || 'Service'}</p>
-          <p className="text-xs text-white/40 mt-0.5 truncate">{job.location_address}</p>
+          <p
+            className="text-sm font-semibold truncate"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {job.category?.name || 'Service'}
+          </p>
+          <p
+            className="text-xs mt-0.5 truncate"
+            style={{ color: 'var(--text-muted)' }}
+          >
+            {job.location_address}
+          </p>
           <div className="flex items-center gap-2 mt-1">
-            <div className={cn('w-1.5 h-1.5 rounded-full', cfg.dot)} />
-            <span className={cn('text-[11px] font-medium', cfg.text)}>
+            <div
+              className="w-1.5 h-1.5 rounded-full"
+              style={{ background: cfg.textColor }}
+            />
+            <span className="text-[11px] font-medium" style={{ color: cfg.textColor }}>
               {JOB_STATUS_LABELS?.[job.status] || job.status}
             </span>
-            <span className="text-[11px] text-white/25">·</span>
-            <span className="text-[11px] text-white/30">{formatRelativeTime(job.created_at)}</span>
+            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>·</span>
+            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+              {formatRelativeTime(job.created_at)}
+            </span>
           </div>
         </div>
 
+        {/* Amount + chevron */}
         <div className="flex flex-col items-end gap-1.5 shrink-0">
           {job.final_amount != null && (
-            <span className="text-sm font-mono font-semibold text-white/80">
+            <span
+              className="text-sm font-mono font-semibold"
+              style={{ color: 'var(--text-primary)' }}
+            >
               {formatCurrency(job.final_amount)}
             </span>
           )}
-          <ChevronRight className="h-4 w-4 text-white/25" />
+          <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
         </div>
       </div>
     </GlassCard>
@@ -63,29 +87,34 @@ export default function BookingsPage() {
   const { data: jobs = [], isLoading } = useJobs(tab)
 
   return (
-    <div className="space-y-5">
+    <div className="px-4 pt-6 pb-8 space-y-5">
+      {/* Heading */}
       <div>
-        <h1 className="text-2xl font-bold font-syne gradient-text-hero">Bookings</h1>
-        <p className="text-sm text-white/40 mt-0.5">Track your service requests</p>
+        <h1 className="text-2xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>
+          Bookings
+        </h1>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          Track your service requests
+        </p>
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-2">
+      <div
+        className="flex gap-1 p-1 rounded-2xl"
+        style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}
+      >
         {TABS.map(({ id, label }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={cn(
-              'relative px-5 py-2 rounded-xl text-sm font-medium transition-all',
-              tab === id
-                ? 'text-white'
-                : 'text-white/40 hover:text-white/70'
-            )}
+            className="relative flex-1 py-2 rounded-xl text-sm font-medium transition-all"
+            style={{ color: tab === id ? 'var(--text-primary)' : 'var(--text-muted)' }}
           >
             {tab === id && (
               <motion.div
                 layoutId="bookings-tab"
-                className="absolute inset-0 rounded-xl bg-white/10 border border-white/15"
+                className="absolute inset-0 rounded-xl"
+                style={{ background: 'var(--g-bg-hi)', border: '1px solid var(--g-border)' }}
                 transition={{ type: 'spring', stiffness: 400, damping: 28 }}
               />
             )}
@@ -98,7 +127,11 @@ export default function BookingsPage() {
       <div className="space-y-3">
         {isLoading ? (
           Array.from({ length: 4 }).map((_, i) => (
-            <Skeleton key={i} className="h-20 rounded-2xl bg-white/5" />
+            <Skeleton
+              key={i}
+              className="h-20 rounded-2xl"
+              style={{ background: 'var(--g-bg)' }}
+            />
           ))
         ) : jobs.length === 0 ? (
           <motion.div
@@ -106,15 +139,20 @@ export default function BookingsPage() {
             animate={{ opacity: 1, y: 0 }}
             className="flex flex-col items-center gap-4 py-16 text-center"
           >
-            <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center">
-              <CalendarCheck className="h-8 w-8 text-white/20" />
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center"
+              style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}
+            >
+              <CalendarCheck className="h-8 w-8" style={{ color: 'var(--text-muted)' }} />
             </div>
             <div>
-              <p className="text-sm font-medium text-white/60">
+              <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
                 {tab === 'active' ? 'No active bookings' : 'No past bookings'}
               </p>
-              <p className="text-xs text-white/30 mt-0.5">
-                {tab === 'active' ? 'Book a service to get started' : 'Your completed jobs will appear here'}
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                {tab === 'active'
+                  ? 'Book a service to get started'
+                  : 'Your completed jobs will appear here'}
               </p>
             </div>
             {tab === 'active' && (
@@ -134,9 +172,13 @@ export default function BookingsPage() {
               <JobCard
                 job={job}
                 onClick={() => {
-                  const active = ['searching', 'assigned', 'en_route', 'arrived', 'started']
-                  if (active.includes(job.status)) {
-                    navigate(job.status === 'searching' ? `/job/${job.id}/searching` : `/job/${job.id}/active`)
+                  const activeStatuses = ['searching', 'assigned', 'en_route', 'arrived', 'started']
+                  if (activeStatuses.includes(job.status)) {
+                    navigate(
+                      job.status === 'searching'
+                        ? `/job/${job.id}/searching`
+                        : `/job/${job.id}/active`
+                    )
                   }
                 }}
               />

@@ -26,8 +26,18 @@ export function useNotifications() {
   // Supabase Realtime subscription
   useEffect(() => {
     if (!user?.id) return
-    const channel = supabase
-      .channel(`notif:${user.id}`)
+
+    const channelName = `notif:${user.id}`
+
+    // If a channel with this name already exists (React StrictMode double-invoke),
+    // remove it before creating a fresh one. removeChannel is async but this
+    // ensures we never call .on() on an already-subscribed channel.
+    const existing = supabase.getChannels().find(c => c.topic === `realtime:${channelName}`)
+    if (existing) supabase.removeChannel(existing)
+
+    const channel = supabase.channel(channelName)
+
+    channel
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
@@ -36,9 +46,16 @@ export function useNotifications() {
       }, () => {
         qc.invalidateQueries({ queryKey: ['notifications'] })
       })
-      .subscribe()
+      .subscribe((status) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('[Realtime] notifications channel ready')
+        }
+        if (status === 'CHANNEL_ERROR') {
+          console.error('[Realtime] notifications channel error — check RLS + replication')
+        }
+      })
 
-    return () => supabase.removeChannel(channel)
+    return () => { supabase.removeChannel(channel) }
   }, [user?.id])
 
   const notifications = query.data ?? []

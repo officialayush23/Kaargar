@@ -7,6 +7,7 @@ export const useAppStore = create(
       mode: 'instant', // 'instant' | 'discovery'
       selectedArea: 'Baner',
       notifCount: 0,
+      theme: 'dark', // 'dark' | 'light'
 
       // Location state
       currentLocation: null,   // { lat, lon, address, label }
@@ -18,6 +19,18 @@ export const useAppStore = create(
       setNotifCount: (n) => set({ notifCount: n }),
       incrementNotif: () => set((s) => ({ notifCount: s.notifCount + 1 })),
       clearNotif: () => set({ notifCount: 0 }),
+
+      setTheme: (theme) => {
+        document.documentElement.setAttribute('data-theme', theme)
+        set({ theme })
+      },
+
+      toggleTheme: () =>
+        set((s) => {
+          const next = s.theme === 'dark' ? 'light' : 'dark'
+          document.documentElement.setAttribute('data-theme', next)
+          return { theme: next }
+        }),
 
       setCurrentLocation: (loc) => set({ currentLocation: loc }),
 
@@ -41,6 +54,7 @@ export const useAppStore = create(
       name: 'kaargar-app',
       partialize: (s) => ({
         mode: s.mode,
+        theme: s.theme,
         selectedArea: s.selectedArea,
         savedAddresses: s.savedAddresses,
         activeAddressId: s.activeAddressId,

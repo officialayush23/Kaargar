@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from config import get_settings
-from routers import auth, categories, workers, jobs, upload, search, chat, payments, reviews, notifications, admin
+from routers import auth, categories, workers, jobs, upload, search, chat, payments, reviews, notifications, admin, support, users
 
 settings = get_settings()
 
@@ -51,7 +51,9 @@ app.include_router(chat.router,          prefix="/v1/chat",          tags=["chat
 app.include_router(payments.router,      prefix="/v1/payments",      tags=["payments"])
 app.include_router(reviews.router,       prefix="/v1/reviews",       tags=["reviews"])
 app.include_router(notifications.router, prefix="/v1/notifications", tags=["notifications"])
+app.include_router(support.router,       prefix="/v1/support",       tags=["support"])
 app.include_router(admin.router,         prefix="/v1/admin",         tags=["admin"])
+app.include_router(users.router,         prefix="/v1/users",         tags=["users"])
 
 
 @app.get("/health")

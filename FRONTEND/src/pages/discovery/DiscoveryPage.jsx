@@ -1,140 +1,265 @@
 import { useState } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
-import { Search, SlidersHorizontal, X, Loader2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Search, SlidersHorizontal, X, Compass } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { WorkerCard } from '@/components/kaargar/WorkerCard'
+import { GlassCard } from '@/components/glass/GlassCard'
 import { Skeleton } from '@/components/ui/skeleton'
-
-function FilterChip({ label, active, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-        active
-          ? 'bg-brand/20 text-brand border border-brand/30'
-          : 'glass-light text-[--text-muted] border border-transparent hover:border-white/10'
-      }`}
-    >
-      {label}
-    </button>
-  )
-}
+import { cn } from '@/lib/utils'
 
 const SORT_OPTIONS = [
-  { value: 'rating', label: 'Top rated' },
-  { value: 'price_asc', label: 'Lowest price' },
-  { value: 'price_desc', label: 'Highest price' },
-  { value: 'distance', label: 'Nearest' },
+  { value: 'rating',     label: '⭐ Top Rated' },
+  { value: 'price_asc',  label: '💸 Lowest Price' },
+  { value: 'price_desc', label: '💎 Premium' },
+  { value: 'distance',   label: '📍 Nearest' },
 ]
+
+const QUICK_SEARCHES = [
+  { label: 'Electrician', emoji: '⚡' },
+  { label: 'Plumber',     emoji: '🔧' },
+  { label: 'Carpenter',   emoji: '🪚' },
+  { label: 'Cleaner',     emoji: '🧹' },
+  { label: 'AC Repair',   emoji: '❄️' },
+  { label: 'Painter',     emoji: '🎨' },
+  { label: 'Mechanic',    emoji: '🔩' },
+  { label: 'Pest Control',emoji: '🐛' },
+]
+
+function SortChip({ label, active, onClick }) {
+  return (
+    <motion.button
+      onClick={onClick}
+      whileHover={{ scale: 1.03 }}
+      whileTap={{ scale: 0.97 }}
+      className="px-3 py-1.5 rounded-xl text-xs font-medium transition-all whitespace-nowrap"
+      style={{
+        background: active ? 'rgba(59,130,246,0.18)' : 'var(--g-bg)',
+        border: `1px solid ${active ? 'rgba(59,130,246,0.35)' : 'var(--g-border)'}`,
+        color: active ? '#60a5fa' : 'var(--text-muted)',
+      }}
+    >
+      {label}
+    </motion.button>
+  )
+}
 
 export default function DiscoveryPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const [query, setQuery] = useState(searchParams.get('q') || '')
-  const [sort, setSort] = useState('rating')
+  const [query, setQuery]           = useState(searchParams.get('q') || '')
+  const [sort, setSort]             = useState('rating')
   const [showFilters, setShowFilters] = useState(false)
 
   const currentQuery = searchParams.get('q') || ''
 
-  const { data, isLoading, isFetching } = useQuery({
+  const { data: workers = [], isLoading, isFetching } = useQuery({
     queryKey: ['search', currentQuery, sort],
-    queryFn: () => api.get('/search', { params: { q: currentQuery, mode: 'discovery', sort } }).then(r => r.data),
-    enabled: !!currentQuery,
+    queryFn: async () => {
+      if (!currentQuery) return []
+      const { data } = await api.get('/search', {
+        params: { q: currentQuery, mode: 'discovery', sort },
+      })
+      return data.results ?? data ?? []
+    },
+    staleTime: 60_000,
   })
 
-  const handleSearch = (e) => {
-    e.preventDefault()
+  const isSearching = isLoading || isFetching
+
+  function handleSearch(e) {
+    e?.preventDefault()
     if (query.trim()) setSearchParams({ q: query.trim() })
   }
 
-  const workers = data?.results || []
+  function clearSearch() {
+    setQuery('')
+    setSearchParams({})
+  }
 
   return (
-    <div className="min-h-screen bg-[--bg-base]">
-      {/* Header */}
-      <div className="sticky top-0 z-20 glass border-b border-white/5 px-4 py-3 space-y-3">
-        <form onSubmit={handleSearch} className="flex items-center gap-2">
+    <div className="px-4 pt-6 pb-8 space-y-5">
+      {/* Page heading */}
+      <div>
+        <div className="flex items-center gap-2 mb-1">
+          <Compass className="h-4 w-4 text-amber-400" />
+          <span className="text-xs font-semibold text-amber-400 uppercase tracking-wide">Discovery</span>
+        </div>
+        <h1 className="text-2xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>
+          Find the best pros
+        </h1>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          Browse verified workers in Pune
+        </p>
+      </div>
+
+      {/* Search bar */}
+      <form onSubmit={handleSearch}>
+        <div className="flex items-center gap-2">
+          {/* Input */}
           <div className="flex-1 relative">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[--text-muted]" />
+            <Search
+              className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 pointer-events-none"
+              style={{ color: 'var(--text-muted)' }}
+            />
             <input
               type="text"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search services, workers…"
-              className="w-full bg-white/5 border border-white/10 rounded-xl pl-10 pr-10 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none focus:border-brand/50 transition-all"
+              onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()}
+              placeholder="Search electrician, plumber…"
+              className="w-full rounded-xl pl-10 pr-10 py-3 text-sm outline-none"
+              style={{
+                background: 'var(--g-bg-mid)',
+                border: '1px solid var(--g-border)',
+                color: 'var(--text-primary)',
+              }}
             />
             {query && (
-              <button type="button" onClick={() => { setQuery(''); setSearchParams({}) }} className="absolute right-3 top-1/2 -translate-y-1/2">
-                <X size={14} className="text-[--text-muted]" />
+              <button
+                type="button"
+                onClick={clearSearch}
+                className="absolute right-3 top-1/2 -translate-y-1/2"
+              >
+                <X className="h-3.5 w-3.5" style={{ color: 'var(--text-muted)' }} />
               </button>
             )}
           </div>
-          <button
+
+          {/* Filter toggle */}
+          <motion.button
             type="button"
-            onClick={() => setShowFilters(!showFilters)}
-            className={`p-2.5 rounded-xl transition-all ${showFilters ? 'bg-brand/20 text-brand' : 'glass-light text-[--text-muted]'}`}
+            onClick={() => setShowFilters(v => !v)}
+            whileHover={{ scale: 1.05 }}
+            whileTap={{ scale: 0.95 }}
+            className="p-3 rounded-xl transition-all"
+            style={{
+              background: showFilters ? 'rgba(59,130,246,0.18)' : 'var(--g-bg)',
+              border: `1px solid ${showFilters ? 'rgba(59,130,246,0.35)' : 'var(--g-border)'}`,
+              color: showFilters ? '#60a5fa' : 'var(--text-muted)',
+            }}
           >
-            <SlidersHorizontal size={16} />
-          </button>
-        </form>
+            <SlidersHorizontal className="h-4 w-4" />
+          </motion.button>
+        </div>
 
-        {showFilters && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide"
-          >
-            {SORT_OPTIONS.map((opt) => (
-              <FilterChip key={opt.value} label={opt.label} active={sort === opt.value} onClick={() => setSort(opt.value)} />
-            ))}
-          </motion.div>
-        )}
-      </div>
+        {/* Sort chips */}
+        <AnimatePresence>
+          {showFilters && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto' }}
+              exit={{ opacity: 0, height: 0 }}
+              className="flex gap-2 overflow-x-auto pb-1 pt-3 no-scrollbar"
+            >
+              {SORT_OPTIONS.map(opt => (
+                <SortChip
+                  key={opt.value}
+                  label={opt.label}
+                  active={sort === opt.value}
+                  onClick={() => setSort(opt.value)}
+                />
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </form>
 
-      <div className="px-4 pt-4 pb-28 space-y-3">
-        {!currentQuery && (
-          <div className="text-center py-16 space-y-3">
-            <Search size={40} className="text-[--text-muted] mx-auto" />
-            <p className="text-[--text-primary] font-semibold">Find skilled workers</p>
-            <p className="text-sm text-[--text-muted]">Search by service type, name, or specialty</p>
-          </div>
-        )}
-
-        {currentQuery && (
-          <>
-            <div className="flex items-center justify-between">
-              <p className="text-sm text-[--text-muted]">
-                {isLoading || isFetching ? (
-                  <span className="flex items-center gap-1.5"><Loader2 size={12} className="animate-spin" /> Searching…</span>
-                ) : (
-                  `${workers.length} result${workers.length !== 1 ? 's' : ''} for "${currentQuery}"`
-                )}
-              </p>
-            </div>
-
-            {isLoading ? (
-              [...Array(4)].map((_, i) => <Skeleton key={i} className="h-28 rounded-2xl" />)
-            ) : workers.length === 0 ? (
-              <div className="text-center py-12">
-                <p className="text-[--text-muted] text-sm">No workers found. Try a different search.</p>
-              </div>
-            ) : (
-              workers.map((worker, i) => (
-                <motion.div
-                  key={worker.id}
-                  initial={{ opacity: 0, y: 12 }}
+      {/* Content */}
+      {!currentQuery ? (
+        <div className="space-y-5">
+          {/* Quick searches grid */}
+          <div>
+            <p
+              className="text-xs uppercase tracking-widest font-medium mb-3"
+              style={{ color: 'var(--text-muted)' }}
+            >Popular services</p>
+            <div className="grid grid-cols-4 gap-2.5">
+              {QUICK_SEARCHES.map(({ label, emoji }, i) => (
+                <motion.button
+                  key={label}
+                  initial={{ opacity: 0, y: 10 }}
                   animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: i * 0.05 }}
+                  transition={{ delay: i * 0.04 }}
+                  whileHover={{ scale: 1.04, y: -2 }}
+                  whileTap={{ scale: 0.96 }}
+                  onClick={() => { setQuery(label); setSearchParams({ q: label }) }}
+                  className="rounded-2xl p-3 flex flex-col items-center gap-1.5 text-center"
+                  style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--card-hover)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'var(--card-bg)'}
                 >
-                  <WorkerCard worker={worker} onClick={() => navigate(`/worker/${worker.id}`)} />
-                </motion.div>
-              ))
+                  <span className="text-xl leading-none">{emoji}</span>
+                  <span className="text-[11px] font-medium leading-tight" style={{ color: 'var(--text-secondary)' }}>
+                    {label}
+                  </span>
+                </motion.button>
+              ))}
+            </div>
+          </div>
+
+          {/* Empty prompt */}
+          <GlassCard className="p-8 text-center">
+            <Search className="h-8 w-8 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
+            <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+              Search for any service
+            </p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+              Find verified workers in your area
+            </p>
+          </GlassCard>
+        </div>
+      ) : (
+        <div className="space-y-4">
+          {/* Result header */}
+          <div className="flex items-center justify-between">
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              {isSearching ? (
+                <span className="flex items-center gap-2">
+                  <span
+                    className="w-3 h-3 rounded-full border-2 border-t-transparent animate-spin"
+                    style={{ borderColor: 'rgba(59,130,246,0.5)', borderTopColor: 'transparent' }}
+                  />
+                  Searching…
+                </span>
+              ) : (
+                `${workers.length} result${workers.length !== 1 ? 's' : ''} for "${currentQuery}"`
+              )}
+            </p>
+            {workers.length > 0 && (
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                {sort === 'rating' ? '⭐ Best match' : sort}
+              </span>
             )}
-          </>
-        )}
-      </div>
+          </div>
+
+          {isLoading ? (
+            Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-28 rounded-2xl" style={{ background: 'var(--g-bg)' }} />
+            ))
+          ) : workers.length === 0 ? (
+            <GlassCard className="p-10 text-center">
+              <Compass className="h-8 w-8 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
+              <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>No workers found</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                Try a different search term or category
+              </p>
+            </GlassCard>
+          ) : (
+            workers.map((worker, i) => (
+              <motion.div
+                key={worker.id}
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: i * 0.05 }}
+              >
+                <WorkerCard worker={worker} onClick={() => navigate(`/worker/${worker.id}`)} />
+              </motion.div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   )
 }

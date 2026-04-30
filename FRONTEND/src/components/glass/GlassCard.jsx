@@ -23,7 +23,7 @@ export function GlassCard({
     violet: 'shadow-[0_0_32px_rgba(124,58,237,0.25)]',
   }
 
-  const base = blue ? 'glass-blue' : 'glass-card'
+  const base = blue ? 'glass-amber' : 'glass-card'
 
   const inner = (
     <Tag

@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { TrendingUp, Briefcase, Star, ChevronRight, Clock, Zap, DollarSign, CheckCircle } from 'lucide-react'
+import {
+  TrendingUp, Briefcase, Star, ChevronRight, Clock,
+  Zap, DollarSign, CheckCircle, HelpCircle,
+} from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
-import { useWorkerAnalytics, useWorkerStatus } from '@/hooks/useWorker'
+import { useWorkerAnalytics, useWorkerStatus, useWorkerProfile } from '@/hooks/useWorker'
 import { useJobs } from '@/hooks/useJobs'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatRelativeTime } from '@/lib/utils'
@@ -14,17 +17,20 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import IncomingJobModal from './IncomingJobModal'
 
-function StatCard({ label, value, sub, icon: Icon, color }) {
+function StatCard({ label, value, sub, icon: Icon, accentColor }) {
   return (
     <GlassCard className="p-4 space-y-2">
       <div className="flex items-center justify-between">
-        <p className="text-xs text-white/40">{label}</p>
-        <div className={cn('w-7 h-7 rounded-lg flex items-center justify-center', `${color}/15`)}>
-          <Icon className={cn('h-3.5 w-3.5', color.replace('bg-', 'text-'))} />
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</p>
+        <div
+          className="w-7 h-7 rounded-lg flex items-center justify-center"
+          style={{ background: `${accentColor}20` }}
+        >
+          <Icon className="h-3.5 w-3.5" style={{ color: accentColor }} />
         </div>
       </div>
-      <p className="text-xl font-mono font-bold text-white/90">{value}</p>
-      {sub && <p className="text-xs text-white/35">{sub}</p>}
+      <p className="text-xl font-mono font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
+      {sub && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
     </GlassCard>
   )
 }
@@ -32,6 +38,7 @@ function StatCard({ label, value, sub, icon: Icon, color }) {
 export default function WorkerDashboard() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
+  const { data: workerProfile, isLoading: profileLoading } = useWorkerProfile()
   const { data: analytics, isLoading: analyticsLoading } = useWorkerAnalytics('today')
   const { data: activeJobs = [] } = useJobs('active')
   const [incomingJob, setIncomingJob] = useState(null)
@@ -39,6 +46,13 @@ export default function WorkerDashboard() {
   const { data: workerStatus, refetch: refetchStatus } = useWorkerStatus()
 
   const isOnline = workerStatus?.status === 'online'
+
+  // Redirect to onboarding if worker profile doesn't exist yet
+  useEffect(() => {
+    if (!profileLoading && workerProfile === null) {
+      navigate('/onboard/worker', { replace: true })
+    }
+  }, [profileLoading, workerProfile, navigate])
 
   useEffect(() => {
     if (!user?.id) return
@@ -80,25 +94,32 @@ export default function WorkerDashboard() {
     <div className="space-y-5">
       {/* Header */}
       <div>
-        <p className="text-sm text-white/40">Worker Dashboard</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Worker Dashboard</p>
         <h1 className="text-2xl font-bold font-syne gradient-text-hero">{name}</h1>
       </div>
 
       {/* Online toggle */}
-      <GlassCard className={cn('p-4 transition-all', isOnline && 'border-emerald-500/25 bg-emerald-500/5')}>
+      <GlassCard
+        className={cn('p-4 transition-all')}
+        style={isOnline ? { borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.05)' } : {}}
+      >
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <motion.div
-                className={cn('w-2.5 h-2.5 rounded-full', isOnline ? 'bg-emerald-400' : 'bg-white/20')}
+                className="w-2.5 h-2.5 rounded-full"
+                style={{ background: isOnline ? '#4ade80' : 'rgba(255,255,255,0.2)' }}
                 animate={isOnline ? { scale: [1, 1.3, 1] } : {}}
                 transition={{ repeat: Infinity, duration: 2 }}
               />
-              <span className={cn('text-sm font-semibold', isOnline ? 'text-emerald-400' : 'text-white/40')}>
+              <span
+                className="text-sm font-semibold"
+                style={{ color: isOnline ? '#4ade80' : 'var(--text-muted)' }}
+              >
                 {isOnline ? 'Online — accepting jobs' : 'Offline'}
               </span>
             </div>
-            <p className="text-xs text-white/30 pl-4.5">
+            <p className="text-xs pl-4.5" style={{ color: 'var(--text-muted)' }}>
               {isOnline ? 'You will receive new job requests' : 'Tap to go online'}
             </p>
           </div>
@@ -107,12 +128,11 @@ export default function WorkerDashboard() {
             onClick={toggleStatus}
             disabled={statusLoading}
             whileTap={{ scale: 0.92 }}
-            className={cn(
-              'relative w-14 h-7 rounded-full transition-all duration-300',
-              isOnline ? 'bg-emerald-500/80' : 'bg-white/15',
-              'border',
-              isOnline ? 'border-emerald-500/40' : 'border-white/15'
-            )}
+            className="relative w-14 h-7 rounded-full transition-all duration-300"
+            style={{
+              background: isOnline ? 'rgba(34,197,94,0.8)' : 'rgba(255,255,255,0.15)',
+              border: `1px solid ${isOnline ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.15)'}`,
+            }}
           >
             <motion.div
               className="absolute top-0.5 w-6 h-6 rounded-full bg-white shadow-sm"
@@ -123,7 +143,7 @@ export default function WorkerDashboard() {
         </div>
       </GlassCard>
 
-      {/* Active job */}
+      {/* Active job banner */}
       <AnimatePresence>
         {activeJob && (
           <motion.div
@@ -136,19 +156,23 @@ export default function WorkerDashboard() {
               hover
               glow
               glowColor="green"
-              className="p-4 border-emerald-500/25 bg-emerald-500/5"
+              className="p-4"
+              style={{ borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.05)' }}
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-emerald-500/20 flex items-center justify-center">
-                  <Zap className="h-5 w-5 text-emerald-400" />
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+                  style={{ background: 'rgba(34,197,94,0.2)' }}>
+                  <Zap className="h-5 w-5 text-green-400" />
                 </div>
                 <div className="flex-1">
-                  <p className="text-sm font-semibold text-white/90">Active job in progress</p>
-                  <p className="text-xs text-white/40 mt-0.5">
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    Active job in progress
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                     {activeJob.category?.name || 'Service'} · {activeJob.location_address}
                   </p>
                 </div>
-                <ChevronRight className="h-4 w-4 text-white/30" />
+                <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
               </div>
             </GlassCard>
           </motion.div>
@@ -157,42 +181,43 @@ export default function WorkerDashboard() {
 
       {/* Stats */}
       <div>
-        <p className="text-xs text-white/30 uppercase tracking-widest font-medium mb-3">Today</p>
+        <p className="text-xs uppercase tracking-widest font-medium mb-3"
+          style={{ color: 'var(--text-muted)' }}>Today</p>
         {analyticsLoading ? (
           <div className="grid grid-cols-2 gap-3">
             {Array.from({ length: 4 }).map((_, i) => (
-              <Skeleton key={i} className="h-24 rounded-2xl bg-white/5" />
+              <Skeleton key={i} className="h-24 rounded-2xl" style={{ background: 'var(--g-bg)' }} />
             ))}
           </div>
         ) : (
           <div className="grid grid-cols-2 gap-3">
             <StatCard
               label="Today's earnings"
-              value={formatCurrency(analytics?.earnings_today || 0)}
-              sub={`${analytics?.jobs_today || 0} jobs completed`}
+              value={formatCurrency(analytics?.today_earnings || 0)}
+              sub={`${analytics?.today_jobs || 0} jobs completed`}
               icon={DollarSign}
-              color="bg-emerald-500"
+              accentColor="#22c55e"
             />
             <StatCard
               label="This month"
-              value={formatCurrency(analytics?.earnings_month || 0)}
-              sub={`${analytics?.jobs_month || 0} total jobs`}
+              value={formatCurrency(analytics?.month_earnings || 0)}
+              sub={`${analytics?.month_jobs || 0} total jobs`}
               icon={TrendingUp}
-              color="bg-azure"
+              accentColor="#4B7BFF"
             />
             <StatCard
               label="Rating"
               value={(analytics?.avg_rating || 0).toFixed(1)}
               sub={`${analytics?.total_reviews || 0} reviews`}
               icon={Star}
-              color="bg-amber-500"
+              accentColor="#f59e0b"
             />
             <StatCard
               label="Acceptance"
               value={`${Math.round((analytics?.acceptance_rate || 0) * 100)}%`}
               sub="of jobs offered"
               icon={CheckCircle}
-              color="bg-violet"
+              accentColor="#a78bfa"
             />
           </div>
         )}
@@ -201,22 +226,47 @@ export default function WorkerDashboard() {
       {/* Quick links */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: 'Services', path: '/worker/services', icon: Briefcase },
+          { label: 'Services',  path: '/worker/services',  icon: Briefcase },
           { label: 'Analytics', path: '/worker/analytics', icon: TrendingUp },
-          { label: 'Portfolio', path: '/worker/media', icon: Star },
+          { label: 'Portfolio', path: '/worker/media',     icon: Star },
         ].map(({ label, path, icon: Icon }) => (
           <GlassCard key={path} onClick={() => navigate(path)} hover className="p-4 text-center">
-            <Icon className="h-5 w-5 text-white/50 mx-auto mb-2" />
-            <p className="text-xs text-white/60 font-medium">{label}</p>
+            <Icon className="h-5 w-5 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
+            <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</p>
           </GlassCard>
         ))}
       </div>
 
+      {/* Support link */}
+      <GlassCard
+        onClick={() => navigate('/worker/support')}
+        className="p-4 flex items-center justify-between hover:opacity-90 transition-opacity cursor-pointer"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
+            style={{ background: 'rgba(75,123,255,0.1)' }}>
+            <HelpCircle className="h-5 w-5" style={{ color: '#4B7BFF' }} />
+          </div>
+          <div>
+            <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Help & Support</p>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Raise tickets for payment or job issues
+            </p>
+          </div>
+        </div>
+        <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
+      </GlassCard>
+
       {/* Recent jobs */}
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-xs text-white/30 uppercase tracking-widest font-medium">Recent jobs</p>
-          <button onClick={() => navigate('/worker/analytics')} className="text-xs text-azure hover:text-azure-light transition-colors">
+          <p className="text-xs uppercase tracking-widest font-medium"
+            style={{ color: 'var(--text-muted)' }}>Recent jobs</p>
+          <button
+            onClick={() => navigate('/worker/analytics')}
+            className="text-xs transition-colors"
+            style={{ color: '#4B7BFF' }}
+          >
             See all
           </button>
         </div>
@@ -241,13 +291,15 @@ function RecentJobsList() {
   const { data: jobs = [], isLoading } = useJobs('past')
   const recent = jobs.slice(0, 5)
 
-  if (isLoading) return <Skeleton className="h-32 rounded-2xl bg-white/5" />
+  if (isLoading) return (
+    <Skeleton className="h-32 rounded-2xl" style={{ background: 'var(--g-bg)' }} />
+  )
 
   if (recent.length === 0) {
     return (
       <GlassCard className="p-6 text-center">
-        <Briefcase className="h-6 w-6 text-white/20 mx-auto mb-2" />
-        <p className="text-sm text-white/40">No completed jobs yet</p>
+        <Briefcase className="h-6 w-6 mx-auto mb-2" style={{ color: 'var(--text-muted)' }} />
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>No completed jobs yet</p>
       </GlassCard>
     )
   }
@@ -257,17 +309,19 @@ function RecentJobsList() {
       {recent.map((job) => (
         <GlassCard key={job.id} className="px-4 py-3 flex items-center justify-between">
           <div>
-            <p className="text-sm font-medium text-white/80">{job.category?.name || 'Service'}</p>
-            <p className="text-xs text-white/35 mt-0.5 flex items-center gap-1">
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              {job.category?.name || 'Service'}
+            </p>
+            <p className="text-xs mt-0.5 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
               <Clock className="h-2.5 w-2.5" />
               {formatRelativeTime(job.created_at)}
             </p>
           </div>
           <div className="text-right">
-            <p className="text-sm font-mono font-semibold text-emerald-400">
-              {formatCurrency(job.payout_amount || 0)}
+            <p className="text-sm font-mono font-semibold text-green-400">
+              {formatCurrency(job.worker_payout || 0)}
             </p>
-            <p className="text-xs text-white/35 capitalize">{job.status}</p>
+            <p className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>{job.status}</p>
           </div>
         </GlassCard>
       ))}

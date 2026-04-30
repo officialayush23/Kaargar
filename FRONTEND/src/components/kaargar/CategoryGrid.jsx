@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import * as LucideIcons from 'lucide-react'
@@ -5,51 +6,100 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 function CategoryIcon({ iconName, color }) {
   const Icon = LucideIcons[iconName] || LucideIcons.Wrench
-  return <Icon size={22} color={color} />
+  return <Icon size={18} color={color} />
 }
 
 function CategoryCard({ category, index, onClick }) {
+  const [hovered, setHovered] = useState(false)
+
   return (
     <motion.button
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.04, duration: 0.3 }}
+      initial={{ opacity: 0, scale: 0.85 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: index * 0.03, type: 'spring', stiffness: 300, damping: 24 }}
       onClick={() => onClick(category)}
-      className="glass-light rounded-2xl p-4 flex flex-col items-center gap-2.5 hover:scale-[1.03] active:scale-95 transition-transform card-hover"
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      whileHover={{ scale: 1.07, y: -2 }}
+      whileTap={{ scale: 0.94 }}
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '6px',
+        padding: '10px',
+        borderRadius: '12px',
+        border: '1px solid var(--card-border)',
+        background: hovered ? 'var(--card-hover)' : 'var(--card-bg)',
+        transition: 'background 0.18s ease',
+        cursor: 'pointer',
+      }}
     >
       <div
-        className="w-11 h-11 rounded-xl flex items-center justify-center"
-        style={{ background: `${category.color_hex}20`, boxShadow: `0 0 16px ${category.color_hex}30` }}
+        style={{
+          width: '36px',
+          height: '36px',
+          borderRadius: '10px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: `${category.color_hex}18`,
+          boxShadow: `0 0 12px ${category.color_hex}22`,
+          flexShrink: 0,
+        }}
       >
         <CategoryIcon iconName={category.icon_name} color={category.color_hex} />
       </div>
-      <span className="text-xs font-medium text-[--text-secondary] text-center leading-tight">
+      <span
+        style={{
+          fontSize: '10px',
+          fontWeight: 500,
+          color: 'var(--text-secondary)',
+          textAlign: 'center',
+          lineHeight: '1.3',
+          display: '-webkit-box',
+          WebkitLineClamp: 2,
+          WebkitBoxOrient: 'vertical',
+          overflow: 'hidden',
+          width: '100%',
+        }}
+      >
         {category.name}
       </span>
     </motion.button>
   )
 }
 
-export function CategoryGrid({ categories, isLoading, mode }) {
+export function CategoryGrid({ categories, isLoading, mode, onSelect }) {
   const navigate = useNavigate()
 
   const handleClick = (cat) => {
-    navigate(`/new-job?category=${cat.id}&mode=${mode}`)
+    if (onSelect) {
+      onSelect(cat)
+    } else {
+      navigate('/job/new', { state: { category: cat, mode } })
+    }
   }
 
   if (isLoading) {
     return (
-      <div className="grid grid-cols-4 gap-3">
-        {Array.from({ length: 8 }).map((_, i) => (
-          <Skeleton key={i} className="h-24 rounded-2xl" />
+      <div className="grid grid-cols-5 gap-2">
+        {Array.from({ length: 10 }).map((_, i) => (
+          <Skeleton
+            key={i}
+            className="aspect-square rounded-xl"
+            style={{ background: 'var(--card-bg)' }}
+          />
         ))}
       </div>
     )
   }
 
+  if (!categories?.length) return null
+
   return (
-    <div className="grid grid-cols-4 gap-3">
-      {categories?.map((cat, i) => (
+    <div className="grid grid-cols-5 gap-2">
+      {categories.map((cat, i) => (
         <CategoryCard key={cat.id} category={cat} index={i} onClick={handleClick} />
       ))}
     </div>

@@ -28,7 +28,7 @@ async def _log_event(db, job_id, status, actor, actor_id, metadata=None):
         status=status,
         actor=actor,
         actor_id=actor_id,
-        metadata=metadata or {},
+        meta=metadata or {},
     )
     db.add(event)
 

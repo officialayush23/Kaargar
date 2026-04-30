@@ -204,6 +204,21 @@ async def upload_document(
     return doc
 
 
+@router.get("/me/profile", response_model=WorkerProfileResponse)
+async def get_my_profile_alias(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Alias for GET /profile — frontend uses this path."""
+    result = await db.execute(
+        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
+    )
+    wp = result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    return wp
+
+
 @router.get("/me/status")
 async def get_my_status(
     user: User = Depends(get_current_user),
@@ -359,8 +374,25 @@ async def get_analytics(
             today_earnings=Decimal("0"),
             today_jobs=0,
             avg_job_value=Decimal("0"),
+            avg_rating=wp.avg_rating,
+            total_reviews=wp.rating_count,
+            acceptance_rate=wp.acceptance_rate,
         )
-    return analytics
+    # Enrich analytics with live profile fields not stored in analytics table
+    return WorkerAnalyticsResponse(
+        total_earnings=analytics.total_earnings,
+        total_jobs=analytics.total_jobs,
+        month_earnings=analytics.month_earnings,
+        month_jobs=analytics.month_jobs,
+        week_earnings=analytics.week_earnings,
+        week_jobs=analytics.week_jobs,
+        today_earnings=analytics.today_earnings,
+        today_jobs=analytics.today_jobs,
+        avg_job_value=analytics.avg_job_value,
+        avg_rating=wp.avg_rating,
+        total_reviews=wp.rating_count,
+        acceptance_rate=wp.acceptance_rate,
+    )
 
 
 # ═══════════════════════════════════════════════════════════

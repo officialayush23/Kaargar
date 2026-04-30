@@ -5,8 +5,13 @@ export function useWorkerProfile() {
   return useQuery({
     queryKey: ['worker', 'me'],
     queryFn: async () => {
-      const { data } = await api.get('/workers/profile')
-      return data
+      try {
+        const { data } = await api.get('/workers/profile')
+        return data
+      } catch (e) {
+        if (e?.response?.status === 404) return null
+        throw e
+      }
     },
   })
 }
@@ -15,8 +20,12 @@ export function useWorkerAnalytics(period = 'today') {
   return useQuery({
     queryKey: ['worker', 'analytics', period],
     queryFn: async () => {
-      const { data } = await api.get('/workers/me/analytics', { params: { period } })
-      return data
+      try {
+        const { data } = await api.get('/workers/me/analytics', { params: { period } })
+        return data
+      } catch {
+        return null
+      }
     },
     refetchInterval: 30_000,
   })

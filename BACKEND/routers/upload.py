@@ -95,6 +95,33 @@ async def upload_worker_post(
     )
 
 
+@router.post("/document", response_model=MediaUploadResponse)
+async def upload_document_file(
+    file: UploadFile = File(...),
+    doc_type: str = Form("aadhaar"),
+    user: User = Depends(get_current_user),
+):
+    """Upload a document (ID card, passport, etc.) to Supabase Storage.
+    Does NOT require a WorkerProfile — used during onboarding.
+    Returns the public URL and path for later registration via POST /workers/documents.
+    """
+    import time as _time
+    ALLOWED_DOC_TYPES = {*ALLOWED_IMAGE_TYPES, "application/pdf"}
+    if file.content_type not in ALLOWED_DOC_TYPES:
+        raise HTTPException(400, "Only JPEG/PNG/WebP/PDF files allowed")
+
+    data = await file.read()
+    if len(data) > MAX_IMAGE_SIZE:
+        raise HTTPException(400, "Document must be under 10MB")
+
+    original = file.filename or "doc"
+    ext = original.rsplit(".", 1)[-1].lower() if "." in original else "jpg"
+    path = f"{user.id}/doc_{doc_type}_{int(_time.time())}.{ext}"
+    url = upload_file(BUCKET_PROFILE, path, data, file.content_type)
+
+    return MediaUploadResponse(url=url, path=path, bucket=BUCKET_PROFILE)
+
+
 @router.delete("/worker-post/{media_id}", response_model=SuccessResponse)
 async def delete_worker_post(
     media_id: str,

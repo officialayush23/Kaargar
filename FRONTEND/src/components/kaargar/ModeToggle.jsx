@@ -1,24 +1,27 @@
 import { motion } from 'framer-motion'
 import { Zap, Compass } from 'lucide-react'
 import { useAppStore } from '@/stores/app'
-import { cn } from '@/lib/utils'
 
 const MODES = [
   {
     id: 'instant',
     label: 'Instant',
     icon: Zap,
-    gradient: 'from-emerald-500/90 to-emerald-600/70',
-    glow: '0 0 24px rgba(16,185,129,0.5)',
-    dot: 'bg-emerald-400',
+    activeBg: 'rgba(34,197,94,0.18)',
+    activeBorder: 'rgba(34,197,94,0.45)',
+    activeGlow: '0 0 20px rgba(34,197,94,0.35)',
+    activeColor: '#4ade80',
+    dotColor: '#22c55e',
   },
   {
     id: 'discovery',
     label: 'Discover',
     icon: Compass,
-    gradient: 'from-amber-400/90 to-amber-600/70',
-    glow: '0 0 24px rgba(245,158,11,0.5)',
-    dot: 'bg-amber-400',
+    activeBg: 'rgba(245,158,11,0.18)',
+    activeBorder: 'rgba(245,158,11,0.45)',
+    activeGlow: '0 0 20px rgba(245,158,11,0.35)',
+    activeColor: '#fbbf24',
+    dotColor: '#f59e0b',
   },
 ]
 
@@ -27,40 +30,86 @@ export function ModeToggle() {
 
   return (
     <motion.div
-      className="fixed bottom-[5.5rem] left-1/2 -translate-x-1/2 z-40"
+      className="fixed bottom-20 inset-x-0 z-40 flex justify-center"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.3, type: 'spring', stiffness: 300, damping: 24 }}
+      transition={{ delay: 0.35, type: 'spring', stiffness: 300, damping: 26 }}
+      style={{ pointerEvents: 'none' }}
     >
-      <div className="glass-strong rounded-full p-1.5 flex gap-0.5 shadow-2xl border border-white/15">
-        {MODES.map(({ id, label, icon: Icon, gradient, glow, dot }) => {
+      {/* Pill container — solid background, no backdrop-filter to avoid blob artifacts */}
+      <div
+        style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: '3px',
+          padding: '5px',
+          borderRadius: '9999px',
+          background: 'var(--g-bg-hi)',
+          border: '1.5px solid var(--g-border)',
+          boxShadow: '0 4px 24px rgba(0,0,0,0.28), inset 0 1px 0 var(--g-shine)',
+          pointerEvents: 'auto',
+        }}
+      >
+        {MODES.map(({ id, label, icon: Icon, activeBg, activeBorder, activeGlow, activeColor, dotColor }) => {
           const active = mode === id
+
           return (
             <button
               key={id}
               onClick={() => setMode(id)}
-              className={cn(
-                'relative rounded-full px-5 py-2.5 text-sm font-semibold transition-colors duration-200 flex items-center gap-2 select-none',
-                active ? 'text-white' : 'text-white/40 hover:text-white/70'
-              )}
+              style={{
+                position: 'relative',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '7px',
+                padding: '9px 18px',
+                borderRadius: '9999px',
+                border: 'none',
+                background: 'none',
+                cursor: 'pointer',
+                outline: 'none',
+                userSelect: 'none',
+                WebkitTapHighlightColor: 'transparent',
+                transition: 'color 0.2s ease',
+                color: active ? activeColor : 'var(--text-muted)',
+                fontWeight: active ? 600 : 400,
+                fontSize: '13px',
+              }}
             >
+              {/* Active pill background */}
               {active && (
                 <motion.div
-                  layoutId="mode-pill"
-                  className={cn('absolute inset-0 rounded-full bg-gradient-to-r', gradient)}
-                  style={{ boxShadow: glow }}
-                  transition={{ type: 'spring', stiffness: 380, damping: 26 }}
+                  layoutId="mode-active-pill"
+                  style={{
+                    position: 'absolute',
+                    inset: 0,
+                    borderRadius: '9999px',
+                    background: activeBg,
+                    border: `1.5px solid ${activeBorder}`,
+                    boxShadow: activeGlow,
+                  }}
+                  transition={{ type: 'spring', stiffness: 420, damping: 30 }}
                 />
               )}
-              <span className="relative flex items-center gap-1.5">
+
+              {/* Content */}
+              <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 {active && (
                   <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className={cn('w-1.5 h-1.5 rounded-full', dot)}
+                    initial={{ scale: 0, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    exit={{ scale: 0, opacity: 0 }}
+                    style={{
+                      width: '6px',
+                      height: '6px',
+                      borderRadius: '50%',
+                      background: dotColor,
+                      boxShadow: `0 0 6px ${dotColor}`,
+                      flexShrink: 0,
+                    }}
                   />
                 )}
-                <Icon className="h-3.5 w-3.5" />
+                <Icon size={14} />
                 {label}
               </span>
             </button>

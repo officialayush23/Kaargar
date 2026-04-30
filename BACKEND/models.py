@@ -138,6 +138,8 @@ class WorkerProfile(Base):
     payout_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = now()
     updated_at: Mapped[datetime] = now()
+    min_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    max_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
     user = relationship("User", back_populates="worker_profile")
     services = relationship("Service", back_populates="worker")
@@ -348,6 +350,7 @@ class Job(Base):
     worker = relationship("WorkerProfile")
     category = relationship("Category")
     service = relationship("Service")
+    budget_max: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
 
 # ── 16. JOB WORKER REQUESTS ──────────────────────────────────
@@ -644,3 +647,14 @@ class PuneArea(Base):
     lat: Mapped[Decimal] = mapped_column(Numeric(10, 8), nullable=False)
     lon: Mapped[Decimal] = mapped_column(Numeric(11, 8), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
+# ── 32. REFRESH TOKENS ─────────────────────────────────────────
+class RefreshToken(Base):
+    __tablename__ = "refresh_tokens"
+
+    token: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    revoked: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = now()

@@ -1,157 +1,367 @@
-import { useEffect, useState } from 'react'
+/**
+ * SearchingPage — Uber/Rapido-style live worker search screen.
+ * Shows animated ripple, rotating status messages, and transitions
+ * to a "Worker Found" card when a match is made.
+ */
+import { useEffect, useState, useRef } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { X, Loader2 } from 'lucide-react'
+import { X, Star, Phone, MessageCircle, MapPin, Clock, ChevronRight, User } from 'lucide-react'
 import { api } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
+import { GlassCard } from '@/components/glass/GlassCard'
+import { GlassButton } from '@/components/glass/GlassButton'
+import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
-const STATUS_MESSAGES = {
-  searching: 'Finding workers near you…',
-  assigned: 'Worker found! Connecting…',
-  failed: 'No workers available right now',
-  cancelled: 'Job cancelled',
-}
+const SEARCH_MESSAGES = [
+  'Finding workers near you…',
+  'Checking availability…',
+  'Matching your requirements…',
+  'Almost there…',
+  'Connecting with nearby pros…',
+]
 
-function RippleRing({ delay, scale }) {
+function RippleRing({ delay = 0, size = 1 }) {
   return (
     <motion.div
-      className="absolute inset-0 rounded-full border-2 border-instant/30"
-      initial={{ scale: 1, opacity: 0.6 }}
-      animate={{ scale: scale, opacity: 0 }}
-      transition={{ duration: 2.5, delay, repeat: Infinity, ease: 'easeOut' }}
+      className="absolute rounded-full border border-azure/30"
+      style={{
+        width:  `${120 * size}px`,
+        height: `${120 * size}px`,
+        top:    '50%',
+        left:   '50%',
+        x:      '-50%',
+        y:      '-50%',
+      }}
+      initial={{ scale: 0.6, opacity: 0.7 }}
+      animate={{ scale: 2.6, opacity: 0 }}
+      transition={{
+        duration: 2.4,
+        repeat: Infinity,
+        delay,
+        ease: 'easeOut',
+      }}
     />
+  )
+}
+
+function SearchingAnimation() {
+  const [msgIdx, setMsgIdx] = useState(0)
+
+  useEffect(() => {
+    const id = setInterval(() => setMsgIdx(i => (i + 1) % SEARCH_MESSAGES.length), 2500)
+    return () => clearInterval(id)
+  }, [])
+
+  return (
+    <div className="flex flex-col items-center justify-center flex-1 py-16 relative">
+      {/* Background glow */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{ background: 'radial-gradient(ellipse 60% 60% at 50% 50%, rgba(59,130,246,0.08) 0%, transparent 70%)' }}
+      />
+
+      {/* Ripple rings */}
+      <div className="relative flex items-center justify-center w-40 h-40 mb-8">
+        <RippleRing delay={0}   size={1} />
+        <RippleRing delay={0.6} size={1} />
+        <RippleRing delay={1.2} size={1} />
+
+        {/* Center pulse */}
+        <motion.div
+          className="w-20 h-20 rounded-full bg-gradient-to-br from-azure to-azure-dim flex items-center justify-center z-10"
+          style={{ boxShadow: '0 0 40px rgba(59,130,246,0.5)' }}
+          animate={{
+            boxShadow: [
+              '0 0 40px rgba(59,130,246,0.4)',
+              '0 0 64px rgba(59,130,246,0.7)',
+              '0 0 40px rgba(59,130,246,0.4)',
+            ],
+          }}
+          transition={{ repeat: Infinity, duration: 2 }}
+        >
+          <MapPin className="h-8 w-8 text-white" />
+        </motion.div>
+
+        {/* Orbiting worker dots */}
+        {[0, 120, 240].map((deg, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-4 h-4 rounded-full bg-white/80 border border-azure/40"
+            style={{ top: '50%', left: '50%', transformOrigin: '0 0' }}
+            animate={{ rotate: 360 + deg }}
+            initial={{ rotate: deg }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'linear', delay: i * 0.3 }}
+          >
+            <motion.div
+              className="w-4 h-4 rounded-full bg-azure"
+              style={{
+                transform: `translateX(${56}px) translateY(-50%)`,
+              }}
+            />
+          </motion.div>
+        ))}
+      </div>
+
+      {/* Status message */}
+      <AnimatePresence mode="wait">
+        <motion.p
+          key={msgIdx}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -8 }}
+          transition={{ duration: 0.3 }}
+          className="text-lg font-semibold font-syne text-white/90 text-center"
+        >
+          {SEARCH_MESSAGES[msgIdx]}
+        </motion.p>
+      </AnimatePresence>
+
+      <p className="text-sm text-white/40 mt-2 text-center">
+        Searching within 5 km of your location
+      </p>
+
+      {/* Worker count hint */}
+      <motion.div
+        className="flex items-center gap-2 mt-6 px-4 py-2 rounded-full glass"
+        animate={{ opacity: [0.6, 1, 0.6] }}
+        transition={{ repeat: Infinity, duration: 2 }}
+      >
+        <div className="flex -space-x-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} className="w-6 h-6 rounded-full bg-azure/30 border border-navy flex items-center justify-center">
+              <User className="h-3 w-3 text-azure" />
+            </div>
+          ))}
+        </div>
+        <span className="text-xs text-white/60">12 workers nearby</span>
+      </motion.div>
+    </div>
+  )
+}
+
+function WorkerFoundCard({ worker, jobId, onChat, onCall }) {
+  const navigate = useNavigate()
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 60 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 26 }}
+      className="space-y-4"
+    >
+      {/* Success header */}
+      <div className="text-center py-6">
+        <motion.div
+          initial={{ scale: 0 }}
+          animate={{ scale: 1 }}
+          transition={{ type: 'spring', stiffness: 400, damping: 16, delay: 0.2 }}
+          className="w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500/40 flex items-center justify-center mx-auto mb-4"
+          style={{ boxShadow: '0 0 32px rgba(16,185,129,0.4)' }}
+        >
+          <span className="text-3xl">✓</span>
+        </motion.div>
+        <h2 className="text-xl font-bold font-syne text-white/90">Worker found!</h2>
+        <p className="text-sm text-white/40 mt-1">Your professional is on the way</p>
+      </div>
+
+      {/* Worker card */}
+      <GlassCard glow glowColor="green" className="p-5">
+        <div className="flex items-center gap-4">
+          <Avatar className="w-16 h-16 border-2 border-emerald-500/30 shrink-0">
+            <AvatarImage src={worker?.avatar_url} />
+            <AvatarFallback className="text-lg font-bold">
+              {worker?.full_name?.[0] || 'W'}
+            </AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-white/90 font-syne">{worker?.full_name || 'Worker'}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <Star className="h-3.5 w-3.5 text-amber-400 fill-amber-400" />
+              <span className="text-sm text-amber-400 font-medium">{worker?.avg_rating?.toFixed(1) || '4.8'}</span>
+              <span className="text-xs text-white/30">·</span>
+              <span className="text-xs text-white/40">{worker?.total_jobs_completed || 0} jobs</span>
+            </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+              <span className="text-xs text-emerald-400">Verified pro</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ETA */}
+        <div className="mt-4 pt-4 border-t border-white/10 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-azure" />
+            <div>
+              <p className="text-xs text-white/40">Estimated arrival</p>
+              <p className="text-sm font-semibold text-white/90">30–45 min</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            <MapPin className="h-4 w-4 text-white/40" />
+            <div>
+              <p className="text-xs text-white/40">Distance</p>
+              <p className="text-sm font-semibold text-white/90">~2.3 km</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="mt-4 grid grid-cols-2 gap-3">
+          <GlassButton
+            variant="ghost"
+            icon={Phone}
+            onClick={onCall}
+            className="w-full"
+          >
+            Call
+          </GlassButton>
+          <GlassButton
+            variant="brand"
+            icon={MessageCircle}
+            onClick={onChat}
+            className="w-full"
+          >
+            Chat
+          </GlassButton>
+        </div>
+      </GlassCard>
+
+      <GlassButton
+        variant="instant"
+        size="lg"
+        className="w-full"
+        icon={ChevronRight}
+        iconPosition="right"
+        onClick={() => navigate(`/job/${jobId}/active`)}
+      >
+        Track job live
+      </GlassButton>
+    </motion.div>
   )
 }
 
 export default function SearchingPage() {
   const { jobId } = useParams()
   const navigate = useNavigate()
-  const [job, setJob] = useState(null)
+  const [jobStatus, setJobStatus] = useState('searching')
+  const [worker, setWorker] = useState(null)
   const [cancelling, setCancelling] = useState(false)
+  const channelRef = useRef(null)
 
   useEffect(() => {
-    api.get(`/jobs/${jobId}`).then(({ data }) => setJob(data))
+    if (!jobId) return
 
-    const channel = supabase
+    // Poll initial status
+    api.get(`/jobs/${jobId}`).then(({ data }) => {
+      setJobStatus(data.status)
+      if (data.assigned_worker) setWorker(data.assigned_worker)
+      if (['assigned', 'en_route', 'arrived', 'started'].includes(data.status)) {
+        navigate(`/job/${jobId}/active`, { replace: true })
+      }
+    }).catch(() => {})
+
+    // Subscribe to status changes
+    channelRef.current = supabase
       .channel(`job:${jobId}`)
-      .on(
-        'postgres_changes',
-        { event: 'UPDATE', schema: 'public', table: 'jobs', filter: `id=eq.${jobId}` },
-        ({ new: updated }) => {
-          setJob(updated)
-          if (updated.status === 'assigned') {
-            setTimeout(() => navigate(`/job/${jobId}/active`, { replace: true }), 1200)
-          }
-          if (updated.status === 'failed') {
-            toast.error('No workers available. Try again later.')
-            setTimeout(() => navigate('/', { replace: true }), 2000)
-          }
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'jobs',
+        filter: `id=eq.${jobId}`,
+      }, ({ new: updated }) => {
+        setJobStatus(updated.status)
+
+        if (updated.status === 'assigned') {
+          // Fetch worker details
+          api.get(`/jobs/${jobId}`).then(({ data }) => {
+            if (data.assigned_worker) setWorker(data.assigned_worker)
+          }).catch(() => {})
         }
-      )
+
+        if (['en_route', 'arrived', 'started'].includes(updated.status)) {
+          navigate(`/job/${jobId}/active`, { replace: true })
+        }
+        if (updated.status === 'failed') {
+          toast.error('No workers available. Try again in a few minutes.')
+        }
+        if (updated.status === 'cancelled') {
+          navigate('/', { replace: true })
+        }
+      })
       .subscribe()
 
-    return () => supabase.removeChannel(channel)
-  }, [jobId])
+    return () => {
+      if (channelRef.current) supabase.removeChannel(channelRef.current)
+    }
+  }, [jobId, navigate])
 
-  const handleCancel = async () => {
+  async function handleCancel() {
     setCancelling(true)
     try {
       await api.post(`/jobs/${jobId}/cancel`, { reason: 'User cancelled' })
       navigate('/', { replace: true })
     } catch {
-      toast.error('Failed to cancel')
+      toast.error('Could not cancel. Try again.')
+    } finally {
       setCancelling(false)
     }
   }
 
-  const status = job?.status || 'searching'
-  const isAssigned = status === 'assigned'
+  const workerFound = jobStatus === 'assigned' && worker
 
   return (
-    <div className="min-h-screen bg-[--bg-base] flex flex-col items-center justify-center px-6 relative overflow-hidden">
-      {/* Background glow */}
-      <div className="absolute inset-0 pointer-events-none">
-        <div className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] rounded-full blur-[120px] transition-all duration-1000 ${
-          isAssigned ? 'bg-instant/15' : 'bg-brand/8'
-        }`} />
+    <div className="min-h-full flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between py-2 mb-2">
+        <h1 className="text-lg font-semibold font-syne text-white/90">
+          {workerFound ? 'Match found' : 'Searching…'}
+        </h1>
+        {!workerFound && (
+          <GlassButton
+            variant="ghost"
+            size="sm"
+            icon={X}
+            loading={cancelling}
+            onClick={handleCancel}
+          >
+            Cancel
+          </GlassButton>
+        )}
       </div>
 
-      <div className="relative flex flex-col items-center gap-8 text-center">
-        {/* Ripple animation */}
-        <div className="relative w-32 h-32 flex items-center justify-center">
-          {!isAssigned && (
-            <>
-              <RippleRing delay={0} scale={2.5} />
-              <RippleRing delay={0.8} scale={2.0} />
-              <RippleRing delay={1.6} scale={1.5} />
-            </>
-          )}
-
+      <AnimatePresence mode="wait">
+        {workerFound ? (
+          <WorkerFoundCard
+            key="found"
+            worker={worker}
+            jobId={jobId}
+            onChat={() => navigate(`/chat/${jobId}`)}
+            onCall={() => toast.info('Calling feature coming soon')}
+          />
+        ) : jobStatus === 'failed' ? (
           <motion.div
-            animate={isAssigned ? { scale: [1, 1.1, 1] } : { scale: 1 }}
-            transition={isAssigned ? { duration: 0.5 } : {}}
-            className={`w-20 h-20 rounded-full flex items-center justify-center ${
-              isAssigned ? 'bg-instant/20 border-2 border-instant' : 'bg-brand/15 border-2 border-brand/40'
-            }`}
-          >
-            <Loader2
-              size={32}
-              className={`${isAssigned ? 'text-instant' : 'text-brand'} ${isAssigned ? '' : 'animate-spin'}`}
-            />
-          </motion.div>
-        </div>
-
-        {/* Status text */}
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={status}
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -10 }}
-            className="space-y-2"
-          >
-            <h2 className="font-syne font-bold text-2xl text-[--text-primary]">
-              {isAssigned ? 'Worker found!' : 'Searching…'}
-            </h2>
-            <p className="text-[--text-muted] text-sm max-w-xs">
-              {STATUS_MESSAGES[status] || 'Please wait…'}
-            </p>
-          </motion.div>
-        </AnimatePresence>
-
-        {/* Radius indicator */}
-        {status === 'searching' && (
-          <motion.div
+            key="failed"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ delay: 1 }}
-            className="glass-light rounded-full px-5 py-2"
+            className="flex-1 flex flex-col items-center justify-center py-16 text-center gap-4"
           >
-            <p className="text-xs text-[--text-muted]">Checking workers in your area…</p>
+            <div className="w-16 h-16 rounded-2xl bg-red-500/15 flex items-center justify-center text-3xl">😔</div>
+            <div>
+              <h3 className="text-lg font-semibold font-syne text-white/80">No workers found</h3>
+              <p className="text-sm text-white/40 mt-1">All workers are busy. Please try again in a few minutes.</p>
+            </div>
+            <GlassButton variant="brand" onClick={() => navigate('/')}>
+              Go back home
+            </GlassButton>
           </motion.div>
+        ) : (
+          <SearchingAnimation key="searching" />
         )}
-
-        {/* Job info */}
-        {job?.category && (
-          <div className="glass rounded-2xl px-5 py-3 w-full max-w-xs">
-            <p className="text-sm text-[--text-secondary]">{job.category.name}</p>
-            <p className="text-xs text-[--text-muted] mt-0.5">{job.location_address}</p>
-          </div>
-        )}
-
-        {/* Cancel */}
-        {status === 'searching' && (
-          <button
-            onClick={handleCancel}
-            disabled={cancelling}
-            className="flex items-center gap-2 text-sm text-[--text-muted] hover:text-[--text-secondary] transition-colors mt-4"
-          >
-            {cancelling ? <Loader2 size={14} className="animate-spin" /> : <X size={14} />}
-            Cancel search
-          </button>
-        )}
-      </div>
+      </AnimatePresence>
     </div>
   )
 }

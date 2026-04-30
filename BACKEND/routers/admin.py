@@ -144,6 +144,77 @@ async def get_config(
     return [{"key": c.key, "value": c.value, "description": c.description} for c in configs]
 
 
+@router.get("/jobs")
+async def list_jobs(
+    status: str = None,
+    page: int = 1,
+    limit: int = 20,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: paginated list of all jobs."""
+    q = select(Job).order_by(Job.created_at.desc())
+    if status:
+        q = q.where(Job.status == status)
+    total = await db.scalar(select(func.count()).select_from(q.subquery()))
+    q = q.offset((page - 1) * limit).limit(limit)
+    result = await db.execute(q)
+    jobs = result.scalars().all()
+    pages = max(1, -(-total // limit))  # ceiling division
+    return {
+        "items": [
+            {
+                "id": str(j.id),
+                "job_type": j.job_type,
+                "status": j.status,
+                "title": j.title,
+                "location_address": j.location_address,
+                "quoted_price": str(j.quoted_price) if j.quoted_price else None,
+                "created_at": j.created_at.isoformat(),
+            }
+            for j in jobs
+        ],
+        "total": total,
+        "page": page,
+        "pages": pages,
+    }
+
+
+@router.get("/workers")
+async def list_workers(
+    page: int = 1,
+    limit: int = 20,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: paginated list of all workers."""
+    total = await db.scalar(select(func.count(WorkerProfile.id)))
+    result = await db.execute(
+        select(WorkerProfile, User)
+        .join(User, User.id == WorkerProfile.user_id)
+        .order_by(WorkerProfile.created_at.desc())
+        .offset((page - 1) * limit).limit(limit)
+    )
+    rows = result.fetchall()
+    pages = max(1, -(-total // limit))
+    return {
+        "items": [
+            {
+                "id": str(wp.id),
+                "full_name": u.full_name,
+                "email": u.email,
+                "status": wp.status,
+                "verification_status": wp.verification_status,
+                "pune_area": wp.pune_area,
+            }
+            for wp, u in rows
+        ],
+        "total": total,
+        "page": page,
+        "pages": pages,
+    }
+
+
 @router.patch("/config", response_model=SuccessResponse)
 async def update_config(
     body: AdminConfigUpdate,

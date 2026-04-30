@@ -135,3 +135,49 @@ async def verify_otp(
 
     token = _create_jwt(str(user.id))
     return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
+
+
+# APPEND THIS TO THE BOTTOM OF YOUR EXISTING routers/auth.py
+from schemas import RefreshRequest, SuccessResponse
+from jose import JWTError
+
+@router.post("/refresh", response_model=TokenResponse)
+async def refresh_token(
+    body: RefreshRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    if not body.refresh_token:
+        raise HTTPException(401, "Refresh token missing")
+    try:
+        payload = jwt.decode(body.refresh_token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
+        if payload.get("type") != "refresh":
+            raise HTTPException(401, "Invalid token type")
+        
+        user_id = payload.get("sub")
+        user_result = await db.execute(select(User).where(User.id == user_id))
+        user = user_result.scalar_one_or_none()
+        
+        if not user or not user.is_active:
+            raise HTTPException(401, "User inactive")
+
+        # Create new access token, keep old refresh
+        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
+        new_access = jwt.encode(
+            {"sub": str(user.id), "type": "access", "exp": expire},
+            settings.jwt_secret_key,
+            algorithm=settings.jwt_algorithm,
+        )
+
+        return {
+            "access_token": new_access,
+            "refresh_token": body.refresh_token,
+            "token_type": "bearer",
+            "user": UserResponse.model_validate(user)
+        }
+    except JWTError:
+        raise HTTPException(401, "Invalid or expired refresh token")
+
+@router.post("/logout", response_model=SuccessResponse)
+async def logout():
+    # Stateless JWT flow: just confirm to frontend so it can drop tokens
+    return SuccessResponse(message="Logged out successfully")

@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Pencil, Check } from 'lucide-react'
+import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Pencil, Check, HelpCircle, HardHat } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
@@ -65,10 +65,10 @@ export default function ProfilePage() {
   const initials = getInitials(user?.full_name || '') || user?.email?.[0]?.toUpperCase() || 'K'
 
   return (
-    <div className="space-y-6">
+    <div className="px-4 pt-6 pb-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold font-syne gradient-text-hero">Profile</h1>
-        <p className="text-sm text-white/40 mt-0.5">Manage your account</p>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Manage your account</p>
       </div>
 
       {/* Avatar + name */}
@@ -130,15 +130,57 @@ export default function ProfilePage() {
             </GlassButton>
           </div>
         )}
+
+        {typeof isWorker === 'function' && !isWorker() && (
+          <div className="mt-4 pt-4 border-t border-white/10">
+            <motion.button
+              onClick={() => navigate('/onboard/worker')}
+              whileHover={{ scale: 1.01 }}
+              whileTap={{ scale: 0.98 }}
+              className="w-full text-left"
+              style={{
+                padding: '12px 14px',
+                borderRadius: '14px',
+                background: 'rgba(245,158,11,0.06)',
+                border: '1px solid rgba(245,158,11,0.18)',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                transition: 'all 0.15s ease',
+              }}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(245,158,11,0.10)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(245,158,11,0.06)'}
+            >
+              <div style={{
+                width: '36px', height: '36px', borderRadius: '10px',
+                background: 'rgba(245,158,11,0.15)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+              }}>
+                <HardHat size={18} style={{ color: 'var(--amber)' }} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <p className="text-sm font-semibold" style={{ color: 'var(--amber)' }}>
+                  Become a Worker
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                  Earn by offering your skills on Kaargar
+                </p>
+              </div>
+              <ChevronRight size={15} style={{ color: 'var(--amber)', opacity: 0.6, flexShrink: 0 }} />
+            </motion.button>
+          </div>
+        )}
       </GlassCard>
 
       {/* Account section */}
       <div>
-        <p className="text-xs text-white/30 uppercase tracking-widest font-medium mb-2 px-1">Account</p>
+        <p className="text-xs uppercase tracking-widest font-medium mb-2 px-1" style={{ color: 'var(--text-muted)' }}>Account</p>
         <GlassCard className="divide-y divide-white/8 overflow-hidden">
           <MenuItem icon={Briefcase} label="My Bookings" sub="View all service requests" onClick={() => navigate('/bookings')} />
           <MenuItem icon={Bell} label="Notifications" sub="Manage alerts" onClick={() => {}} />
           <MenuItem icon={Shield} label="Privacy & Safety" onClick={() => {}} />
+          <MenuItem icon={HelpCircle} label="Help & Support" onClick={() => navigate('/support')} />
         </GlassCard>
       </div>
 

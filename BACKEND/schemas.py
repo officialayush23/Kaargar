@@ -26,6 +26,7 @@ class OTPVerifyRequest(BaseModel):
 
 class TokenResponse(BaseModel):
     access_token: str
+    refresh_token: Optional[str] = None
     token_type: str = "bearer"
     user: "UserResponse"
 
@@ -85,14 +86,18 @@ class WorkerProfileCreate(BaseModel):
     service_radius_km: int = 5
     category_ids: list[UUID] = []
 
-
+# FIXED: Aliases added to match frontend UI payload
 class WorkerProfileUpdate(BaseModel):
     bio: Optional[str] = None
-    experience_years: Optional[int] = None
-    pune_area: Optional[str] = None
+    experience_years: Optional[int] = Field(default=None, alias="years_experience")
+    pune_area: Optional[str] = Field(default=None, alias="area")
     service_radius_km: Optional[int] = None
-    is_instant_available: Optional[bool] = None
+    is_instant_available: Optional[bool] = Field(default=None, alias="instant_available")
     is_discovery_available: Optional[bool] = None
+    min_rate: Optional[Decimal] = None
+    max_rate: Optional[Decimal] = None
+    
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class WorkerProfileResponse(KaargarBase):
@@ -113,6 +118,8 @@ class WorkerProfileResponse(KaargarBase):
     completion_rate: Decimal
     cancellation_score: Decimal
     total_earnings: Decimal
+    min_rate: Optional[Decimal] = None
+    max_rate: Optional[Decimal] = None
     created_at: datetime
 
 
@@ -125,7 +132,7 @@ class WorkerPublicResponse(KaargarBase):
     avg_rating: Decimal
     rating_count: int
     total_jobs_completed: int
-    # joined from users table
+    min_rate: Optional[Decimal] = None
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
 
@@ -254,6 +261,7 @@ class JobCreate(BaseModel):
     package_id: Optional[UUID] = None
     scheduled_at: Optional[datetime] = None
     quoted_price: Optional[Decimal] = None
+    budget_max: Optional[Decimal] = None # FIXED: Required for discovery UI
     photos: Optional[list[str]] = None
 
 
@@ -421,6 +429,9 @@ class SearchResult(BaseModel):
     category_name: Optional[str] = None
     relevance_score: Optional[float] = None
 
+class SearchResponseWrapper(BaseModel):
+    results: list[SearchResult]
+
 
 # ── ANALYTICS ─────────────────────────────────────────────────
 class WorkerAnalyticsResponse(KaargarBase):
@@ -433,6 +444,10 @@ class WorkerAnalyticsResponse(KaargarBase):
     today_earnings: Decimal
     today_jobs: int
     avg_job_value: Decimal
+    # Enriched from WorkerProfile — used by dashboard cards
+    avg_rating: Optional[Decimal] = None
+    total_reviews: Optional[int] = None
+    acceptance_rate: Optional[Decimal] = None
 
 
 # ── ADMIN ─────────────────────────────────────────────────────
