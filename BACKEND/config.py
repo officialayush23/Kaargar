@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # App
     app_env: str = Field("development", alias="ENVIRONMENT")
     app_name: str = "Kaargar"
-    frontend_url: str = "http://localhost:5173"
+    frontend_url: str = "kaargar1.vercel.app"
     fastapi_host: str = Field("0.0.0.0", alias="FASTAPI_HOST")
     fastapi_port: int = Field(8000, alias="FASTAPI_PORT")
 
