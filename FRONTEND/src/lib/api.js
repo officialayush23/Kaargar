@@ -17,6 +17,10 @@ export const api = axios.create({
 
 // Inject JWT token from Zustand/localStorage
 api.interceptors.request.use((config) => {
+  // Keep '/v1' from baseURL by converting root-relative paths to relative paths.
+  if (config.url && !/^https?:\/\//i.test(config.url)) {
+    config.url = config.url.replace(/^\/+/, '')
+  }
   const token = localStorage.getItem('kaargar_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config
@@ -40,7 +44,7 @@ api.interceptors.response.use(
   async (err) => {
     const originalRequest = err.config
 
-    if (err.response?.status === 401 && !originalRequest._retry && originalRequest.url !== '/auth/refresh') {
+    if (err.response?.status === 401 && !originalRequest._retry && originalRequest.url !== 'auth/refresh') {
       if (isRefreshing) {
         return new Promise(function(resolve, reject) {
           failedQueue.push({ resolve, reject })
