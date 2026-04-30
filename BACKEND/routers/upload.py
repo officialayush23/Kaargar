@@ -17,8 +17,8 @@ from schemas import MediaUploadResponse, SuccessResponse
 from dependencies import get_current_user
 from services.storage import (
     upload_file, delete_file,
-    profile_photo_path, worker_post_path,
-    BUCKET_PROFILE, BUCKET_POSTS,
+    profile_photo_path, worker_post_path, worker_document_path,
+    BUCKET_PROFILE, BUCKET_POSTS, BUCKET_DOCUMENTS,
 )
 
 router = APIRouter()
@@ -105,7 +105,6 @@ async def upload_document_file(
     Does NOT require a WorkerProfile — used during onboarding.
     Returns the public URL and path for later registration via POST /workers/documents.
     """
-    import time as _time
     ALLOWED_DOC_TYPES = {*ALLOWED_IMAGE_TYPES, "application/pdf"}
     if file.content_type not in ALLOWED_DOC_TYPES:
         raise HTTPException(400, "Only JPEG/PNG/WebP/PDF files allowed")
@@ -115,11 +114,10 @@ async def upload_document_file(
         raise HTTPException(400, "Document must be under 10MB")
 
     original = file.filename or "doc"
-    ext = original.rsplit(".", 1)[-1].lower() if "." in original else "jpg"
-    path = f"{user.id}/doc_{doc_type}_{int(_time.time())}.{ext}"
-    url = upload_file(BUCKET_PROFILE, path, data, file.content_type)
+    path = worker_document_path(str(user.id), doc_type, original)
+    url = upload_file(BUCKET_DOCUMENTS, path, data, file.content_type)
 
-    return MediaUploadResponse(url=url, path=path, bucket=BUCKET_PROFILE)
+    return MediaUploadResponse(url=url, path=path, bucket=BUCKET_DOCUMENTS)
 
 
 @router.delete("/worker-post/{media_id}", response_model=SuccessResponse)

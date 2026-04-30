@@ -46,7 +46,11 @@ export default function ProfilePage() {
     if (!name.trim()) return
     setSavingName(true)
     try {
-      await api.patch('/workers/profile', { full_name: name.trim() })
+      if (typeof isWorker === 'function' && isWorker()) {
+        await api.patch('/workers/profile', { full_name: name.trim() })
+      } else {
+        await api.patch('/users/me', { full_name: name.trim() })
+      }
       updateUser({ full_name: name.trim() })
       setEditingName(false)
       toast.success('Name updated')

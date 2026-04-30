@@ -61,7 +61,17 @@ export default function DiscoveryPage() {
       const { data } = await api.get('/search', {
         params: { q: currentQuery, mode: 'discovery', sort },
       })
-      return data.results ?? data ?? []
+      const rows = data.results ?? data ?? []
+      const normalized = rows.map((item) => ({
+        ...item,
+        id: item.worker_id || item.id,
+        full_name: item.full_name || item.worker_name || item.name,
+        primary_category: item.primary_category || item.name,
+      }))
+      const deduped = Array.from(
+        new Map(normalized.filter((item) => item.id).map((item) => [item.id, item])).values()
+      )
+      return deduped
     },
     staleTime: 60_000,
   })

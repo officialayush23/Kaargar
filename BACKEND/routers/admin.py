@@ -11,6 +11,7 @@ from database import get_db
 from models import Job, WorkerProfile, Payment, WorkerDocument, PlatformConfig, User
 from schemas import AdminDashboard, AdminWorkerAction, AdminConfigUpdate, SuccessResponse
 from dependencies import require_admin
+from services.storage import get_public_url, BUCKET_DOCUMENTS
 
 router = APIRouter()
 
@@ -70,6 +71,29 @@ async def pending_workers(
         .order_by(WorkerProfile.created_at.asc())
     )
     rows = result.fetchall()
+    worker_ids = [wp.id for wp, _ in rows]
+    docs_by_worker: dict = {}
+    if worker_ids:
+        docs_result = await db.execute(
+            select(WorkerDocument)
+            .where(WorkerDocument.worker_id.in_(worker_ids))
+            .order_by(WorkerDocument.created_at.desc())
+        )
+        for doc in docs_result.scalars().all():
+            doc_path = (doc.cloudinary_id or "").lstrip("/")
+            doc_url = get_public_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
+            docs_by_worker.setdefault(str(doc.worker_id), []).append(
+                {
+                    "id": str(doc.id),
+                    "type": doc.type,
+                    "cloudinary_url": doc_url,
+                    "cloudinary_id": doc_path,
+                    "bucket": BUCKET_DOCUMENTS,
+                    "status": doc.status,
+                    "created_at": doc.created_at.isoformat(),
+                }
+            )
+
     return [
         {
             "id": str(wp.id),
@@ -77,7 +101,9 @@ async def pending_workers(
             "full_name": u.full_name,
             "email": u.email,
             "pune_area": wp.pune_area,
+            "experience_years": wp.experience_years,
             "created_at": wp.created_at.isoformat(),
+            "documents": docs_by_worker.get(str(wp.id), []),
         }
         for wp, u in rows
     ]
@@ -91,6 +117,7 @@ async def approve_worker(
 ):
     import uuid
     from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     result = await db.execute(
         select(WorkerProfile).where(WorkerProfile.id == uuid.UUID(worker_id))
     )
@@ -98,7 +125,16 @@ async def approve_worker(
     if not wp:
         raise HTTPException(404)
     wp.verification_status = "approved"
-    wp.verified_at = datetime.now(timezone.utc)
+    wp.verified_at = now
+
+    docs_result = await db.execute(
+        select(WorkerDocument).where(WorkerDocument.worker_id == wp.id)
+    )
+    for doc in docs_result.scalars().all():
+        doc.status = "approved"
+        doc.rejection_reason = None
+        doc.reviewed_by = admin.id
+        doc.reviewed_at = now
     await db.commit()
 
     # Notify worker
@@ -122,6 +158,8 @@ async def reject_worker(
     db: AsyncSession = Depends(get_db),
 ):
     import uuid
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc)
     result = await db.execute(
         select(WorkerProfile).where(WorkerProfile.id == uuid.UUID(worker_id))
     )
@@ -130,7 +168,26 @@ async def reject_worker(
         raise HTTPException(404)
     wp.verification_status = "rejected"
     wp.rejection_reason = body.reason
+
+    docs_result = await db.execute(
+        select(WorkerDocument).where(WorkerDocument.worker_id == wp.id)
+    )
+    for doc in docs_result.scalars().all():
+        doc.status = "rejected"
+        doc.rejection_reason = body.reason
+        doc.reviewed_by = admin.id
+        doc.reviewed_at = now
     await db.commit()
+
+    from services.notifications import create_notification
+    await create_notification(
+        db=db,
+        user_id=wp.user_id,
+        type="worker_rejected",
+        title="Profile Verification Update",
+        body=body.reason or "Your worker profile was rejected. Please re-upload documents and try again.",
+        data={},
+    )
     return SuccessResponse(message="Worker rejected")
 
 

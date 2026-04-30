@@ -9,7 +9,7 @@ from sqlalchemy import select
 from jose import JWTError, jwt
 
 from database import get_db
-from models import User
+from models import User, WorkerProfile
 from config import get_settings
 
 settings = get_settings()
@@ -46,8 +46,19 @@ async def get_current_user(
     return user
 
 
-async def require_worker(user: User = Depends(get_current_user)) -> User:
-    from models import WorkerProfile
+async def require_worker(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    if user.role == "admin":
+        return user
+    result = await db.execute(select(WorkerProfile.id).where(WorkerProfile.user_id == user.id))
+    worker_profile_id = result.scalar_one_or_none()
+    if not worker_profile_id:
+        raise HTTPException(status_code=403, detail="Worker access required")
+    if user.role != "worker":
+        user.role = "worker"
+        await db.commit()
     return user
 
 

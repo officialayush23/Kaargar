@@ -23,6 +23,7 @@ from schemas import (
     ServiceResponse, WorkerAnalyticsResponse, SuccessResponse,
 )
 from dependencies import get_current_user
+from services.storage import get_public_url, BUCKET_DOCUMENTS
 
 router = APIRouter()
 
@@ -64,6 +65,8 @@ async def create_profile(
         pune_area=body.pune_area,
         service_radius_km=body.service_radius_km,
     )
+    if user.role != "admin":
+        user.role = "worker"
     db.add(wp)
     await db.flush()
 
@@ -191,11 +194,29 @@ async def upload_document(
         raise HTTPException(404, "Worker profile not found")
 
     from models import WorkerDocument
+
+    document_type = body.type.strip().lower()
+    document_url = body.cloudinary_url.strip()
+    document_path = body.cloudinary_id.strip().lstrip("/")
+
+    bucket_marker = f"/storage/v1/object/public/{BUCKET_DOCUMENTS}/"
+    if not document_path and bucket_marker in document_url:
+        document_path = document_url.split(f"/{BUCKET_DOCUMENTS}/", 1)[1]
+    if document_path and bucket_marker not in document_url:
+        document_url = get_public_url(BUCKET_DOCUMENTS, document_path)
+    if bucket_marker not in document_url:
+        raise HTTPException(400, "Document URL must point to documents bucket")
+
+    if not document_path:
+        raise HTTPException(400, "Invalid document payload")
+    if not document_path.startswith(f"{user.id}/"):
+        raise HTTPException(403, "Document path does not belong to current user")
+
     doc = WorkerDocument(
         worker_id=wp.id,
-        type=body.type,
-        cloudinary_url=body.cloudinary_url,
-        cloudinary_id=body.cloudinary_id,
+        type=document_type,
+        cloudinary_url=document_url,
+        cloudinary_id=document_path,
         file_size_kb=body.file_size_kb,
     )
     db.add(doc)
@@ -458,9 +479,24 @@ async def get_worker_reviews(
     limit = 20
     offset = (page - 1) * limit
     result = await db.execute(
-        select(Review)
+        select(Review, User.full_name)
+        .join(User, User.id == Review.reviewer_id)
         .where(Review.worker_id == worker_id, Review.is_visible == True)  # noqa: E712
         .order_by(Review.created_at.desc())
         .offset(offset).limit(limit)
     )
-    return result.scalars().all()
+    rows = result.all()
+    return [
+        {
+            "id": str(review.id),
+            "job_id": str(review.job_id),
+            "reviewer_id": str(review.reviewer_id),
+            "worker_id": str(review.worker_id),
+            "reviewer_name": reviewer_name,
+            "rating": review.rating,
+            "text": review.text,
+            "reply": review.reply,
+            "created_at": review.created_at.isoformat(),
+        }
+        for review, reviewer_name in rows
+    ]

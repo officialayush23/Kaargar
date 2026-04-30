@@ -23,6 +23,7 @@ const STATUS_CONFIG = {
 function JobCard({ job, onClick }) {
   const cfg  = STATUS_CONFIG[job.status] || STATUS_CONFIG.default
   const Icon = cfg.icon
+  const amount = job.final_amount ?? job.final_price
 
   return (
     <GlassCard onClick={onClick} hover className="p-4">
@@ -66,12 +67,12 @@ function JobCard({ job, onClick }) {
 
         {/* Amount + chevron */}
         <div className="flex flex-col items-end gap-1.5 shrink-0">
-          {job.final_amount != null && (
+          {amount != null && (
             <span
               className="text-sm font-mono font-semibold"
               style={{ color: 'var(--text-primary)' }}
             >
-              {formatCurrency(job.final_amount)}
+              {formatCurrency(amount)}
             </span>
           )}
           <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />
@@ -179,6 +180,8 @@ export default function BookingsPage() {
                         ? `/job/${job.id}/searching`
                         : `/job/${job.id}/active`
                     )
+                  } else if (job.status === 'completed') {
+                    navigate(`/job/${job.id}/review`)
                   }
                 }}
               />

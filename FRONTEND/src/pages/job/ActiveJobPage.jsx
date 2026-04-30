@@ -109,6 +109,7 @@ export default function ActiveJobPage() {
 
   const worker = job?.worker
   const cfg = STATUS_CONFIG[job?.status] || STATUS_CONFIG.assigned
+  const finalAmount = job?.final_amount ?? job?.final_price
 
   return (
     <div className="space-y-5">
@@ -205,7 +206,7 @@ export default function ActiveJobPage() {
 
       {/* Final amount */}
       <AnimatePresence>
-        {job?.status === 'completed' && job?.final_amount && (
+        {job?.status === 'completed' && finalAmount && (
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -215,7 +216,7 @@ export default function ActiveJobPage() {
                 <div>
                   <p className="text-xs text-white/40">Total charged</p>
                   <p className="font-mono font-bold text-2xl text-emerald-400 mt-0.5">
-                    {formatCurrency(job.final_amount)}
+                    {formatCurrency(finalAmount)}
                   </p>
                 </div>
                 <CheckCircle className="h-8 w-8 text-emerald-400" />

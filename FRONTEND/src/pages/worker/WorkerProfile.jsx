@@ -44,11 +44,11 @@ export default function WorkerProfile() {
       setForm({
         full_name: user?.full_name || '',
         bio: profile?.bio || '',
-        area: profile?.area || '',
+        area: profile?.pune_area || '',
         min_rate: profile?.min_rate || '',
         max_rate: profile?.max_rate || '',
         years_experience: profile?.years_experience || '',
-        instant_available: profile?.instant_available ?? true,
+        instant_available: profile?.is_instant_available ?? true,
       })
     }
   }, [user, profile])

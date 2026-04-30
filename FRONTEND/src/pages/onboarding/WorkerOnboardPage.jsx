@@ -12,6 +12,7 @@ import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput, GlassTextarea } from '@/components/glass/GlassInput'
 import { api } from '@/lib/api'
+import { useAuthStore } from '@/stores/auth'
 import { PUNE_AREAS } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -69,7 +70,7 @@ function AreaPicker({ value, onChange, error }) {
   }
 
   return (
-    <div ref={containerRef} style={{ position: 'relative' }}>
+    <div ref={containerRef} style={{ position: 'relative', zIndex: open ? 80 : 1 }}>
       <button
         type="button"
         onClick={() => { setOpen(v => !v); if (!open) setTimeout(() => inputRef.current?.focus(), 50) }}
@@ -119,7 +120,7 @@ function AreaPicker({ value, onChange, error }) {
               top: 'calc(100% + 6px)',
               left: 0,
               right: 0,
-              zIndex: 50,
+              zIndex: 120,
               borderRadius: '14px',
               background: 'var(--g-bg-mid)',
               backdropFilter: 'blur(24px) saturate(180%)',
@@ -208,6 +209,7 @@ function AreaPicker({ value, onChange, error }) {
 // ── Main page ──────────────────────────────────────────────
 export default function WorkerOnboardPage() {
   const navigate = useNavigate()
+  const { updateUser } = useAuthStore()
   const [stepIdx, setStepIdx] = useState(0)
   const [prevIdx, setPrevIdx] = useState(0)
 
@@ -345,11 +347,13 @@ export default function WorkerOnboardPage() {
       }
 
       toast.success('Profile published! Welcome to Kaargar.')
+      updateUser({ role: 'worker' })
       navigate('/worker')
     } catch (e) {
       const detail = e.response?.data?.detail
       if (detail === 'Worker profile already exists') {
         toast.info('Profile already exists — redirecting to dashboard.')
+        updateUser({ role: 'worker' })
         navigate('/worker')
       } else {
         toast.error(detail || 'Failed to publish profile. Try again.')
@@ -445,7 +449,7 @@ export default function WorkerOnboardPage() {
               transition={{ type: 'spring', stiffness: 320, damping: 30 }}
               className="space-y-4"
             >
-              <GlassCard className="p-5 space-y-4">
+              <GlassCard className="p-5 space-y-4 overflow-visible" style={{ position: 'relative', zIndex: 30 }}>
                 <div>
                   <h2 className="text-base font-bold font-syne" style={{ color: 'var(--text-primary)' }}>
                     Tell clients about yourself
@@ -476,7 +480,7 @@ export default function WorkerOnboardPage() {
                 />
               </GlassCard>
 
-              <GlassCard className="p-5 space-y-4">
+              <GlassCard className="p-5 space-y-4" style={{ position: 'relative', zIndex: 30 }}>
                 <h3 className="text-sm font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
                   Rate range <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
                 </h3>
@@ -734,6 +738,7 @@ export default function WorkerOnboardPage() {
           )}
 
           {/* ── STEP 4: Area ── */}
+          {/* ── STEP 4: Area ── */}
           {step === 'area' && (
             <motion.div
               key="area"
@@ -743,67 +748,70 @@ export default function WorkerOnboardPage() {
               transition={{ type: 'spring', stiffness: 320, damping: 30 }}
               className="space-y-4"
             >
-              <GlassCard className="p-5 space-y-4">
-                <div>
-                  <h2 className="text-base font-bold font-syne" style={{ color: 'var(--text-primary)' }}>
-                    Your service area
-                  </h2>
-                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                    Where are you based? You'll receive jobs near this area.
-                  </p>
-                </div>
+              {/* WRAPPER 1: High z-index to force the dropdown above the next card */}
+              <div style={{ position: 'relative', zIndex: 50 }}>
+                {/* Notice we also enforce overflow: 'visible' directly here just in case */}
+                <GlassCard className="p-5 space-y-4" style={{ overflow: 'visible' }}>
+                  <div>
+                    <h2 className="text-base font-bold font-syne" style={{ color: 'var(--text-primary)' }}>
+                      Your service area
+                    </h2>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      Where are you based? You'll receive jobs near this area.
+                    </p>
+                  </div>
 
-                <div>
-                  <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
-                    Pune area
-                  </p>
-                  <AreaPicker
-                    value={selectedArea}
-                    onChange={v => { setSelectedArea(v); setErrors(e => ({ ...e, area: '' })) }}
-                    error={errors.area}
-                  />
-                  {errors.area && (
-                    <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>{errors.area}</p>
-                  )}
-                </div>
-              </GlassCard>
+                  <div>
+                    <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>
+                      Pune area
+                    </p>
+                    <AreaPicker
+                      value={selectedArea}
+                      onChange={v => { setSelectedArea(v); setErrors(e => ({ ...e, area: '' })) }}
+                      error={errors.area}
+                    />
+                    {errors.area && (
+                      <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>{errors.area}</p>
+                    )}
+                  </div>
+                </GlassCard>
+              </div>
 
-              {/* Radius */}
-              <GlassCard className="p-5">
-                <h3 className="text-sm font-semibold mb-3 font-syne" style={{ color: 'var(--text-primary)' }}>
-                  Service radius
-                </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
-                  {RADIUS_OPTIONS.map(opt => (
-                    <motion.button
-                      key={opt.value}
-                      onClick={() => setRadius(opt.value)}
-                      whileTap={{ scale: 0.94 }}
-                      style={{
-                        padding: '10px 6px', borderRadius: '10px',
-                        border: radius === opt.value
-                          ? '1.5px solid var(--amber)'
-                          : '1px solid var(--card-border)',
-                        background: radius === opt.value
-                          ? 'rgba(245,158,11,0.12)'
-                          : 'var(--card-bg)',
-                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px',
-                        cursor: 'pointer', transition: 'all 0.15s ease',
-                      }}
-                    >
-                      <span style={{
-                        fontSize: '12px', fontWeight: 700,
-                        color: radius === opt.value ? 'var(--amber)' : 'var(--text-primary)',
-                      }}>
-                        {opt.label}
-                      </span>
-                      <span style={{ fontSize: '9px', color: 'var(--text-muted)' }}>
-                        {opt.desc}
-                      </span>
-                    </motion.button>
-                  ))}
-                </div>
-              </GlassCard>
+              {/* WRAPPER 2: Lower z-index ensures it stays underneath the dropdown */}
+              <div style={{ position: 'relative', zIndex: 10 }}>
+                <GlassCard className="p-5">
+                  <h3 className="text-sm font-semibold mb-3 font-syne" style={{ color: 'var(--text-primary)' }}>
+                    Service radius
+                  </h3>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '8px' }}>
+                    {RADIUS_OPTIONS.map(opt => (
+                      <motion.button
+                        key={opt.value}
+                        onClick={() => setRadius(opt.value)}
+                        whileTap={{ scale: 0.94 }}
+                        style={{
+                          padding: '10px 6px', borderRadius: '10px',
+                          border: radius === opt.value
+                            ? '1.5px solid var(--amber)'
+                            : '1px solid var(--card-border)',
+                          background: radius === opt.value
+                            ? 'rgba(245,158,11,0.12)'
+                            : 'var(--card-bg)',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
+                          cursor: 'pointer', transition: 'all 0.15s ease'
+                        }}
+                      >
+                        <span style={{
+                          fontSize: '13px', fontWeight: radius === opt.value ? 700 : 500,
+                          color: radius === opt.value ? 'var(--amber)' : 'var(--text-primary)'
+                        }}>
+                          {opt.label}
+                        </span>
+                      </motion.button>
+                    ))}
+                  </div>
+                </GlassCard>
+              </div>
             </motion.div>
           )}
 

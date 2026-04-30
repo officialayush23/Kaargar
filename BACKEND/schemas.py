@@ -361,6 +361,7 @@ class ReviewResponse(KaargarBase):
     job_id: UUID
     reviewer_id: UUID
     worker_id: UUID
+    reviewer_name: Optional[str] = None
     rating: Decimal
     text: Optional[str] = None
     reply: Optional[str] = None

@@ -9,11 +9,11 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from jose import jwt
 
 from database import get_db
-from models import User, OTPSession
+from models import User, OTPSession, WorkerProfile
 from schemas import OTPSendRequest, OTPVerifyRequest, TokenResponse, UserResponse
 from config import get_settings
 from services.notifications import send_otp_email
@@ -32,10 +32,10 @@ def _generate_otp(length: int = 6) -> str:
     return "".join(secrets.choice(string.digits) for _ in range(length))
 
 
-def _create_jwt(user_id: str) -> str:
+def _create_jwt(user_id: str, role: str) -> str:
     expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
     return jwt.encode(
-        {"sub": str(user_id), "exp": expire},
+        {"sub": str(user_id), "role": role, "exp": expire},
         settings.jwt_secret_key,
         algorithm=settings.jwt_algorithm,
     )
@@ -47,11 +47,13 @@ async def send_otp(
     background: BackgroundTasks,
     db: AsyncSession = Depends(get_db),
 ):
+    identifier = body.email.strip().lower()
+
     # Rate-limit check via Redis if available
     try:
         import redis.asyncio as aioredis
         r = aioredis.from_url(settings.redis_url)
-        key = f"otp_limit:{body.email}"
+        key = f"otp_limit:{identifier}"
         count = await r.get(key)
         if count and int(count) >= 5:
             raise HTTPException(429, "Too many OTP requests. Try again in an hour.")
@@ -68,13 +70,13 @@ async def send_otp(
     # Mark previous sessions as used
     await db.execute(
         OTPSession.__table__.update()
-        .where(OTPSession.identifier == body.email)
+        .where(OTPSession.identifier == identifier)
         .where(OTPSession.is_used == False)
         .values(is_used=True)
     )
 
     session = OTPSession(
-        identifier=body.email,
+        identifier=identifier,
         type="email",
         otp_hash=otp_hash,
         purpose="login",
@@ -83,7 +85,7 @@ async def send_otp(
     db.add(session)
     await db.commit()
 
-    background.add_task(send_otp_email, body.email, otp)
+    background.add_task(send_otp_email, identifier, otp)
     return {"message": "OTP sent", "expires_in": OTP_EXPIRE_MINUTES * 60}
 
 
@@ -92,10 +94,19 @@ async def verify_otp(
     body: OTPVerifyRequest,
     db: AsyncSession = Depends(get_db),
 ):
+    identifier = body.email.strip().lower()
+    submitted_token = body.token.strip()
+    normalized_token = "".join(ch for ch in submitted_token if ch.isdigit())
+    token_candidates = [submitted_token]
+    if normalized_token and normalized_token not in token_candidates:
+        token_candidates.insert(0, normalized_token)
+    if not token_candidates[0]:
+        raise HTTPException(400, "OTP is required")
+
     now = datetime.now(timezone.utc)
     result = await db.execute(
         select(OTPSession)
-        .where(OTPSession.identifier == body.email)
+        .where(OTPSession.identifier == identifier)
         .where(OTPSession.is_used == False)
         .where(OTPSession.expires_at > now)
         .order_by(OTPSession.created_at.desc())
@@ -109,7 +120,7 @@ async def verify_otp(
     if session.attempts >= session.max_attempts:
         raise HTTPException(400, "Too many incorrect attempts")
 
-    if session.otp_hash != _hash_otp(body.token):
+    if not any(session.otp_hash == _hash_otp(candidate) for candidate in token_candidates):
         session.attempts += 1
         await db.commit()
         remaining = session.max_attempts - session.attempts
@@ -120,20 +131,30 @@ async def verify_otp(
     await db.commit()
 
     # Upsert user
-    user_result = await db.execute(select(User).where(User.email == body.email))
+    user_result = await db.execute(
+        select(User).where(func.lower(User.email) == identifier)
+    )
     user = user_result.scalar_one_or_none()
 
     if not user:
-        user = User(email=body.email, email_verified=True)
+        user = User(email=identifier, email_verified=True, last_seen_at=now)
         db.add(user)
-        await db.commit()
-        await db.refresh(user)
     else:
         user.email_verified = True
         user.last_seen_at = now
-        await db.commit()
 
-    token = _create_jwt(str(user.id))
+    await db.flush()
+
+    wp_result = await db.execute(
+        select(WorkerProfile.id).where(WorkerProfile.user_id == user.id)
+    )
+    if wp_result.scalar_one_or_none() and user.role != "admin":
+        user.role = "worker"
+
+    await db.commit()
+    await db.refresh(user)
+
+    token = _create_jwt(str(user.id), user.role)
     return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
 
 

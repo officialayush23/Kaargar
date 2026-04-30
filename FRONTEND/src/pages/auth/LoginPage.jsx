@@ -88,13 +88,14 @@ export default function LoginPage() {
 
   // ── Step 3: Verify OTP ──────────────────────────────────────
   async function verifyOtp() {
-    if (otp.length !== OTP_LENGTH) return
+    const cleanOtp = otp.replace(/\D/g, '').slice(0, OTP_LENGTH)
+    if (cleanOtp.length !== OTP_LENGTH) return
     setError('')
     setLoading(true)
     try {
       const { data } = await api.post('/auth/verify-otp', {
         email: email.trim().toLowerCase(),
-        token: otp,
+        token: cleanOtp,
       })
       setAuth(data)
 
@@ -105,12 +106,21 @@ export default function LoginPage() {
         goTo('profile')
       } else {
         toast.success('Welcome back!')
-        // Existing user — route based on intent + current role
+        // Existing user — role-first routing
         if (data.user?.role === 'admin') {
           navigate('/admin')
+        } else if (data.user?.role === 'worker') {
+          navigate('/worker')
         } else if (intent === 'worker') {
-          // They want to work — go to worker portal or onboarding
-          if (data.user?.role === 'worker') {
+          let hasWorkerProfile = false
+          try {
+            await api.get('/workers/me/profile')
+            hasWorkerProfile = true
+          } catch (e) {
+            if (e?.response?.status !== 404) throw e
+          }
+          if (hasWorkerProfile) {
+            updateUser({ role: 'worker' })
             navigate('/worker')
           } else {
             navigate('/onboard/worker')

@@ -10,19 +10,20 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { formatCurrency, getInitials } from '@/lib/utils'
 
 function ReviewItem({ review }) {
+  const rating = Number(review.rating || 0)
   return (
     <div className="glass-light rounded-xl p-4">
       <div className="flex items-center gap-2 mb-2">
         <div className="flex">
           {[...Array(5)].map((_, i) => (
-            <Star key={i} size={12} className={i < review.rating ? 'text-discovery fill-discovery' : 'text-[--text-muted]'} />
+            <Star key={i} size={12} className={i < rating ? 'text-discovery fill-discovery' : 'text-[--text-muted]'} />
           ))}
         </div>
         <span className="text-xs text-[--text-muted]">{new Date(review.created_at).toLocaleDateString('en-IN')}</span>
       </div>
-      {review.review_text && <p className="text-sm text-[--text-secondary]">{review.review_text}</p>}
-      {review.client?.full_name && (
-        <p className="text-xs text-[--text-muted] mt-2">— {review.client.full_name}</p>
+      {review.text && <p className="text-sm text-[--text-secondary]">{review.text}</p>}
+      {review.reviewer_name && (
+        <p className="text-xs text-[--text-muted] mt-2">— {review.reviewer_name}</p>
       )}
     </div>
   )
@@ -48,7 +49,15 @@ export default function WorkerProfilePage() {
   })
   const { data: reviews = [] } = useQuery({
     queryKey: ['worker-reviews', workerId],
-    queryFn: () => api.get(`/reviews/worker/${workerId}`).then(r => r.data),
+    queryFn: async () => {
+      try {
+        const { data } = await api.get(`/reviews/worker/${workerId}`)
+        return data
+      } catch {
+        const { data } = await api.get(`/workers/${workerId}/reviews`)
+        return data
+      }
+    },
     enabled: !!workerId,
   })
 
@@ -58,7 +67,7 @@ export default function WorkerProfilePage() {
     </div>
   )
 
-  const wp = worker?.worker_profile
+  const wp = worker
 
   return (
     <div className="min-h-screen bg-[--bg-base]">
@@ -86,15 +95,15 @@ export default function WorkerProfilePage() {
               <div className="flex flex-wrap gap-2 mt-2">
                 {wp?.avg_rating > 0 && (
                   <Badge variant="outline" className="gap-1 text-discovery border-discovery/30">
-                    <Star size={10} className="fill-discovery" /> {wp.avg_rating?.toFixed(1)}
+                    <Star size={10} className="fill-discovery" /> {Number(wp.avg_rating || 0).toFixed(1)}
                   </Badge>
                 )}
-                {wp?.total_jobs > 0 && (
+                {wp?.total_jobs_completed > 0 && (
                   <Badge variant="outline" className="gap-1 text-[--text-muted] border-white/10">
-                    <Briefcase size={10} /> {wp.total_jobs} jobs
+                    <Briefcase size={10} /> {wp.total_jobs_completed} jobs
                   </Badge>
                 )}
-                {wp?.is_verified && (
+                {wp?.verification_status === 'approved' && (
                   <Badge variant="outline" className="gap-1 text-instant border-instant/30">
                     <CheckCircle size={10} /> Verified
                   </Badge>
@@ -117,8 +126,8 @@ export default function WorkerProfilePage() {
                       <p className="text-xs text-[--text-muted] mt-0.5 line-clamp-1">{service.description}</p>
                     )}
                   </div>
-                  {service.hourly_rate && (
-                    <p className="text-sm font-semibold text-brand">{formatCurrency(service.hourly_rate)}/hr</p>
+                  {service.price && (
+                    <p className="text-sm font-semibold text-brand">{formatCurrency(service.price)}/hr</p>
                   )}
                 </div>
               ))}

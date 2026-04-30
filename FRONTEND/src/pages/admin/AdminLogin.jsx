@@ -7,7 +7,7 @@ import { toast } from 'sonner'
 
 export default function AdminLogin() {
   const navigate = useNavigate()
-  const { setUser, setToken } = useAuthStore()
+  const { setAuth } = useAuthStore()
   const [step, setStep] = useState('email') // 'email' | 'otp'
   const [email, setEmail] = useState('')
   const [otp, setOtp] = useState('')
@@ -17,8 +17,10 @@ export default function AdminLogin() {
     e.preventDefault()
     setLoading(true)
     try {
-      await api.post('/auth/send-otp', { email })
+      const normalizedEmail = email.trim().toLowerCase()
+      await api.post('/auth/send-otp', { email: normalizedEmail })
       toast.success('OTP sent to your email')
+      setEmail(normalizedEmail)
       setStep('otp')
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Failed to send OTP')
@@ -29,15 +31,19 @@ export default function AdminLogin() {
 
   async function verifyOtp(e) {
     e.preventDefault()
+    const cleanOtp = otp.replace(/\D/g, '').slice(0, 6)
+    if (cleanOtp.length !== 6) {
+      toast.error('Please enter a valid 6-digit OTP')
+      return
+    }
     setLoading(true)
     try {
-      const { data } = await api.post('/auth/verify-otp', { email, token: otp })
+      const { data } = await api.post('/auth/verify-otp', { email: email.trim().toLowerCase(), token: cleanOtp })
       if (data.user?.role !== 'admin') {
         toast.error('Access denied — admin only')
         return
       }
-      setToken(data.access_token)
-      setUser(data.user)
+      setAuth(data)
       navigate('/admin')
     } catch (err) {
       toast.error(err?.response?.data?.detail || 'Invalid OTP')

@@ -17,6 +17,14 @@ export const useAuthStore = create(
         set({ token: access_token, refreshToken: refresh_token, user, isAuthenticated: true })
       },
 
+      setToken: (token) => {
+        if (token) localStorage.setItem('kaargar_token', token)
+        else localStorage.removeItem('kaargar_token')
+        set((s) => ({ token, isAuthenticated: !!token || !!s.user }))
+      },
+
+      setUser: (user) => set((s) => ({ user, isAuthenticated: !!s.token || !!user })),
+
       updateUser: (updates) => set((s) => ({ user: { ...s.user, ...updates } })),
 
       logout: async () => {
@@ -42,6 +50,7 @@ export const useAuthStore = create(
       },
 
       isAdmin: () => get().user?.role === 'admin',
+      isUser: () => get().user?.role === 'user',
     }),
     {
       name: 'kaargar-auth',

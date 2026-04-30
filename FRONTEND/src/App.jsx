@@ -37,21 +37,47 @@ import AdminJobs from '@/pages/admin/AdminJobs'
 import AdminSupport from '@/pages/admin/AdminSupport'
 import AdminConfig from '@/pages/admin/AdminConfig'
 
+function getDefaultRoute(user) {
+  if (!user) return '/login'
+  if (user.role === 'admin') return '/admin'
+  if (user.role === 'worker') return '/worker'
+  return '/'
+}
+
 function RequireAuth({ children }) {
-  const { isAuthenticated } = useAuthStore()
+  const { isAuthenticated, user } = useAuthStore()
   return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
 function RequireWorker({ children }) {
-  const { isAuthenticated, isWorker } = useAuthStore()
+  const { isAuthenticated, isWorker, user } = useAuthStore()
   if (!isAuthenticated) return <Navigate to="/login" replace />
-  if (!isWorker()) return <Navigate to="/" replace />
+  if (!isWorker()) return <Navigate to={getDefaultRoute(user)} replace />
   return children
 }
 
+function RequireUser({ children }) {
+  const { isAuthenticated, user } = useAuthStore()
+  if (!isAuthenticated) return <Navigate to="/login" replace />
+  if (user?.role !== 'user') return <Navigate to={getDefaultRoute(user)} replace />
+  return children
+}
+
+function RequireAdmin({ children }) {
+  const { isAuthenticated, isAdmin, user } = useAuthStore()
+  if (!isAuthenticated) return <Navigate to="/admin/login" replace />
+  if (!isAdmin()) return <Navigate to={getDefaultRoute(user)} replace />
+  return children
+}
+
+function RoleRedirect() {
+  const { user } = useAuthStore()
+  return <Navigate to={getDefaultRoute(user)} replace />
+}
+
 function GuestOnly({ children }) {
-  const { isAuthenticated } = useAuthStore()
-  return !isAuthenticated ? children : <Navigate to="/" replace />
+  const { isAuthenticated, user } = useAuthStore()
+  return !isAuthenticated ? children : <Navigate to={getDefaultRoute(user)} replace />
 }
 
 export default function App() {
@@ -67,7 +93,7 @@ export default function App() {
       <Route path="/onboard/worker" element={<RequireAuth><WorkerOnboardPage /></RequireAuth>} />
 
       {/* Main app */}
-      <Route element={<RequireAuth><AppLayout /></RequireAuth>}>
+      <Route element={<RequireUser><AppLayout /></RequireUser>}>
         <Route index element={<HomePage />} />
         <Route path="bookings" element={<BookingsPage />} />
         <Route path="chat" element={<ChatPage />} />
@@ -95,7 +121,7 @@ export default function App() {
 
       {/* Admin portal — separate auth, no main layout */}
       <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/admin" element={<AdminLayout />}>
+      <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
         <Route index element={<AdminDashboard />} />
         <Route path="workers" element={<AdminWorkers />} />
         <Route path="jobs" element={<AdminJobs />} />
@@ -103,7 +129,7 @@ export default function App() {
         <Route path="config" element={<AdminConfig />} />
       </Route>
 
-      <Route path="*" element={<Navigate to="/" replace />} />
+      <Route path="*" element={<RequireAuth><RoleRedirect /></RequireAuth>} />
     </Routes>
   )
 }

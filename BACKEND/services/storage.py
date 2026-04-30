@@ -1,6 +1,6 @@
 """
 Supabase Storage helper.
-Buckets: profile_photos, worker_posts
+Buckets: profile_photos, worker_posts, documents
 """
 
 from supabase import create_client
@@ -12,6 +12,7 @@ supabase = create_client(settings.supabase_url, settings.supabase_service_role_k
 
 BUCKET_PROFILE = "profile_photos"
 BUCKET_POSTS = "worker_posts"
+BUCKET_DOCUMENTS = "documents"
 
 
 def get_public_url(bucket: str, path: str) -> str:
@@ -38,3 +39,8 @@ def profile_photo_path(user_id: str, filename: str = "avatar.jpg") -> str:
 def worker_post_path(user_id: str, original_filename: str) -> str:
     ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else "jpg"
     return f"{user_id}/{int(time.time())}_{uuid.uuid4().hex[:8]}.{ext}"
+
+
+def worker_document_path(user_id: str, doc_type: str, original_filename: str) -> str:
+    ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else "jpg"
+    return f"{user_id}/doc_{doc_type}_{int(time.time())}_{uuid.uuid4().hex[:6]}.{ext}"

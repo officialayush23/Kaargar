@@ -6,17 +6,20 @@ import { motion } from 'framer-motion'
 
 export function WorkerCard({ worker, index = 0 }) {
   const navigate = useNavigate()
+  const workerId = worker.worker_id || worker.id
+  const workerName = worker.full_name || worker.worker_name || 'Worker'
+  const workerCategory = worker.primary_category || worker.name || 'Professional'
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: index * 0.05 }}
-      onClick={() => navigate(`/worker/${worker.id}`)}
+      onClick={() => navigate(`/worker/${workerId}`)}
       className="glass-light rounded-2xl p-4 flex gap-4 cursor-pointer card-hover active:scale-[0.98] transition-all"
     >
       <div className="relative">
-        <Avatar src={worker.avatar_url} name={worker.full_name} size="lg" />
+        <Avatar src={worker.avatar_url} name={workerName} size="lg" />
         {worker.status === 'online' && (
           <span className="absolute bottom-0 right-0 w-3 h-3 bg-instant rounded-full border-2 border-bg-surface" />
         )}
@@ -26,10 +29,10 @@ export function WorkerCard({ worker, index = 0 }) {
         <div className="flex items-start justify-between gap-2">
           <div>
             <h3 className="font-semibold text-[--text-primary] truncate font-syne">
-              {worker.full_name || 'Worker'}
+              {workerName}
             </h3>
             <p className="text-xs text-[--text-secondary] mt-0.5">
-              {worker.primary_category || 'Professional'}
+              {workerCategory}
             </p>
           </div>
           {worker.verification_status === 'approved' && (

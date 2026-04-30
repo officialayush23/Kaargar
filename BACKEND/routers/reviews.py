@@ -1,10 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 import uuid
 
 from database import get_db
-from models import User, Job, Review
+from models import User, Job, Review, WorkerProfile
 from schemas import ReviewCreate, ReviewResponse, ReviewReply, SuccessResponse
 from dependencies import get_current_user
 
@@ -46,6 +46,22 @@ async def create_review(
     db.add(review)
     await db.commit()
     await db.refresh(review)
+    setattr(review, "reviewer_name", user.full_name)
+
+    wp_result = await db.execute(
+        select(WorkerProfile).where(WorkerProfile.id == job.worker_id)
+    )
+    wp = wp_result.scalar_one_or_none()
+    if wp:
+        agg_result = await db.execute(
+            select(func.avg(Review.rating), func.count(Review.id))
+            .where(Review.worker_id == job.worker_id, Review.is_visible == True)  # noqa: E712
+        )
+        avg_rating, rating_count = agg_result.one()
+        wp.avg_rating = avg_rating or 0
+        wp.rating_count = rating_count or 0
+        await db.commit()
+
     return review
 
 
@@ -58,12 +74,27 @@ async def worker_reviews(
     limit = 20
     offset = (page - 1) * limit
     result = await db.execute(
-        select(Review)
+        select(Review, User.full_name)
+        .join(User, User.id == Review.reviewer_id)
         .where(Review.worker_id == worker_id, Review.is_visible == True)
         .order_by(Review.created_at.desc())
         .offset(offset).limit(limit)
     )
-    return result.scalars().all()
+    rows = result.all()
+    return [
+        ReviewResponse(
+            id=review.id,
+            job_id=review.job_id,
+            reviewer_id=review.reviewer_id,
+            worker_id=review.worker_id,
+            reviewer_name=reviewer_name,
+            rating=review.rating,
+            text=review.text,
+            reply=review.reply,
+            created_at=review.created_at,
+        )
+        for review, reviewer_name in rows
+    ]
 
 
 @router.post("/{review_id}/reply", response_model=ReviewResponse)
