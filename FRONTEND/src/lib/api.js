@@ -1,7 +1,14 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 
-const BASE_URL = import.meta.env.VITE_API_URL || '/v1'
+function normalizeApiBaseUrl(rawUrl) {
+  const url = (rawUrl || '').trim().replace(/\/+$/, '')
+  if (!url) return '/v1'
+  if (url === '/v1' || url.endsWith('/v1')) return url
+  return `${url}/v1`
+}
+
+const BASE_URL = normalizeApiBaseUrl(import.meta.env.VITE_API_URL)
 
 export const api = axios.create({
   baseURL: BASE_URL,

@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # App
     app_env: str = Field("development", alias="ENVIRONMENT")
     app_name: str = "Kaargar"
-    frontend_url: str = "kaargar1.vercel.app"
+    frontend_url: str = Field("https://kaargar1.vercel.app", alias="FRONTEND_URL")
     fastapi_host: str = Field("0.0.0.0", alias="FASTAPI_HOST")
     fastapi_port: int = Field(8000, alias="FASTAPI_PORT")
 
@@ -22,6 +22,16 @@ class Settings(BaseSettings):
         if v.startswith("postgres://"):
             return v.replace("postgres://", "postgresql+asyncpg://", 1)
         return v
+
+    @field_validator("frontend_url", mode="before")
+    @classmethod
+    def normalize_frontend_url(cls, v: str) -> str:
+        value = (v or "").strip().rstrip("/")
+        if not value:
+            return "https://kaargar1.vercel.app"
+        if value.startswith(("http://", "https://")):
+            return value
+        return f"https://{value}"
 
     # Supabase
     supabase_url: str = Field(..., alias="SUPABASE_URL")
