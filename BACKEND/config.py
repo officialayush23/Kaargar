@@ -63,6 +63,9 @@ class Settings(BaseSettings):
     # Mapbox
     mapbox_access_token: str = Field("", alias="MAP_BOX_API_KEY")
 
+    # Google Maps
+    google_maps_api_key: str = Field("", alias="GOOGLE_MAPS_API_KEY")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

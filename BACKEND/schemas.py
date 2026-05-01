@@ -440,6 +440,12 @@ class PaymentOrderResponse(BaseModel):
     key_id: str
 
 
+class PaymentVerifyRequest(BaseModel):
+    razorpay_order_id: str
+    razorpay_payment_id: str
+    razorpay_signature: str
+
+
 class PaymentResponse(KaargarBase):
     id: UUID
     job_id: UUID

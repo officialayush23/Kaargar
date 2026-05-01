@@ -13,6 +13,7 @@ import { api } from '@/lib/api'
 import { useAppStore } from '@/stores/app'
 import { useCategories } from '@/hooks/useCategories'
 import { useGeoLocation } from '@/hooks/useGeoLocation'
+import { useAddressAutocomplete, reverseGeocode } from '@/hooks/useGeocoding'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput, GlassTextarea } from '@/components/glass/GlassInput'
@@ -152,11 +153,42 @@ function CategoryStep({ mode, onSelect }) {
 
 function LocationStep({ location, onLocationSelect, category }) {
   const { getLocation, loading: geoLoading } = useGeoLocation()
-  const [description, setDescription] = useState('')
+  const { suggestions, loading: acLoading, search, resolvePlace, clear } = useAddressAutocomplete()
+  const [addressInput, setAddressInput] = useState(location?.address || '')
+  const [showSuggestions, setShowSuggestions] = useState(false)
 
   async function handleGPS() {
     const loc = await getLocation()
-    if (loc) onLocationSelect({ ...loc, description })
+    if (loc) {
+      // Try reverse geocode to get nice address
+      const geo = await reverseGeocode(loc.lat, loc.lon)
+      const addr = geo?.formatted_address || loc.address || 'Current location'
+      setAddressInput(addr)
+      onLocationSelect({ ...loc, address: addr })
+    }
+  }
+
+  function handleAddressInput(val) {
+    setAddressInput(val)
+    search(val)
+    setShowSuggestions(true)
+    if (!val) onLocationSelect(prev => ({ ...prev, address: '' }))
+  }
+
+  async function handleSelectSuggestion(suggestion) {
+    setAddressInput(suggestion.description)
+    setShowSuggestions(false)
+    clear()
+    try {
+      const place = await resolvePlace(suggestion.place_id)
+      onLocationSelect({
+        lat: place.lat,
+        lon: place.lon,
+        address: place.formatted_address || suggestion.description,
+      })
+    } catch {
+      onLocationSelect(prev => ({ ...prev, address: suggestion.description }))
+    }
   }
 
   return (
@@ -175,6 +207,82 @@ function LocationStep({ location, onLocationSelect, category }) {
         </p>
       </div>
 
+      {/* Address search with autocomplete */}
+      <div style={{ position: 'relative' }}>
+        <div style={{ position: 'relative' }}>
+          <MapPin
+            className="h-4 w-4"
+            style={{
+              position: 'absolute', left: '12px', top: '50%',
+              transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', zIndex: 1,
+            }}
+          />
+          <input
+            type="text"
+            value={addressInput}
+            onChange={e => handleAddressInput(e.target.value)}
+            onFocus={() => addressInput && setShowSuggestions(true)}
+            onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
+            placeholder="Search for an address in Pune..."
+            className="glass-input w-full rounded-xl text-sm"
+            style={{
+              paddingLeft: '36px', paddingRight: '12px', paddingTop: '11px', paddingBottom: '11px',
+              color: 'var(--text-primary)', width: '100%',
+            }}
+          />
+          {acLoading && (
+            <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)' }}>
+              <div className="w-4 h-4 border-2 border-azure/30 border-t-azure rounded-full animate-spin" />
+            </div>
+          )}
+        </div>
+
+        {/* Suggestions dropdown */}
+        <AnimatePresence>
+          {showSuggestions && suggestions.length > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -4 }}
+              style={{
+                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                background: 'var(--g-bg-mid)', border: '1px solid var(--g-border)',
+                borderRadius: '12px', marginTop: '4px', overflow: 'hidden',
+                backdropFilter: 'blur(24px)',
+                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+              }}
+            >
+              {suggestions.map((s, i) => (
+                <button
+                  key={s.place_id || i}
+                  onMouseDown={() => handleSelectSuggestion(s)}
+                  style={{
+                    width: '100%', textAlign: 'left', padding: '10px 14px',
+                    display: 'flex', alignItems: 'flex-start', gap: '10px',
+                    borderBottom: i < suggestions.length - 1 ? '1px solid var(--g-border)' : 'none',
+                    background: 'transparent', cursor: 'pointer', transition: 'background 0.1s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--g-bg)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" style={{ color: 'var(--azure)' }} />
+                  <div style={{ minWidth: 0 }}>
+                    <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
+                      {s.main_text || s.description}
+                    </p>
+                    {s.secondary_text && (
+                      <p className="text-[10px] truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                        {s.secondary_text}
+                      </p>
+                    )}
+                  </div>
+                </button>
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </div>
+
       {/* GPS button */}
       <GlassButton
         variant="ghost"
@@ -188,38 +296,21 @@ function LocationStep({ location, onLocationSelect, category }) {
 
       {/* Map */}
       <PuneMap
-        onLocationSelect={(loc) => onLocationSelect({ ...loc })}
+        onLocationSelect={(loc) => {
+          onLocationSelect({ ...loc })
+          if (loc.address) setAddressInput(loc.address)
+        }}
         initialLat={location?.lat}
         initialLon={location?.lon}
-        className="h-56"
+        className="h-48"
       />
-
-      {/* Current selection */}
-      {location?.address && (
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="flex items-start gap-3 p-3 rounded-xl"
-          style={{ background: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.2)' }}
-        >
-          <MapPin className="h-4 w-4 text-azure mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{location.address}</p>
-            {location.lat && (
-              <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--text-muted)' }}>
-                {location.lat.toFixed(5)}, {location.lon.toFixed(5)}
-              </p>
-            )}
-          </div>
-        </motion.div>
-      )}
 
       {/* Description */}
       <GlassTextarea
         label="Describe the work (optional)"
         placeholder="e.g. Fix leaking tap under the kitchen sink..."
         rows={2}
-        onChange={e => onLocationSelect(loc => ({ ...loc, description: e.target.value }))}
+        onChange={e => onLocationSelect(prev => ({ ...prev, description: e.target.value }))}
       />
     </motion.div>
   )

@@ -15,12 +15,14 @@ export const api = axios.create({
   headers: { 'Content-Type': 'application/json' },
 })
 
-// Inject JWT token from Zustand/localStorage
+// Fix Axios URL joining: convert absolute paths to relative so baseURL is preserved
 api.interceptors.request.use((config) => {
-  // Keep '/v1' from baseURL by converting root-relative paths to relative paths.
-  if (config.url && !/^https?:\/\//i.test(config.url)) {
+  // If URL is not already absolute and starts with /, remove leading slashes
+  // This ensures '/jobs' becomes 'jobs' and joins with baseURL correctly
+  if (config.url && typeof config.url === 'string' && !/^https?:\/\//i.test(config.url) && config.url.startsWith('/')) {
     config.url = config.url.replace(/^\/+/, '')
   }
+  
   const token = localStorage.getItem('kaargar_token')
   if (token) config.headers.Authorization = `Bearer ${token}`
   return config

@@ -1,758 +1,39 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Mail, ArrowRight, RefreshCw, ShieldCheck, ChevronLeft,
-  User, Phone, Briefcase, MapPin, Check, Zap, Star,
-  HardHat, ShoppingBag,
+  User, Phone, MapPin, Check, HardHat, ShoppingBag, Loader2,
 } from 'lucide-react'
 import { Background } from '@/components/glass/Background'
-import { GlassCard } from '@/components/glass/GlassCard'
-import { GlassButton } from '@/components/glass/GlassButton'
-import { GlassInput } from '@/components/glass/GlassInput'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { PUNE_AREAS } from '@/lib/utils'
 import { toast } from 'sonner'
+import { cn } from '@/lib/utils'
 
 const OTP_LENGTH = 6
-
-// intent → email → otp → profile → area
 const STEP_ORDER = ['intent', 'email', 'otp', 'profile', 'area']
 
-export default function LoginPage() {
-  const navigate = useNavigate()
-  const { setAuth, updateUser } = useAuthStore()
-
-  const [step, setStep] = useState('intent')
-  const [prevStep, setPrevStep] = useState(null)
-
-  // Intent: 'user' | 'worker'
-  const [intent, setIntent] = useState(null)
-
-  // Step 2+3
-  const [email, setEmail] = useState('')
-  const [otp, setOtp] = useState('')
-  const [resendTimer, setResendTimer] = useState(0)
-
-  // Step 4 — Profile
-  const [fullName, setFullName] = useState('')
-  const [phone, setPhone] = useState('')
-
-  // Step 5 — Area
-  const [selectedArea, setSelectedArea] = useState('')
-
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState('')
-
-  function goTo(next) {
-    setPrevStep(step)
-    setStep(next)
-    setError('')
-  }
-
-  function goBack() {
-    const idx = STEP_ORDER.indexOf(step)
-    if (idx > 0) {
-      setPrevStep(step)
-      setStep(STEP_ORDER[idx - 1])
-      setError('')
-    }
-  }
-
-  const direction = prevStep
-    ? STEP_ORDER.indexOf(step) > STEP_ORDER.indexOf(prevStep) ? 1 : -1
-    : 1
-
-  function pickIntent(val) {
-    setIntent(val)
-    goTo('email')
-  }
-
-  // ── Step 2: Send OTP ────────────────────────────────────────
-  async function sendOtp() {
-    if (!email.trim()) return
-    setError('')
-    setLoading(true)
-    try {
-      await api.post('/auth/send-otp', { email: email.trim().toLowerCase() })
-      goTo('otp')
-      startResendTimer()
-      toast.success('OTP sent to your email')
-    } catch (e) {
-      setError(e.response?.data?.detail || 'Failed to send OTP. Try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // ── Step 3: Verify OTP ──────────────────────────────────────
-  async function verifyOtp() {
-    const cleanOtp = otp.replace(/\D/g, '').slice(0, OTP_LENGTH)
-    if (cleanOtp.length !== OTP_LENGTH) return
-    setError('')
-    setLoading(true)
-    try {
-      const { data } = await api.post('/auth/verify-otp', {
-        email: email.trim().toLowerCase(),
-        token: cleanOtp,
-      })
-      setAuth(data)
-
-      const isNewUser = !data.user?.full_name
-
-      if (isNewUser) {
-        toast.success('Account created! Let\'s set up your profile.')
-        goTo('profile')
-      } else {
-        toast.success('Welcome back!')
-        // Existing user — role-first routing
-        if (data.user?.role === 'admin') {
-          navigate('/admin')
-        } else if (data.user?.role === 'worker') {
-          navigate('/worker')
-        } else if (intent === 'worker') {
-          let hasWorkerProfile = false
-          try {
-            await api.get('/workers/me/profile')
-            hasWorkerProfile = true
-          } catch (e) {
-            if (e?.response?.status !== 404) throw e
-          }
-          if (hasWorkerProfile) {
-            updateUser({ role: 'worker' })
-            navigate('/worker')
-          } else {
-            navigate('/onboard/worker')
-          }
-        } else {
-          navigate('/')
-        }
-      }
-    } catch (e) {
-      setError(e.response?.data?.detail || 'Invalid OTP')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // ── Step 4: Save Profile ────────────────────────────────────
-  async function submitProfile() {
-    if (!fullName.trim()) {
-      setError('Please enter your name')
-      return
-    }
-    setError('')
-    setLoading(true)
-    try {
-      const payload = { full_name: fullName.trim() }
-      if (phone.trim()) payload.phone = phone.trim()
-      const { data } = await api.patch('/users/me', payload)
-      updateUser(data)
-      goTo('area')
-    } catch (e) {
-      setError(e.response?.data?.detail || 'Failed to save profile. Try again.')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // ── Step 5: Save Area + Navigate ───────────────────────────
-  async function submitArea() {
-    if (!selectedArea) {
-      setError('Please select your area')
-      return
-    }
-    setError('')
-    setLoading(true)
-    try {
-      await api.put('/users/me/preferences', {
-        pune_area: selectedArea,
-        preferred_mode: 'instant',
-      })
-    } catch (_) {
-      // Non-fatal
-    } finally {
-      setLoading(false)
-    }
-
-    if (intent === 'worker') {
-      toast.success('Profile saved! Let\'s get you set up as a worker.')
-      navigate('/onboard/worker')
-    } else {
-      toast.success('Welcome to Kaargar!')
-      navigate('/')
-    }
-  }
-
-  function startResendTimer() {
-    setResendTimer(60)
-    const id = setInterval(() => {
-      setResendTimer(t => {
-        if (t <= 1) { clearInterval(id); return 0 }
-        return t - 1
-      })
-    }, 1000)
-  }
-
-  const slideVariants = {
-    enter: (dir) => ({ opacity: 0, x: dir > 0 ? 40 : -40 }),
-    center: { opacity: 1, x: 0 },
-    exit: (dir) => ({ opacity: 0, x: dir > 0 ? -40 : 40 }),
-  }
-
+/* ── Label helper ──────────────────────────────────────── */
+function Label({ children, htmlFor }) {
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 relative">
-      <Background />
-
-      <div
-        className="fixed inset-0 pointer-events-none"
-        style={{
-          background: intent === 'worker'
-            ? 'radial-gradient(ellipse 60% 50% at 50% 40%, rgba(245,158,11,0.08) 0%, transparent 70%)'
-            : 'radial-gradient(ellipse 60% 50% at 50% 40%, rgba(59,130,246,0.10) 0%, transparent 70%)',
-          transition: 'background 0.6s ease',
-        }}
-      />
-
-      <motion.div
-        className="w-full max-w-sm"
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ type: 'spring', stiffness: 280, damping: 26 }}
-      >
-        {/* Logo */}
-        <div className="flex flex-col items-center mb-8">
-          <h1 className="text-6xl font-bold gradient-text-hero" style={{ fontFamily: "'Playwrite NO', cursive" }}>
-            Kaargar
-          </h1>
-          <p className="text-xl mt-1" style={{ color: 'var(--text-muted)' }}>Kaam Ho Jayega</p>
-        </div>
-
-        {/* Step dots for profile/area steps */}
-        {(step === 'profile' || step === 'area') && (
-          <motion.div
-            initial={{ opacity: 0, y: -8 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center justify-center gap-2 mb-5"
-          >
-            {['profile', 'area'].map((s, i) => (
-              <div
-                key={s}
-                style={{
-                  width: step === s ? '28px' : '8px',
-                  height: '8px',
-                  borderRadius: '4px',
-                  background: step === s
-                    ? (intent === 'worker' ? 'var(--amber)' : 'var(--azure)')
-                    : 'var(--card-border)',
-                  transition: 'all 0.3s ease',
-                }}
-              />
-            ))}
-          </motion.div>
-        )}
-
-        <GlassCard className={step === 'intent' ? 'p-0 overflow-hidden' : 'p-6 overflow-hidden'}>
-          <AnimatePresence mode="wait" custom={direction}>
-
-            {/* ── STEP 1: Intent ── */}
-            {step === 'intent' && (
-              <motion.div
-                key="intent-step"
-                custom={direction}
-                variants={slideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-              >
-                <div className="p-6 pb-5">
-                  <h2 className="text-xl font-bold font-syne text-center" style={{ color: 'var(--text-primary)' }}>
-                    How can we help?
-                  </h2>
-                  <p className="text-sm mt-1 text-center" style={{ color: 'var(--text-muted)' }}>
-                    Choose how you'd like to use Kaargar
-                  </p>
-                </div>
-
-                {/* User card */}
-                <motion.button
-                  onClick={() => pickIntent('user')}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="w-full text-left"
-                  style={{
-                    padding: '20px 24px',
-                    borderTop: '1px solid var(--card-border)',
-                    borderBottom: '1px solid var(--card-border)',
-                    background: 'transparent',
-                    transition: 'background 0.15s ease',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(59,130,246,0.05)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div style={{
-                      width: '52px', height: '52px', borderRadius: '16px',
-                      background: 'rgba(59,130,246,0.12)',
-                      border: '1px solid rgba(59,130,246,0.2)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0,
-                    }}>
-                      <ShoppingBag size={22} style={{ color: 'var(--azure)' }} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <p className="text-base font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
-                        Book a Service
-                      </p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                        Find verified workers near you
-                      </p>
-                      <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                        {['⚡ Instant', '📍 Nearby', '⭐ Verified'].map(tag => (
-                          <span key={tag} style={{
-                            fontSize: '10px',
-                            padding: '2px 8px',
-                            borderRadius: '100px',
-                            background: 'rgba(59,130,246,0.10)',
-                            color: 'var(--azure)',
-                          }}>
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                  </div>
-                </motion.button>
-
-                {/* Worker card */}
-                <motion.button
-                  onClick={() => pickIntent('worker')}
-                  whileHover={{ scale: 1.01 }}
-                  whileTap={{ scale: 0.98 }}
-                  className="w-full text-left"
-                  style={{
-                    padding: '20px 24px',
-                    background: 'transparent',
-                    transition: 'background 0.15s ease',
-                    cursor: 'pointer',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(245,158,11,0.05)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                    <div style={{
-                      width: '52px', height: '52px', borderRadius: '16px',
-                      background: 'rgba(245,158,11,0.12)',
-                      border: '1px solid rgba(245,158,11,0.2)',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      flexShrink: 0,
-                    }}>
-                      <HardHat size={22} style={{ color: 'var(--amber)' }} />
-                    </div>
-                    <div style={{ flex: 1 }}>
-                      <p className="text-base font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
-                        Become a Worker
-                      </p>
-                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                        Earn by offering your skills
-                      </p>
-                      <div style={{ display: 'flex', gap: '10px', marginTop: '8px' }}>
-                        {['💰 Earn', '🕐 Flexible', '🚀 Grow'].map(tag => (
-                          <span key={tag} style={{
-                            fontSize: '10px',
-                            padding: '2px 8px',
-                            borderRadius: '100px',
-                            background: 'rgba(245,158,11,0.10)',
-                            color: 'var(--amber)',
-                          }}>
-                            {tag}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                    <ArrowRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-                  </div>
-                </motion.button>
-
-                <p className="text-center text-xs pb-5 pt-2" style={{ color: 'var(--text-muted)', opacity: 0.6 }}>
-                  Pune, Maharashtra · India
-                </p>
-              </motion.div>
-            )}
-
-            {/* ── STEP 2: Email ── */}
-            {step === 'email' && (
-              <motion.div
-                key="email-step"
-                custom={direction}
-                variants={slideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-                className="space-y-5"
-              >
-                <div>
-                  <button
-                    onClick={goBack}
-                    className="flex items-center gap-1 text-xs mb-3 transition-colors"
-                    style={{ color: 'var(--text-muted)' }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                    Back
-                  </button>
-
-                  {/* Intent badge */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
-                    <div style={{
-                      padding: '4px 10px',
-                      borderRadius: '100px',
-                      background: intent === 'worker' ? 'rgba(245,158,11,0.12)' : 'rgba(59,130,246,0.12)',
-                      border: `1px solid ${intent === 'worker' ? 'rgba(245,158,11,0.25)' : 'rgba(59,130,246,0.25)'}`,
-                      display: 'flex', alignItems: 'center', gap: '6px',
-                    }}>
-                      {intent === 'worker'
-                        ? <HardHat size={12} style={{ color: 'var(--amber)' }} />
-                        : <ShoppingBag size={12} style={{ color: 'var(--azure)' }} />
-                      }
-                      <span style={{
-                        fontSize: '11px',
-                        fontWeight: 600,
-                        color: intent === 'worker' ? 'var(--amber)' : 'var(--azure)',
-                      }}>
-                        {intent === 'worker' ? 'Worker sign-up' : 'Customer sign-up'}
-                      </span>
-                    </div>
-                  </div>
-
-                  <h2 className="text-lg font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
-                    Sign in or create account
-                  </h2>
-                  <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    Enter your email to continue
-                  </p>
-                </div>
-
-                <GlassInput
-                  type="email"
-                  label="Email address"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={e => { setEmail(e.target.value); setError('') }}
-                  onKeyDown={e => e.key === 'Enter' && sendOtp()}
-                  icon={Mail}
-                  error={error}
-                  autoFocus
-                />
-
-                <GlassButton
-                  variant={intent === 'worker' ? 'discovery' : 'brand'}
-                  size="lg"
-                  className="w-full"
-                  loading={loading}
-                  onClick={sendOtp}
-                  icon={ArrowRight}
-                  iconPosition="right"
-                  disabled={!email.trim()}
-                >
-                  Send OTP
-                </GlassButton>
-
-                <p className="text-center text-xs" style={{ color: 'var(--text-muted)' }}>
-                  By continuing you agree to our Terms &amp; Privacy Policy
-                </p>
-              </motion.div>
-            )}
-
-            {/* ── STEP 3: OTP ── */}
-            {step === 'otp' && (
-              <motion.div
-                key="otp-step"
-                custom={direction}
-                variants={slideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-                className="space-y-5"
-              >
-                <div>
-                  <button
-                    onClick={goBack}
-                    className="flex items-center gap-1 text-xs mb-3 transition-colors"
-                    style={{ color: 'var(--text-muted)' }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                    Back
-                  </button>
-                  <h2 className="text-lg font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
-                    Check your email
-                  </h2>
-                  <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    Sent to <span style={{ color: 'var(--text-secondary)' }}>{email}</span>
-                  </p>
-                </div>
-
-                <OtpBoxes value={otp} onChange={setOtp} length={OTP_LENGTH} onComplete={verifyOtp} accentColor={intent === 'worker' ? 'var(--amber)' : 'var(--azure)'} />
-
-                {error && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-xs text-red-400 text-center"
-                  >
-                    {error}
-                  </motion.p>
-                )}
-
-                <GlassButton
-                  variant={intent === 'worker' ? 'discovery' : 'brand'}
-                  size="lg"
-                  className="w-full"
-                  loading={loading}
-                  onClick={verifyOtp}
-                  icon={ShieldCheck}
-                  iconPosition="left"
-                  disabled={otp.length !== OTP_LENGTH}
-                >
-                  Verify Code
-                </GlassButton>
-
-                <div className="text-center">
-                  {resendTimer > 0 ? (
-                    <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                      Resend in{' '}
-                      <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>
-                        {resendTimer}s
-                      </span>
-                    </p>
-                  ) : (
-                    <button
-                      onClick={() => { sendOtp(); setOtp('') }}
-                      className="flex items-center gap-1.5 text-xs mx-auto transition-colors"
-                      style={{ color: 'var(--azure)' }}
-                    >
-                      <RefreshCw className="h-3 w-3" />
-                      Resend OTP
-                    </button>
-                  )}
-                </div>
-              </motion.div>
-            )}
-
-            {/* ── STEP 4: Profile ── */}
-            {step === 'profile' && (
-              <motion.div
-                key="profile-step"
-                custom={direction}
-                variants={slideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-                className="space-y-5"
-              >
-                <div>
-                  <h2 className="text-lg font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
-                    {intent === 'worker' ? 'Your worker profile' : 'Your profile'}
-                  </h2>
-                  <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    {intent === 'worker'
-                      ? 'Clients will see this name on your profile'
-                      : 'Tell us a bit about yourself'
-                    }
-                  </p>
-                </div>
-
-                <GlassInput
-                  label="Full name"
-                  placeholder="e.g. Rahul Sharma"
-                  value={fullName}
-                  onChange={e => { setFullName(e.target.value); setError('') }}
-                  onKeyDown={e => e.key === 'Enter' && submitProfile()}
-                  icon={User}
-                  error={error && error.includes('name') ? error : ''}
-                  autoFocus
-                />
-
-                <GlassInput
-                  type="tel"
-                  label="Phone number (optional)"
-                  placeholder="+91 9876543210"
-                  value={phone}
-                  onChange={e => setPhone(e.target.value)}
-                  icon={Phone}
-                />
-
-                {/* Worker intent reminder */}
-                {intent === 'worker' && (
-                  <div style={{
-                    display: 'flex', alignItems: 'center', gap: '10px',
-                    padding: '12px 14px', borderRadius: '12px',
-                    background: 'rgba(245,158,11,0.06)',
-                    border: '1px solid rgba(245,158,11,0.18)',
-                  }}>
-                    <HardHat size={16} style={{ color: 'var(--amber)', flexShrink: 0 }} />
-                    <p className="text-xs" style={{ color: 'var(--amber)', lineHeight: '1.5' }}>
-                      After this, we'll set up your worker profile so you can start earning.
-                    </p>
-                  </div>
-                )}
-
-                {error && !error.includes('name') && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-xs text-red-400"
-                  >
-                    {error}
-                  </motion.p>
-                )}
-
-                <GlassButton
-                  variant={intent === 'worker' ? 'discovery' : 'brand'}
-                  size="lg"
-                  className="w-full"
-                  loading={loading}
-                  onClick={submitProfile}
-                  icon={ArrowRight}
-                  iconPosition="right"
-                  disabled={!fullName.trim()}
-                >
-                  Continue
-                </GlassButton>
-              </motion.div>
-            )}
-
-            {/* ── STEP 5: Area ── */}
-            {step === 'area' && (
-              <motion.div
-                key="area-step"
-                custom={direction}
-                variants={slideVariants}
-                initial="enter"
-                animate="center"
-                exit="exit"
-                transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-                className="space-y-5"
-              >
-                <div>
-                  <button
-                    onClick={goBack}
-                    className="flex items-center gap-1 text-xs mb-3 transition-colors"
-                    style={{ color: 'var(--text-muted)' }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--text-secondary)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--text-muted)'}
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                    Back
-                  </button>
-                  <h2 className="text-lg font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
-                    Your area in Pune
-                  </h2>
-                  <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                    {intent === 'worker'
-                      ? 'Where will you mostly offer your services?'
-                      : 'We\'ll show you services nearby'
-                    }
-                  </p>
-                </div>
-
-                {/* Area grid */}
-                <div style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)',
-                  gap: '8px', maxHeight: '260px', overflowY: 'auto', paddingRight: '2px',
-                }}>
-                  {PUNE_AREAS.map(area => {
-                    const selected = selectedArea === area
-                    return (
-                      <motion.button
-                        key={area}
-                        onClick={() => { setSelectedArea(area); setError('') }}
-                        whileTap={{ scale: 0.96 }}
-                        style={{
-                          padding: '10px 12px', borderRadius: '10px',
-                          border: selected
-                            ? `1.5px solid ${intent === 'worker' ? 'var(--amber)' : 'var(--azure)'}`
-                            : '1px solid var(--card-border)',
-                          background: selected
-                            ? (intent === 'worker' ? 'rgba(245,158,11,0.12)' : 'rgba(59,130,246,0.10)')
-                            : 'var(--card-bg)',
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          gap: '8px', cursor: 'pointer', transition: 'all 0.15s ease', textAlign: 'left',
-                        }}
-                      >
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-                          <MapPin size={13} style={{
-                            color: selected
-                              ? (intent === 'worker' ? 'var(--amber)' : 'var(--azure)')
-                              : 'var(--text-muted)',
-                            flexShrink: 0,
-                          }} />
-                          <span style={{
-                            fontSize: '12px', fontWeight: selected ? 600 : 400,
-                            color: selected ? 'var(--text-primary)' : 'var(--text-secondary)',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {area}
-                          </span>
-                        </div>
-                        {selected && (
-                          <div style={{
-                            width: '16px', height: '16px', borderRadius: '50%',
-                            background: intent === 'worker' ? 'var(--amber)' : 'var(--azure)',
-                            display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            flexShrink: 0,
-                          }}>
-                            <Check size={10} color="#000" strokeWidth={3} />
-                          </div>
-                        )}
-                      </motion.button>
-                    )
-                  })}
-                </div>
-
-                {error && (
-                  <motion.p
-                    initial={{ opacity: 0, y: -4 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    className="text-xs text-red-400"
-                  >
-                    {error}
-                  </motion.p>
-                )}
-
-                <GlassButton
-                  variant={intent === 'worker' ? 'discovery' : 'brand'}
-                  size="lg"
-                  className="w-full"
-                  loading={loading}
-                  onClick={submitArea}
-                  icon={intent === 'worker' ? HardHat : ArrowRight}
-                  iconPosition="right"
-                  disabled={!selectedArea}
-                >
-                  {intent === 'worker' ? 'Set Up Worker Profile' : 'Get Started'}
-                </GlassButton>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </GlassCard>
-      </motion.div>
-    </div>
+    <label
+      htmlFor={htmlFor}
+      className="block text-xs font-medium mb-1.5"
+      style={{ color: 'var(--text-secondary)' }}
+    >
+      {children}
+    </label>
   )
 }
 
-// ── OTP Box component ──────────────────────────────────────────
-function OtpBoxes({ value, onChange, length, onComplete, accentColor }) {
+/* ── OTP digit inputs ──────────────────────────────────── */
+function OtpBoxes({ value, onChange, length, onComplete, accent }) {
+  const inputsRef = useRef([])
   const digits = value.split('').concat(Array(length).fill('')).slice(0, length)
 
   function handleChange(index, char) {
@@ -761,32 +42,32 @@ function OtpBoxes({ value, onChange, length, onComplete, accentColor }) {
     arr[index] = clean
     const next = arr.join('')
     onChange(next)
-    if (clean && index < length - 1) {
-      document.getElementById('otp-' + (index + 1))?.focus()
-    }
+    if (clean && index < length - 1) inputsRef.current[index + 1]?.focus()
     if (next.replace(/\s/g, '').length === length) onComplete?.()
   }
 
   function handleKeyDown(index, e) {
     if (e.key === 'Backspace' && !digits[index] && index > 0) {
-      document.getElementById('otp-' + (index - 1))?.focus()
+      inputsRef.current[index - 1]?.focus()
     }
+    if (e.key === 'ArrowLeft' && index > 0) inputsRef.current[index - 1]?.focus()
+    if (e.key === 'ArrowRight' && index < length - 1) inputsRef.current[index + 1]?.focus()
   }
 
   function handlePaste(e) {
     const text = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, length)
     onChange(text)
     if (text.length === length) onComplete?.()
-    document.getElementById('otp-' + Math.min(text.length, length - 1))?.focus()
+    inputsRef.current[Math.min(text.length, length - 1)]?.focus()
     e.preventDefault()
   }
 
   return (
-    <div className="flex gap-2.5 justify-center">
+    <div className="flex gap-2 justify-center">
       {digits.map((d, i) => (
-        <motion.input
+        <input
           key={i}
-          id={'otp-' + i}
+          ref={el => inputsRef.current[i] = el}
           type="text"
           inputMode="numeric"
           maxLength={1}
@@ -794,19 +75,475 @@ function OtpBoxes({ value, onChange, length, onComplete, accentColor }) {
           onChange={e => handleChange(i, e.target.value)}
           onKeyDown={e => handleKeyDown(i, e)}
           onPaste={handlePaste}
-          whileFocus={{ scale: 1.05 }}
-          className="glass-input rounded-xl text-center text-lg font-bold font-mono"
-          style={{
-            width: '48px',
-            height: '52px',
-            color: 'var(--text-primary)',
-            outline: d ? `2px solid ${accentColor || 'var(--azure)'}` : 'none',
-            outlineOffset: '0px',
-            transition: 'outline 0.15s ease',
-          }}
           autoFocus={i === 0}
+          className="h-14 w-12 rounded-xl text-center text-xl font-bold font-mono transition-all outline-none"
+          style={{
+            background: 'var(--g-bg)',
+            border: d
+              ? `2px solid ${accent}`
+              : '1.5px solid var(--g-border)',
+            color: 'var(--text-primary)',
+            boxShadow: d ? `0 0 0 3px ${accent}20` : 'none',
+          }}
         />
       ))}
+    </div>
+  )
+}
+
+/* ── Main page ──────────────────────────────────────────── */
+export default function LoginPage() {
+  const navigate = useNavigate()
+  const { setAuth, updateUser } = useAuthStore()
+
+  const [step, setStep] = useState('intent')
+  const [prevStep, setPrevStep] = useState(null)
+  const [intent, setIntent] = useState(null)
+  const [email, setEmail] = useState('')
+  const [otp, setOtp] = useState('')
+  const [resendTimer, setResendTimer] = useState(0)
+  const [fullName, setFullName] = useState('')
+  const [phone, setPhone] = useState('')
+  const [selectedArea, setSelectedArea] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+
+  const isWorker = intent === 'worker'
+  const accent = isWorker ? '#f59e0b' : '#4B7BFF'
+
+  function goTo(next) { setPrevStep(step); setStep(next); setError('') }
+  function goBack() {
+    const idx = STEP_ORDER.indexOf(step)
+    if (idx > 0) { setPrevStep(step); setStep(STEP_ORDER[idx - 1]); setError('') }
+  }
+  const direction = prevStep
+    ? STEP_ORDER.indexOf(step) > STEP_ORDER.indexOf(prevStep) ? 1 : -1
+    : 1
+
+  async function sendOtp() {
+    if (!email.trim()) return
+    setError(''); setLoading(true)
+    try {
+      await api.post('/auth/send-otp', { email: email.trim().toLowerCase() })
+      goTo('otp'); startResendTimer()
+      toast.success('OTP sent — check your inbox')
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to send OTP. Try again.')
+    } finally { setLoading(false) }
+  }
+
+  async function verifyOtp() {
+    const cleanOtp = otp.replace(/\D/g, '').slice(0, OTP_LENGTH)
+    if (cleanOtp.length !== OTP_LENGTH) return
+    setError(''); setLoading(true)
+    try {
+      const { data } = await api.post('/auth/verify-otp', {
+        email: email.trim().toLowerCase(), token: cleanOtp,
+      })
+      setAuth(data)
+      const isNewUser = !data.user?.full_name
+      if (isNewUser) {
+        toast.success("Let's set up your profile")
+        goTo('profile')
+      } else {
+        toast.success('Welcome back!')
+        if (data.user?.role === 'admin') navigate('/admin')
+        else if (data.user?.role === 'worker') navigate('/worker')
+        else if (intent === 'worker') {
+          try { await api.get('/workers/me/profile'); updateUser({ role: 'worker' }); navigate('/worker') }
+          catch { navigate('/onboard/worker') }
+        } else navigate('/')
+      }
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Incorrect OTP. Try again.')
+    } finally { setLoading(false) }
+  }
+
+  async function submitProfile() {
+    if (!fullName.trim()) { setError('Please enter your name'); return }
+    setError(''); setLoading(true)
+    try {
+      const payload = { full_name: fullName.trim() }
+      if (phone.trim()) payload.phone = phone.trim()
+      const { data } = await api.patch('/users/me', payload)
+      updateUser(data); goTo('area')
+    } catch (e) {
+      setError(e.response?.data?.detail || 'Failed to save profile.')
+    } finally { setLoading(false) }
+  }
+
+  async function submitArea() {
+    if (!selectedArea) { setError('Please select your area'); return }
+    setLoading(true)
+    try { await api.put('/users/me/preferences', { pune_area: selectedArea, preferred_mode: 'instant' }) }
+    catch { /* non-fatal */ }
+    finally { setLoading(false) }
+    if (isWorker) { toast.success("Let's get you set up as a worker"); navigate('/onboard/worker') }
+    else { toast.success('Welcome to Kaargar!'); navigate('/') }
+  }
+
+  function startResendTimer() {
+    setResendTimer(60)
+    const id = setInterval(() => setResendTimer(t => { if (t <= 1) { clearInterval(id); return 0 } return t - 1 }), 1000)
+  }
+
+  const slide = {
+    enter: dir => ({ opacity: 0, x: dir > 0 ? 32 : -32 }),
+    center: { opacity: 1, x: 0 },
+    exit: dir => ({ opacity: 0, x: dir > 0 ? -32 : 32 }),
+  }
+  const trans = { type: 'spring', stiffness: 340, damping: 30 }
+
+  return (
+    <div className="min-h-screen flex items-center justify-center p-4 relative">
+      <Background />
+      {/* Ambient glow */}
+      <div
+        className="fixed inset-0 pointer-events-none transition-all duration-700"
+        style={{ background: `radial-gradient(ellipse 55% 45% at 50% 38%, ${isWorker ? 'rgba(245,158,11,0.07)' : 'rgba(75,123,255,0.08)'} 0%, transparent 70%)` }}
+      />
+
+      <motion.div
+        className="w-full max-w-sm"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ type: 'spring', stiffness: 260, damping: 24 }}
+      >
+        {/* Logo */}
+        <div className="text-center mb-7">
+          <h1
+            className="text-5xl font-bold"
+            style={{ fontFamily: "'Playwrite NO', cursive", color: 'var(--text-primary)' }}
+          >
+            Kaargar
+          </h1>
+          <p className="text-sm mt-1.5" style={{ color: 'var(--text-muted)' }}>
+            Kaam Ho Jayega
+          </p>
+        </div>
+
+        {/* Step progress dots (profile + area only) */}
+        <AnimatePresence>
+          {(step === 'profile' || step === 'area') && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center justify-center gap-2 mb-4"
+            >
+              {['profile', 'area'].map(s => (
+                <motion.div
+                  key={s}
+                  animate={{ width: step === s ? 24 : 8 }}
+                  style={{
+                    height: 8, borderRadius: 4,
+                    background: step === s ? accent : 'var(--g-border)',
+                    transition: 'width 0.3s ease, background 0.3s ease',
+                  }}
+                />
+              ))}
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Card */}
+        <Card className={step === 'intent' ? 'overflow-hidden p-0' : 'overflow-hidden'}>
+          <AnimatePresence mode="wait" custom={direction}>
+
+            {/* ── Intent step ── */}
+            {step === 'intent' && (
+              <motion.div key="intent" custom={direction} variants={slide} initial="enter" animate="center" exit="exit" transition={trans}>
+                <CardHeader className="pb-3">
+                  <CardTitle>How can we help?</CardTitle>
+                  <CardDescription>Choose how you'd like to use Kaargar</CardDescription>
+                </CardHeader>
+
+                {/* Book a service */}
+                <button
+                  onClick={() => { setIntent('user'); goTo('email') }}
+                  className="w-full text-left transition-colors"
+                  style={{ padding: '16px 20px', borderTop: '1px solid var(--g-border)', borderBottom: '1px solid var(--g-border)' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(75,123,255,0.04)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                      style={{ background: 'rgba(75,123,255,0.1)', border: '1px solid rgba(75,123,255,0.2)' }}>
+                      <ShoppingBag size={20} style={{ color: '#4B7BFF' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Book a Service</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Find verified workers near you</p>
+                      <div className="flex gap-2 mt-2 flex-wrap">
+                        {['Instant', 'Nearby', 'Verified'].map(t => (
+                          <span key={t} className="text-[10px] px-2 py-0.5 rounded-full"
+                            style={{ background: 'rgba(75,123,255,0.1)', color: '#4B7BFF' }}>
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <ArrowRight size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                  </div>
+                </button>
+
+                {/* Become a worker */}
+                <button
+                  onClick={() => { setIntent('worker'); goTo('email') }}
+                  className="w-full text-left transition-colors"
+                  style={{ padding: '16px 20px' }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'rgba(245,158,11,0.04)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                      style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                      <HardHat size={20} style={{ color: '#f59e0b' }} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Become a Worker</p>
+                      <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Earn by offering your skills</p>
+                      <div className="flex gap-2 mt-2 flex-wrap">
+                        {['Earn', 'Flexible', 'Grow'].map(t => (
+                          <span key={t} className="text-[10px] px-2 py-0.5 rounded-full"
+                            style={{ background: 'rgba(245,158,11,0.1)', color: '#f59e0b' }}>
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <ArrowRight size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+                  </div>
+                </button>
+
+                <p className="text-center text-[11px] py-4" style={{ color: 'var(--text-muted)', opacity: 0.5 }}>
+                  Pune, Maharashtra &middot; India
+                </p>
+              </motion.div>
+            )}
+
+            {/* ── Email step ── */}
+            {step === 'email' && (
+              <motion.div key="email" custom={direction} variants={slide} initial="enter" animate="center" exit="exit" transition={trans}>
+                <CardHeader>
+                  <button onClick={goBack} className="flex items-center gap-1 text-xs mb-1 w-fit" style={{ color: 'var(--text-muted)' }}>
+                    <ChevronLeft size={14} /> Back
+                  </button>
+                  {/* Intent badge */}
+                  <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full w-fit mb-1"
+                    style={{ background: isWorker ? 'rgba(245,158,11,0.1)' : 'rgba(75,123,255,0.1)', color: accent, border: `1px solid ${accent}30` }}>
+                    {isWorker ? <HardHat size={11} /> : <ShoppingBag size={11} />}
+                    {isWorker ? 'Worker sign-up' : 'Customer sign-up'}
+                  </span>
+                  <CardTitle>Sign in or create account</CardTitle>
+                  <CardDescription>Enter your email to continue</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="email-input">Email address</Label>
+                    <div className="relative">
+                      <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+                      <Input
+                        id="email-input"
+                        type="email"
+                        placeholder="you@example.com"
+                        value={email}
+                        onChange={e => { setEmail(e.target.value); setError('') }}
+                        onKeyDown={e => e.key === 'Enter' && sendOtp()}
+                        className="pl-9"
+                        autoFocus
+                      />
+                    </div>
+                    {error && <p className="text-xs text-red-400 mt-1.5">{error}</p>}
+                  </div>
+                  <Button
+                    className="w-full font-semibold"
+                    style={{ background: accent, color: '#fff' }}
+                    disabled={!email.trim() || loading}
+                    onClick={sendOtp}
+                  >
+                    {loading ? <Loader2 size={16} className="animate-spin" /> : <><span>Continue</span><ArrowRight size={15} /></>}
+                  </Button>
+                  <p className="text-center text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    By continuing you agree to our Terms &amp; Privacy Policy
+                  </p>
+                </CardContent>
+              </motion.div>
+            )}
+
+            {/* ── OTP step ── */}
+            {step === 'otp' && (
+              <motion.div key="otp" custom={direction} variants={slide} initial="enter" animate="center" exit="exit" transition={trans}>
+                <CardHeader>
+                  <button onClick={goBack} className="flex items-center gap-1 text-xs mb-1 w-fit" style={{ color: 'var(--text-muted)' }}>
+                    <ChevronLeft size={14} /> Back
+                  </button>
+                  <CardTitle>Check your email</CardTitle>
+                  <CardDescription>
+                    We sent a 6-digit code to{' '}
+                    <span style={{ color: 'var(--text-secondary)' }}>{email}</span>
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-5">
+                  <OtpBoxes value={otp} onChange={setOtp} length={OTP_LENGTH} onComplete={verifyOtp} accent={accent} />
+
+                  {error && (
+                    <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-red-400 text-center">
+                      {error}
+                    </motion.p>
+                  )}
+
+                  <Button
+                    className="w-full font-semibold"
+                    style={{ background: accent, color: '#fff' }}
+                    disabled={otp.replace(/\D/g,'').length !== OTP_LENGTH || loading}
+                    onClick={verifyOtp}
+                  >
+                    {loading
+                      ? <Loader2 size={16} className="animate-spin" />
+                      : <><ShieldCheck size={16} /><span>Verify Code</span></>}
+                  </Button>
+
+                  <div className="text-center">
+                    {resendTimer > 0 ? (
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                        Resend in <span className="font-mono" style={{ color: 'var(--text-secondary)' }}>{resendTimer}s</span>
+                      </p>
+                    ) : (
+                      <button
+                        onClick={() => { sendOtp(); setOtp('') }}
+                        className="inline-flex items-center gap-1.5 text-xs"
+                        style={{ color: accent }}
+                      >
+                        <RefreshCw size={12} /> Resend OTP
+                      </button>
+                    )}
+                  </div>
+                </CardContent>
+              </motion.div>
+            )}
+
+            {/* ── Profile step ── */}
+            {step === 'profile' && (
+              <motion.div key="profile" custom={direction} variants={slide} initial="enter" animate="center" exit="exit" transition={trans}>
+                <CardHeader>
+                  <CardTitle>{isWorker ? 'Your worker profile' : 'Your profile'}</CardTitle>
+                  <CardDescription>
+                    {isWorker ? 'Clients will see this on your profile' : 'Tell us a bit about yourself'}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <Label htmlFor="name-input">Full name</Label>
+                    <div className="relative">
+                      <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+                      <Input
+                        id="name-input"
+                        placeholder="e.g. Rahul Sharma"
+                        value={fullName}
+                        onChange={e => { setFullName(e.target.value); setError('') }}
+                        onKeyDown={e => e.key === 'Enter' && submitProfile()}
+                        className="pl-9"
+                        autoFocus
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <Label htmlFor="phone-input">Phone <span style={{ color: 'var(--text-muted)' }}>(optional)</span></Label>
+                    <div className="relative">
+                      <Phone size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: 'var(--text-muted)' }} />
+                      <Input
+                        id="phone-input"
+                        type="tel"
+                        placeholder="+91 98765 43210"
+                        value={phone}
+                        onChange={e => setPhone(e.target.value)}
+                        className="pl-9"
+                      />
+                    </div>
+                  </div>
+
+                  {isWorker && (
+                    <div className="flex items-start gap-3 p-3 rounded-xl"
+                      style={{ background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                      <HardHat size={15} style={{ color: '#f59e0b', flexShrink: 0, marginTop: 1 }} />
+                      <p className="text-xs leading-relaxed" style={{ color: '#f59e0b' }}>
+                        After this, we'll set up your worker profile so you can start earning.
+                      </p>
+                    </div>
+                  )}
+
+                  {error && <p className="text-xs text-red-400">{error}</p>}
+
+                  <Button
+                    className="w-full font-semibold"
+                    style={{ background: accent, color: '#fff' }}
+                    disabled={!fullName.trim() || loading}
+                    onClick={submitProfile}
+                  >
+                    {loading ? <Loader2 size={16} className="animate-spin" /> : <><span>Continue</span><ArrowRight size={15} /></>}
+                  </Button>
+                </CardContent>
+              </motion.div>
+            )}
+
+            {/* ── Area step ── */}
+            {step === 'area' && (
+              <motion.div key="area" custom={direction} variants={slide} initial="enter" animate="center" exit="exit" transition={trans}>
+                <CardHeader>
+                  <button onClick={goBack} className="flex items-center gap-1 text-xs mb-1 w-fit" style={{ color: 'var(--text-muted)' }}>
+                    <ChevronLeft size={14} /> Back
+                  </button>
+                  <CardTitle>Your area in Pune</CardTitle>
+                  <CardDescription>
+                    {isWorker ? 'Where will you mostly offer services?' : "We'll show you services nearby"}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-2 gap-2" style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                    {PUNE_AREAS.map(area => {
+                      const sel = selectedArea === area
+                      return (
+                        <button
+                          key={area}
+                          onClick={() => { setSelectedArea(area); setError('') }}
+                          className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-left transition-all text-xs font-medium"
+                          style={{
+                            background: sel ? `${accent}15` : 'var(--g-bg)',
+                            border: sel ? `1.5px solid ${accent}` : '1px solid var(--g-border)',
+                            color: sel ? 'var(--text-primary)' : 'var(--text-secondary)',
+                          }}
+                        >
+                          <MapPin size={12} style={{ color: sel ? accent : 'var(--text-muted)', flexShrink: 0 }} />
+                          <span className="truncate">{area}</span>
+                          {sel && (
+                            <span className="ml-auto shrink-0 flex items-center justify-center w-4 h-4 rounded-full" style={{ background: accent }}>
+                              <Check size={9} color="#000" strokeWidth={3} />
+                            </span>
+                          )}
+                        </button>
+                      )
+                    })}
+                  </div>
+
+                  {error && <p className="text-xs text-red-400">{error}</p>}
+
+                  <Button
+                    className="w-full font-semibold"
+                    style={{ background: accent, color: '#fff' }}
+                    disabled={!selectedArea || loading}
+                    onClick={submitArea}
+                  >
+                    {loading
+                      ? <Loader2 size={16} className="animate-spin" />
+                      : <><span>{isWorker ? 'Set Up Worker Profile' : 'Get Started'}</span>{isWorker ? <HardHat size={15} /> : <ArrowRight size={15} />}</>}
+                  </Button>
+                </CardContent>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </Card>
+      </motion.div>
     </div>
   )
 }

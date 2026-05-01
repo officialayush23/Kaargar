@@ -4,6 +4,7 @@ Payments router — Razorpay order creation + webhook.
 
 import hmac
 import hashlib
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,7 +13,7 @@ import uuid
 
 from database import get_db
 from models import User, Job, Payment
-from schemas import PaymentOrderCreate, PaymentOrderResponse, PaymentResponse, SuccessResponse
+from schemas import PaymentOrderCreate, PaymentOrderResponse, PaymentVerifyRequest, PaymentResponse, SuccessResponse
 from dependencies import get_current_user
 from config import get_settings
 
@@ -99,12 +100,10 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
         )
         payment = result.scalar_one_or_none()
         if payment:
-            from datetime import datetime, timezone
             payment.status = "held"
             payment.razorpay_payment_id = rz_payment_id
             payment.payment_method = rp_payment.get("method")
             payment.held_at = datetime.now(timezone.utc)
-            from datetime import timedelta
             payment.escrow_release_due_at = datetime.now(timezone.utc) + timedelta(hours=2)
             payment.last_webhook_event = event
             payment.last_webhook_at = datetime.now(timezone.utc)
@@ -126,3 +125,68 @@ async def get_payment(
     if payment.user_id != user.id:
         raise HTTPException(403)
     return payment
+
+
+@router.post("/verify")
+async def verify_payment(
+    body: PaymentVerifyRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Verify Razorpay payment signature after checkout completion."""
+    rz_order_id   = body.razorpay_order_id
+    rz_payment_id = body.razorpay_payment_id
+    rz_signature  = body.razorpay_signature
+
+    # Verify signature
+    expected = hmac.new(
+        settings.razorpay_key_secret.encode(),
+        f"{rz_order_id}|{rz_payment_id}".encode(),
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected, rz_signature):
+        raise HTTPException(400, "Invalid payment signature")
+
+    result = await db.execute(select(Payment).where(Payment.razorpay_order_id == rz_order_id))
+    payment = result.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(404, "Payment record not found")
+
+    payment.status = "held"
+    payment.razorpay_payment_id = rz_payment_id
+    payment.held_at = datetime.now(timezone.utc)
+    payment.escrow_release_due_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    await db.commit()
+    return {"status": "ok", "payment_id": str(payment.id)}
+
+
+@router.post("/{job_id}/refund")
+async def refund_payment(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Initiate refund for a job (admin or user on dispute)."""
+    result = await db.execute(select(Payment).where(Payment.job_id == job_id))
+    payment = result.scalar_one_or_none()
+    if not payment:
+        raise HTTPException(404, "Payment not found")
+    if payment.status not in ("held", "released"):
+        raise HTTPException(400, "Payment not in a refundable state")
+    if not payment.razorpay_payment_id:
+        raise HTTPException(400, "No Razorpay payment ID on record")
+
+    try:
+        client = _razorpay_client()
+        refund = client.payment.refund(
+            payment.razorpay_payment_id,
+            {"amount": int(payment.amount * 100), "speed": "normal"},
+        )
+        payment.status = "refunded"
+        payment.last_webhook_event = refund.get("id", "")[:50]  # store refund ID in webhook field
+        payment.refund_amount = payment.amount
+        payment.refunded_at = datetime.now(timezone.utc)
+        await db.commit()
+        return {"status": "refunded", "refund_id": refund.get("id")}
+    except Exception as e:
+        raise HTTPException(502, f"Refund failed: {str(e)}")

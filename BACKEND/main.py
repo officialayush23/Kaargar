@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from config import get_settings
-from routers import auth, categories, workers, jobs, upload, search, chat, payments, reviews, notifications, admin, support, users
+from routers import auth, categories, workers, jobs, upload, search, chat, payments, reviews, notifications, admin, support, users, geocode
 
 settings = get_settings()
 
@@ -32,9 +32,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Build allowed origins list — always include localhost + configured frontend URL
+_allowed_origins = [
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://kaargar1.vercel.app",
+]
+if settings.frontend_url and settings.frontend_url not in _allowed_origins:
+    _allowed_origins.append(settings.frontend_url)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_url, "http://localhost:5173", "http://localhost:3000"],
+    allow_origins=_allowed_origins,
+    allow_origin_regex=r"https://kaargar.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -54,6 +64,7 @@ app.include_router(notifications.router, prefix="/v1/notifications", tags=["noti
 app.include_router(support.router,       prefix="/v1/support",       tags=["support"])
 app.include_router(admin.router,         prefix="/v1/admin",         tags=["admin"])
 app.include_router(users.router,         prefix="/v1/users",         tags=["users"])
+app.include_router(geocode.router,       prefix="/v1/geocode",       tags=["geocode"])
 
 
 @app.get("/health")

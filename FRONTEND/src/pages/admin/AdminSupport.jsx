@@ -1,189 +1,139 @@
 /**
- * AdminSupport — view and resolve support tickets.
+ * AdminSupport — support ticket queue with resolve action.
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion, AnimatePresence } from 'framer-motion'
-import { MessageSquare, ChevronDown, ChevronUp, Send } from 'lucide-react'
+import { LifeBuoy, Search, AlertTriangle, CheckCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react'
 import { api } from '@/lib/api'
+import { formatRelativeTime } from '@/lib/utils'
 import { toast } from 'sonner'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
+import { Skeleton } from '@/components/ui/skeleton'
 
-const PRIORITY_COLORS = {
-  critical: '#f87171',
-  high:     '#fb923c',
-  medium:   '#fbbf24',
-  low:      '#94A3B8',
-}
+const TYPE_LABELS = { general: 'General', job: 'Job Issue', payment: 'Payment', account: 'Account', other: 'Other' }
 
-const STATUS_STYLES = {
-  open:        { bg: 'rgba(245,158,11,0.15)', color: '#fbbf24' },
-  in_progress: { bg: 'rgba(75,123,255,0.15)', color: '#6B94FF' },
-  resolved:    { bg: 'rgba(34,197,94,0.15)',  color: '#4ade80' },
-  closed:      { bg: 'rgba(71,85,105,0.3)',   color: '#94A3B8' },
-}
-
-function TicketRow({ ticket }) {
+function TicketCard({ ticket, onResolve, resolving }) {
   const [expanded, setExpanded] = useState(false)
-  const [reply, setReply] = useState('')
-  const qc = useQueryClient()
-
-  const resolve = useMutation({
-    mutationFn: ({ id, resolution }) =>
-      api.patch(`/support/admin/tickets/${id}/resolve`, { resolution }),
-    onSuccess: () => {
-      toast.success('Ticket resolved')
-      qc.invalidateQueries({ queryKey: ['admin', 'tickets'] })
-    },
-    onError: () => toast.error('Failed to resolve'),
-  })
-
-  const status = STATUS_STYLES[ticket.status] || STATUS_STYLES.open
-  const priorityColor = PRIORITY_COLORS[ticket.priority] || '#94A3B8'
+  const isOpen = ticket.status === 'open'
 
   return (
-    <div
-      className="rounded-2xl overflow-hidden"
-      style={{ background: 'rgba(13,17,23,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}
-    >
-      {/* Header row */}
-      <button
-        onClick={() => setExpanded((v) => !v)}
-        className="w-full flex items-start gap-3 p-4 text-left"
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="text-sm font-semibold truncate" style={{ color: '#F1F5F9' }}>
-              {ticket.title}
-            </span>
-            <span
-              className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase"
-              style={{ color: priorityColor, background: `${priorityColor}15` }}
-            >
-              {ticket.priority}
-            </span>
-            <span
-              className="text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize"
-              style={{ background: status.bg, color: status.color }}
-            >
-              {ticket.status.replace('_', ' ')}
-            </span>
+    <div style={{ background: 'rgba(13,17,23,0.8)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden' }}>
+      <button className="w-full text-left p-4" onClick={() => setExpanded(e => !e)}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded"
+                style={{ background: 'rgba(75,123,255,0.12)', color: '#4B7BFF' }}>
+                {TYPE_LABELS[ticket.type] || 'General'}
+              </span>
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full`}
+                style={{
+                  background: isOpen ? 'rgba(245,158,11,0.12)' : 'rgba(34,197,94,0.12)',
+                  color: isOpen ? '#f59e0b' : '#22c55e',
+                }}>
+                {isOpen ? 'Open' : 'Resolved'}
+              </span>
+            </div>
+            <p className="text-sm font-medium" style={{ color: '#F1F5F9' }}>{ticket.title}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: '#475569' }}>
+              {ticket.user?.full_name || ticket.user?.email || 'Unknown user'} · {formatRelativeTime(ticket.created_at)}
+            </p>
           </div>
-          <p className="text-xs truncate" style={{ color: '#475569' }}>
-            {ticket.type} · {new Date(ticket.created_at).toLocaleDateString('en-IN')}
-          </p>
+          {expanded ? <ChevronUp size={16} style={{ color: '#475569', flexShrink: 0 }} /> : <ChevronDown size={16} style={{ color: '#475569', flexShrink: 0 }} />}
         </div>
-        {expanded
-          ? <ChevronUp className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: '#475569' }} />
-          : <ChevronDown className="h-4 w-4 flex-shrink-0 mt-0.5" style={{ color: '#475569' }} />
-        }
       </button>
 
-      {/* Expanded detail */}
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}
-          >
-            <div className="p-4 space-y-4">
-              <div>
-                <p className="text-xs font-medium mb-1" style={{ color: '#475569' }}>Description</p>
-                <p className="text-sm" style={{ color: '#94A3B8' }}>{ticket.description}</p>
-              </div>
-
-              {ticket.resolution && (
-                <div className="rounded-xl p-3"
-                  style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
-                  <p className="text-xs font-medium mb-1" style={{ color: '#4ade80' }}>Resolution</p>
-                  <p className="text-sm" style={{ color: '#94A3B8' }}>{ticket.resolution}</p>
-                </div>
-              )}
-
-              {ticket.status !== 'resolved' && ticket.status !== 'closed' && (
-                <div>
-                  <textarea
-                    value={reply}
-                    onChange={(e) => setReply(e.target.value)}
-                    placeholder="Write resolution / reply…"
-                    rows={3}
-                    className="w-full rounded-xl px-3 py-2 text-sm resize-none outline-none mb-2"
-                    style={{
-                      background: 'rgba(255,255,255,0.05)',
-                      border: '1px solid rgba(255,255,255,0.1)',
-                      color: '#F1F5F9',
-                    }}
-                  />
-                  <button
-                    onClick={() => resolve.mutate({ id: ticket.id, resolution: reply })}
-                    disabled={!reply.trim() || resolve.isPending}
-                    className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold disabled:opacity-50"
-                    style={{ background: '#f59e0b', color: '#000' }}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                    Resolve Ticket
-                  </button>
-                </div>
-              )}
+      {expanded && (
+        <div style={{ padding: '0 16px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+          <p className="text-sm mt-3 leading-relaxed" style={{ color: '#94A3B8' }}>{ticket.description}</p>
+          {isOpen && (
+            <div className="flex justify-end mt-4">
+              <Button
+                onClick={() => onResolve(ticket.id)}
+                disabled={resolving}
+                style={{ background: '#22c55e', color: '#fff', height: 36, fontSize: 13 }}
+              >
+                <CheckCircle size={14} />
+                {resolving ? 'Resolving…' : 'Mark Resolved'}
+              </Button>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </div>
+      )}
     </div>
   )
 }
 
 export default function AdminSupport() {
-  const [statusFilter, setStatusFilter] = useState('open')
+  const qc = useQueryClient()
+  const [status, setStatus] = useState('open')
+  const [search, setSearch] = useState('')
+  const [resolvingId, setResolvingId] = useState(null)
 
   const { data: tickets = [], isLoading } = useQuery({
-    queryKey: ['admin', 'tickets', statusFilter],
-    queryFn: async () => {
-      try {
-        const { data } = await api.get(`/support/admin/tickets?status=${statusFilter}`)
-        return data
-      } catch {
-        return []
-      }
+    queryKey: ['admin', 'support', status],
+    queryFn: () => api.get('/support/admin/tickets', { params: { status } }).then(r => r.data?.tickets || r.data || []),
+    refetchInterval: 30_000,
+  })
+
+  const resolveMut = useMutation({
+    mutationFn: async (id) => {
+      setResolvingId(id)
+      return api.patch(`/support/admin/tickets/${id}/resolve`)
     },
+    onSuccess: () => { qc.invalidateQueries(['admin', 'support']); toast.success('Ticket resolved') },
+    onError: () => toast.error('Failed to resolve ticket'),
+    onSettled: () => setResolvingId(null),
+  })
+
+  const filtered = tickets.filter(t => {
+    if (!search) return true
+    const q = search.toLowerCase()
+    return (t.title || '').toLowerCase().includes(q) || (t.user?.email || '').toLowerCase().includes(q)
   })
 
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold font-syne" style={{ color: '#F1F5F9' }}>Support Tickets</h1>
-        <p className="text-sm mt-1" style={{ color: '#475569' }}>Respond to worker and user support requests</p>
+        <h1 className="text-2xl font-bold font-syne" style={{ color: '#F1F5F9' }}>Support</h1>
+        <p className="text-sm mt-1" style={{ color: '#475569' }}>Manage user and worker support tickets</p>
       </div>
 
-      {/* Filter tabs */}
-      <div className="flex gap-2 mb-5">
-        {['open', 'in_progress', 'resolved', 'closed'].map((s) => (
-          <button
-            key={s}
-            onClick={() => setStatusFilter(s)}
-            className="px-3 py-1.5 rounded-full text-xs font-medium capitalize transition-all"
-            style={{
-              background: statusFilter === s ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.05)',
-              color: statusFilter === s ? '#f59e0b' : '#94A3B8',
-              border: statusFilter === s ? '1px solid rgba(245,158,11,0.3)' : '1px solid rgba(255,255,255,0.07)',
-            }}
-          >
-            {s.replace('_', ' ')}
-          </button>
-        ))}
+      <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
+        <Tabs value={status} onValueChange={setStatus}>
+          <TabsList>
+            <TabsTrigger value="open"><Clock size={13} className="mr-1" /> Open</TabsTrigger>
+            <TabsTrigger value="resolved"><CheckCircle size={13} className="mr-1" /> Resolved</TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="relative">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#475569' }} />
+          <Input placeholder="Search tickets…" value={search} onChange={e => setSearch(e.target.value)}
+            className="pl-8 w-52 h-9 text-xs" style={{ background: 'rgba(13,17,23,0.8)' }} />
+        </div>
       </div>
 
       {isLoading ? (
-        <div className="text-center py-16" style={{ color: '#475569' }}>Loading…</div>
-      ) : tickets.length === 0 ? (
-        <div className="text-center py-16" style={{ color: '#475569' }}>
-          <MessageSquare className="h-8 w-8 mx-auto mb-2 opacity-30" />
-          <p>No {statusFilter} tickets</p>
+        <div className="space-y-3">
+          {[1,2,3].map(i => <Skeleton key={i} className="h-20 rounded-2xl" style={{ background: 'rgba(255,255,255,0.05)' }} />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="text-center py-20">
+          <LifeBuoy size={36} style={{ color: '#334155', margin: '0 auto 12px' }} />
+          <p style={{ color: '#475569' }}>No {status} tickets</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {tickets.map((t) => <TicketRow key={t.id} ticket={t} />)}
+          {filtered.map(ticket => (
+            <TicketCard
+              key={ticket.id}
+              ticket={ticket}
+              onResolve={(id) => resolveMut.mutate(id)}
+              resolving={resolvingId === ticket.id}
+            />
+          ))}
         </div>
       )}
     </div>
