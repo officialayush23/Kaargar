@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { cn } from '@/lib/utils'
+import { useAuthStore } from '@/stores/auth'
 
 // Pages where the bottom nav is hidden entirely
 const HIDE_NAV_ROUTES = [
@@ -15,20 +16,24 @@ function shouldHideNav(pathname) {
 }
 
 /**
- * MobileBottomNav — liquid glass pill, PATH-aware.
+ * MobileBottomNav — liquid glass pill, ROLE-aware.
  *
- * On /worker/* routes → show worker links
- * Everywhere else    → show user links
+ * Shows worker links when the logged-in user's role is 'worker'.
+ * Shows user links for everyone else.
  *
- * This lets workers use both sides of the app (they might
- * book services as a customer too).
+ * Previously this was path-based (pathname.startsWith('/worker')),
+ * which caused the worker nav to appear on the public worker profile
+ * page (/worker/:workerId) viewed by regular users.
  */
 export function MobileBottomNav() {
   const { pathname } = useLocation()
+  const { user } = useAuthStore()
 
   if (shouldHideNav(pathname)) return null
 
-  const onWorkerSide = pathname.startsWith('/worker')
+  // Role determines which nav set to display — not the URL.
+  // A user visiting /worker/:workerId (public profile) is still a user.
+  const onWorkerSide = user?.role === 'worker'
 
   const userLinks = [
     { to: '/',         label: 'Home',     emoji: '🏠' },
