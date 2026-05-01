@@ -1,5 +1,5 @@
 /**
- * useRazorpay — UPI-first Razorpay checkout
+ * useRazorpay — full Razorpay checkout (UPI, cards, netbanking, wallets)
  *
  * Usage:
  *   const { openCheckout, loading, error } = useRazorpay()
@@ -37,7 +37,7 @@ export function useRazorpay() {
     description = 'Service payment',
     prefillName = '',
     prefillEmail = '',
-    prefillContact = '',  // phone number — pre-fills UPI field
+    prefillContact = '',
     onSuccess,       // ({ razorpay_order_id, razorpay_payment_id, razorpay_signature }) => void
     onDismiss,       // () => void
   }) => {
@@ -66,28 +66,10 @@ export function useRazorpay() {
       description,
       order_id: orderId,
 
-      // ── UPI-only checkout ────────────────────────────────────────────────
-      // Show only UPI; hide cards, netbanking, wallets
-      config: {
-        display: {
-          blocks: {
-            upi_block: {
-              name: 'Pay via UPI',
-              instruments: [
-                { method: 'upi', flows: ['collect', 'qr', 'intent'] },
-              ],
-            },
-          },
-          sequence: ['block.upi_block'],
-          preferences: { show_default_blocks: false },
-        },
-      },
-
       prefill: {
         name: prefillName,
         email: prefillEmail,
         contact: prefillContact,
-        method: 'upi',
       },
 
       theme: { color: '#22C55E' },

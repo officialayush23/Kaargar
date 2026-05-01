@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageSquare, Phone, MapPin, Shield, Star, CheckCircle, Clock, Zap, Smartphone, Loader2, AlertCircle } from 'lucide-react'
+import { MessageSquare, Phone, MapPin, Shield, Star, CheckCircle, Clock, Zap, CreditCard, Loader2, AlertCircle } from 'lucide-react'
 import { api } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { JobStatusTimeline } from '@/components/kaargar/JobStatusTimeline'
@@ -157,7 +157,7 @@ function PayNowButton({ jobId, amount, userEmail, userName, onPaymentSuccess }) 
       >
         {busy
           ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing...</>
-          : <><Smartphone className="h-4 w-4" /> Pay {formatCurrency(amount)} via UPI</>
+          : <><CreditCard className="h-4 w-4" /> Pay {formatCurrency(amount)}</>
         }
       </motion.button>
 
