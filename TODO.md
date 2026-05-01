@@ -13,9 +13,9 @@ Go to: Render dashboard → kaargar service → Environment
 | `JWT_ALGORITHM` | `HS256` |
 | `JWT_ACCESS_TOKEN_EXPIRE_MINUTES` | `1440` |
 | `REDIS_URL` | Upstash → Redis → Connect → copy `redis://...` URL |
-| `RAZORPAY_KEY_ID` | Razorpay dashboard → API Keys |
-| `RAZORPAY_KEY_SECRET` | Razorpay dashboard → API Keys |
-| `RAZORPAY_WEBHOOK_SECRET` | Razorpay dashboard → Webhooks → create webhook for `https://kaargar.onrender.com/v1/payments/webhook` |
+| `RAZORPAY_TEST_KEY_ID` | Razorpay dashboard → API Keys → Test Keys tab (starts with `rzp_test_`) |
+| `RAZORPAY_TEST_KEY_SECRET` | Razorpay dashboard → API Keys → Test Keys tab |
+| `RAZORPAY_WEBHOOK_SECRET` | Razorpay dashboard → Webhooks → create webhook pointing to `https://kaargar.onrender.com/v1/payments/webhook` |
 | `SMTP_HOST` | `smtp.resend.com` |
 | `SMTP_PORT` | `587` |
 | `SMTP_USERNAME` | `resend` |
@@ -42,10 +42,11 @@ Go to: Vercel dashboard → kaargar1 → Settings → Environment Variables
 3. Test OTP: check Render logs for `[OTP DEBUG]` line — shows OTP even if SMTP fails
 4. Test payment: use Razorpay test cards (`4111 1111 1111 1111`, any future date, any CVV)
 
-## Razorpay Test Cards
-- Success: `4111 1111 1111 1111` | Expiry: any future | CVV: any
-- Failure: `4000 0000 0000 0002`
-- UPI: `success@razorpay`
+## Razorpay Test Credentials (currently in TEST MODE)
+**UPI:** `success@razorpay` (success) · `failure@razorpay` (failure)
+**Cards:** `4111 1111 1111 1111` | any future expiry | any CVV
+**Netbanking:** select any bank → use test credentials shown on screen
+**Note:** No real money moves in test mode. Switch to live keys (`rzp_live_`) when going to production.
 
 ## Features Completed
 - [x] Full auth flow (email OTP → JWT)

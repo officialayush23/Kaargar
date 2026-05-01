@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     razorpay_webhook_secret: str = Field("", alias="RAZORPAY_WEBHOOK_SECRET")
 
     # SMTP
+    resend_api_key: str = Field("", alias="RESEND_API_KEY")
     smtp_host: str = Field("smtp.gmail.com", alias="SMTP_HOST")
     smtp_port: int = Field(587, alias="SMTP_PORT")
     smtp_username: str = Field("", alias="SMTP_USERNAME")
