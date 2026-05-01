@@ -18,6 +18,7 @@ from database import get_db
 from models import (
     User, WorkerProfile, WorkerCategory, WorkerAnalytics, Service, ServiceMedia,
     Package, PackageService as PackageServiceModel, Offer, PackageOrder, PackageUsage,
+    WorkerAvailability, WorkerTimeOff, WorkerScheduleBlock,
 )
 from schemas import (
     WorkerProfileCreate, WorkerProfileUpdate, WorkerProfileResponse,
@@ -27,6 +28,8 @@ from schemas import (
     PackageCreate, PackageUpdate, PackageResponse, PackageItemResponse,
     OfferCreate, OfferUpdate, OfferResponse,
     PackageOrderCreate, PackageOrderResponse, PackageUsageResponse,
+    WorkerAvailabilitySet, WorkerAvailabilityResponse,
+    WorkerTimeOffCreate, WorkerTimeOffResponse, WorkerScheduleBlockResponse,
 )
 from dependencies import get_current_user
 from services.storage import get_public_url, BUCKET_DOCUMENTS
@@ -976,3 +979,194 @@ async def get_worker_reviews(
         }
         for review, reviewer_name in rows
     ]
+
+
+# ── WORKER AVAILABILITY ───────────────────────────────────────────────────────
+
+@router.get("/me/availability", response_model=list[WorkerAvailabilityResponse])
+async def get_my_availability(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return all 7 day-of-week availability entries for the current worker."""
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+
+    result = await db.execute(
+        select(WorkerAvailability)
+        .where(WorkerAvailability.worker_id == wp.id)
+        .order_by(WorkerAvailability.day_of_week)
+    )
+    avails = result.scalars().all()
+
+    # If no rows seeded yet, return defaults (all days 09:00–21:00, open)
+    from datetime import time as _time
+    if not avails:
+        return [
+            WorkerAvailabilityResponse(
+                id=uuid.uuid4(),
+                worker_id=wp.id,
+                day_of_week=d,
+                start_time=_time(9, 0),
+                end_time=_time(21, 0),
+                is_open=True,
+                updated_at=__import__('datetime').datetime.utcnow(),
+            )
+            for d in range(7)
+        ]
+    return avails
+
+
+@router.put("/me/availability", response_model=list[WorkerAvailabilityResponse])
+async def set_availability(
+    payload: list[WorkerAvailabilitySet],
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Upsert availability for one or more days.
+    Send all 7 days to replace the full weekly schedule.
+    """
+    from datetime import time as _time, datetime as _dt
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+
+    updated = []
+    for item in payload:
+        result = await db.execute(
+            select(WorkerAvailability).where(
+                WorkerAvailability.worker_id == wp.id,
+                WorkerAvailability.day_of_week == item.day_of_week,
+            )
+        )
+        avail = result.scalar_one_or_none()
+        t_start = _time.fromisoformat(item.start_time)
+        t_end   = _time.fromisoformat(item.end_time)
+
+        if avail:
+            avail.start_time = t_start
+            avail.end_time   = t_end
+            avail.is_open    = item.is_open
+            avail.updated_at = _dt.utcnow()
+        else:
+            avail = WorkerAvailability(
+                worker_id   = wp.id,
+                day_of_week = item.day_of_week,
+                start_time  = t_start,
+                end_time    = t_end,
+                is_open     = item.is_open,
+            )
+            db.add(avail)
+        updated.append(avail)
+
+    await db.commit()
+    for a in updated:
+        await db.refresh(a)
+    return updated
+
+
+# ── WORKER TIME-OFF ───────────────────────────────────────────────────────────
+
+@router.get("/me/time-off", response_model=list[WorkerTimeOffResponse])
+async def get_my_time_off(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404)
+
+    from datetime import datetime as _dt, timezone as _tz
+    result = await db.execute(
+        select(WorkerTimeOff)
+        .where(
+            WorkerTimeOff.worker_id == wp.id,
+            WorkerTimeOff.end_datetime >= _dt.now(_tz.utc),
+        )
+        .order_by(WorkerTimeOff.start_datetime)
+    )
+    return result.scalars().all()
+
+
+@router.post("/me/time-off", response_model=WorkerTimeOffResponse, status_code=201)
+async def create_time_off(
+    payload: WorkerTimeOffCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404)
+
+    toff = WorkerTimeOff(
+        worker_id      = wp.id,
+        start_datetime = payload.start_datetime,
+        end_datetime   = payload.end_datetime,
+        reason         = payload.reason,
+    )
+    db.add(toff)
+    await db.commit()
+    await db.refresh(toff)
+    return toff
+
+
+@router.delete("/me/time-off/{toff_id}", response_model=SuccessResponse)
+async def delete_time_off(
+    toff_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404)
+
+    result = await db.execute(
+        select(WorkerTimeOff).where(
+            WorkerTimeOff.id == toff_id,
+            WorkerTimeOff.worker_id == wp.id,
+        )
+    )
+    toff = result.scalar_one_or_none()
+    if not toff:
+        raise HTTPException(404, "Time-off record not found")
+
+    await db.delete(toff)
+    await db.commit()
+    return SuccessResponse(message="Deleted")
+
+
+# ── WORKER SCHEDULE BLOCKS (read-only — created by scheduler) ─────────────────
+
+@router.get("/me/schedule", response_model=list[WorkerScheduleBlockResponse])
+async def get_my_schedule(
+    days_ahead: int = Query(7, ge=1, le=30),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return upcoming schedule blocks for the next N days."""
+    from datetime import date as _date
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404)
+
+    today = _date.today()
+    until = today + __import__('datetime').timedelta(days=days_ahead)
+
+    result = await db.execute(
+        select(WorkerScheduleBlock)
+        .where(
+            WorkerScheduleBlock.worker_id == wp.id,
+            WorkerScheduleBlock.date >= today,
+            WorkerScheduleBlock.date <= until,
+        )
+        .order_by(WorkerScheduleBlock.date, WorkerScheduleBlock.window_start)
+    )
+    return result.scalars().all()

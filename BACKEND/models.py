@@ -10,7 +10,7 @@ from decimal import Decimal
 from sqlalchemy import (
     String, Text, Boolean, Integer, BigInteger, DateTime, Numeric,
     ForeignKey, Index, CheckConstraint, UniqueConstraint, JSON, ARRAY,
-    Computed, func,
+    Computed, func, Date, Time, SmallInteger,
 )
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -356,12 +356,26 @@ class Job(Base):
     cancelled_by: Mapped[str | None] = mapped_column(String(20))
     created_at: Mapped[datetime] = now()
     updated_at: Mapped[datetime] = now()
+    budget_max: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+
+    # ── Scheduling fields (migration 006) ─────────────────────
+    # source distinguishes how the job was created:
+    #   'instant'   — real-time Uber-style dispatch
+    #   'scheduled' — user picked preferred days + time window
+    #   'package'   — booked via a purchased package
+    source: Mapped[str] = mapped_column(String(20), default="instant")
+    is_flexible: Mapped[bool] = mapped_column(Boolean, default=False)
+    # preferred_days: JSON array of ISO date strings, max 3
+    # e.g. ["2025-06-10", "2025-06-11", "2025-06-12"]
+    preferred_days = mapped_column(JSONB)
+    window_start = mapped_column(Time)   # e.g. 16:00
+    window_end   = mapped_column(Time)   # e.g. 18:00
+    assigned_date = mapped_column(Date)  # which preferred_day was used
 
     user = relationship("User")
     worker = relationship("WorkerProfile")
     category = relationship("Category")
     service = relationship("Service")
-    budget_max: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
 
 # ── 16. JOB WORKER REQUESTS ──────────────────────────────────
@@ -704,3 +718,90 @@ class PackageUsage(Base):
 
     order = relationship("PackageOrder", back_populates="usages")
     service = relationship("Service")
+
+
+# ── 35. WORKER AVAILABILITY — recurring weekly schedule ───────
+class WorkerAvailability(Base):
+    """
+    Defines a worker's recurring weekly working hours.
+    One row per (worker, day_of_week).
+    day_of_week: 0=Monday … 6=Sunday
+    Workers that never set this get seeded defaults (9 AM–9 PM, all days).
+    """
+    __tablename__ = "worker_availability"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("worker_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    day_of_week: Mapped[int] = mapped_column(SmallInteger, nullable=False)  # 0–6
+    start_time = mapped_column(Time, nullable=False)
+    end_time   = mapped_column(Time, nullable=False)
+    is_open: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = now()
+    updated_at: Mapped[datetime] = now()
+
+    __table_args__ = (
+        UniqueConstraint("worker_id", "day_of_week", name="wa_unique_day"),
+        CheckConstraint("end_time > start_time", name="wa_time_order"),
+        CheckConstraint("day_of_week BETWEEN 0 AND 6", name="wa_day_range"),
+    )
+
+    worker = relationship("WorkerProfile")
+
+
+# ── 36. WORKER TIME OFF — temporary unavailability ────────────
+class WorkerTimeOff(Base):
+    """
+    A date-time range during which the worker is unavailable.
+    Checked during scheduled-job assignment to skip this worker.
+    """
+    __tablename__ = "worker_time_off"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("worker_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    start_datetime: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    end_datetime:   Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = now()
+
+    __table_args__ = (
+        CheckConstraint("end_datetime > start_datetime", name="wto_time_order"),
+    )
+
+    worker = relationship("WorkerProfile")
+
+
+# ── 37. WORKER SCHEDULE BLOCKS — reserved time windows ────────
+class WorkerScheduleBlock(Base):
+    """
+    A concrete time window reserved for a scheduled job on a specific date.
+    Created when a worker is assigned to a scheduled job.
+    Used to detect conflicts before assigning another job.
+
+    Invariant per worker: no two blocks on the same date may have
+    overlapping (window_start, window_end) ranges.
+    Enforced in application logic (check_worker_availability).
+    """
+    __tablename__ = "worker_schedule_blocks"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("worker_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    job_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("jobs.id", ondelete="SET NULL")
+    )
+    date = mapped_column(Date, nullable=False)
+    window_start = mapped_column(Time, nullable=False)
+    window_end   = mapped_column(Time, nullable=False)
+    created_at: Mapped[datetime] = now()
+
+    __table_args__ = (
+        CheckConstraint("window_end > window_start", name="wsb_time_order"),
+    )
+
+    worker = relationship("WorkerProfile")
+    job    = relationship("Job")

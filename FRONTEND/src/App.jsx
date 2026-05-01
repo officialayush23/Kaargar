@@ -114,6 +114,14 @@ export default function App() {
         <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
         <Route path="/onboard/worker" element={<RequireAuth><WorkerOnboardPage /></RequireAuth>} />
 
+        {/* Public worker profiles — MUST come before the worker portal so React
+            Router resolves /worker/:workerId here, not in the portal tree.
+            RequireAuth only: any logged-in role (user, worker, admin) can view
+            another worker's public profile. These pages have their own layout
+            (back button + sticky CTA) and do not use AppLayout or WorkerLayout. */}
+        <Route path="/worker/:workerId" element={<RequireAuth><WorkerProfilePage /></RequireAuth>} />
+        <Route path="/worker/:workerId/book" element={<RequireAuth><BookDiscoveryPage /></RequireAuth>} />
+
         {/* Main user app */}
         <Route element={<RequireUser><AppLayout /></RequireUser>}>
           <Route index element={<HomePage />} />
@@ -127,8 +135,6 @@ export default function App() {
           <Route path="job/:jobId/active" element={<ActiveJobPage />} />
           <Route path="job/:jobId/review" element={<ReviewPage />} />
           <Route path="discover" element={<DiscoveryPage />} />
-          <Route path="worker/:workerId" element={<WorkerProfilePage />} />
-          <Route path="worker/:workerId/book" element={<BookDiscoveryPage />} />
         </Route>
 
         {/* Worker portal */}

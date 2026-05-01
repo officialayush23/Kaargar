@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils'
 import { useAuthStore } from '@/stores/auth'
 
 // Pages where the bottom nav is hidden entirely
-const HIDE_NAV_ROUTES = [
+const HIDE_NAV_PREFIXES = [
   '/job/',
   '/login',
   '/onboard',
@@ -12,7 +12,7 @@ const HIDE_NAV_ROUTES = [
 ]
 
 function shouldHideNav(pathname) {
-  return HIDE_NAV_ROUTES.some((r) => pathname.startsWith(r))
+  return HIDE_NAV_PREFIXES.some((r) => pathname.startsWith(r))
 }
 
 /**

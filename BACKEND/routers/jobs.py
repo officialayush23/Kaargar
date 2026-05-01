@@ -12,7 +12,7 @@ import uuid
 
 from database import get_db
 from models import User, Job, JobEvent, SOSEvent
-from schemas import JobCreate, JobResponse, JobCancel, SuccessResponse
+from schemas import JobCreate, JobResponse, JobCancel, SuccessResponse, ScheduledJobCreate, ScheduledJobReschedule, ScheduledJobResponse
 from dependencies import get_current_user
 
 router = APIRouter()
@@ -302,3 +302,105 @@ async def trigger_sos(
     db.add(sos)
     await db.commit()
     return SuccessResponse(message="SOS triggered. Support has been notified.")
+
+
+# ── SCHEDULED JOB ENDPOINTS ───────────────────────────────────────────────────
+
+@router.post("/scheduled", response_model=ScheduledJobResponse, status_code=201)
+async def create_scheduled_job(
+    body: ScheduledJobCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Create a scheduled (discovery or package) job.
+    Worker is NOT assigned immediately — the scheduler assigns lazily,
+    same day or up to ASSIGN_AHEAD_HOURS before window_start.
+    """
+    from datetime import time as _time, date as _date
+    from models import Notification
+
+    job = Job(
+        user_id          = user.id,
+        category_id      = body.category_id,
+        service_id       = body.service_id,
+        package_id       = body.package_id,
+        job_type         = body.source,        # 'scheduled' | 'package'
+        source           = body.source,
+        status           = "scheduled",        # will move to 'assigned' by scheduler
+        is_flexible      = True,
+        preferred_days   = body.preferred_days,
+        window_start     = _time.fromisoformat(body.window_start),
+        window_end       = _time.fromisoformat(body.window_end),
+        title            = body.title,
+        description      = body.description,
+        location_lat     = Decimal(str(body.location_lat)),
+        location_lon     = Decimal(str(body.location_lon)),
+        location_address = body.location_address,
+        location_area    = body.location_area,
+        location_note    = body.location_note,
+        location_geom    = _make_geom(body.location_lon, body.location_lat),
+        budget_max       = body.budget_max,
+    )
+    db.add(job)
+    await db.flush()
+
+    await _log_event(db, job.id, "scheduled", "user", user.id, {
+        "preferred_days": body.preferred_days,
+        "window": f"{body.window_start}–{body.window_end}",
+    })
+
+    # Notify user that the job is confirmed and pending worker assignment
+    db.add(Notification(
+        user_id = user.id,
+        type    = "job_scheduled_confirm",
+        title   = "Job booked!",
+        body    = (
+            f"We'll assign the best worker and notify you on "
+            f"{_date.fromisoformat(body.preferred_days[0]).strftime('%d %b')} "
+            f"(or your next preferred date) between {body.window_start} – {body.window_end}."
+        ),
+        data    = {"job_id": ""},  # filled after commit
+    ))
+
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.post("/{job_id}/reschedule", response_model=ScheduledJobResponse)
+async def reschedule_job(
+    job_id: uuid.UUID,
+    body: ScheduledJobReschedule,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Reschedule a failed or cancelled scheduled job with new preferred days.
+    Resets status to 'scheduled' so the scheduler picks it up again.
+    """
+    from datetime import time as _time
+    result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user.id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job.status not in ("failed", "cancelled"):
+        raise HTTPException(400, f"Cannot reschedule a job with status '{job.status}'")
+    if job.source not in ("scheduled", "package"):
+        raise HTTPException(400, "Only scheduled or package jobs can be rescheduled")
+
+    job.status         = "scheduled"
+    job.preferred_days = body.preferred_days
+    job.window_start   = _time.fromisoformat(body.window_start)
+    job.window_end     = _time.fromisoformat(body.window_end)
+    job.worker_id      = None
+    job.assigned_date  = None
+    job.assigned_at    = None
+
+    await _log_event(db, job.id, "rescheduled", "user", user.id, {
+        "new_preferred_days": body.preferred_days,
+        "window": f"{body.window_start}–{body.window_end}",
+    })
+    await db.commit()
+    await db.refresh(job)
+    return job

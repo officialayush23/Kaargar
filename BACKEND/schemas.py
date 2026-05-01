@@ -2,11 +2,11 @@
 Kaargar — All Pydantic schemas (request/response models).
 """
 
-from datetime import datetime
+from datetime import datetime, date, time
 from decimal import Decimal
 from uuid import UUID
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, computed_field
-from typing import Optional
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, computed_field, field_validator
+from typing import Optional, List
 
 
 # ── BASE ──────────────────────────────────────────────────────
@@ -599,3 +599,174 @@ class MediaUploadResponse(BaseModel):
     bucket: str
     media_id: Optional[str] = None
     media_type: Optional[str] = None
+
+
+# ── SCHEDULING ────────────────────────────────────────────────
+
+class ScheduledJobCreate(BaseModel):
+    """
+    User creates a scheduled (discovery/package) job.
+    preferred_days: list of ISO date strings, max 3, must be today or future.
+    window_start / window_end: 'HH:MM' strings, window must be ≥ 1 hour.
+    """
+    category_id: UUID
+    service_id: Optional[UUID] = None
+    package_id: Optional[UUID] = None
+    package_order_id: Optional[UUID] = None
+    source: str = Field("scheduled", pattern="^(scheduled|package)$")
+    # Location
+    location_lat: float
+    location_lon: float
+    location_address: str
+    location_area: Optional[str] = None
+    location_note: Optional[str] = None
+    # Scheduling
+    preferred_days: List[str] = Field(..., min_length=1, max_length=3,
+        description="ISO date strings e.g. ['2025-06-10','2025-06-11']")
+    window_start: str = Field(..., pattern=r"^\d{2}:\d{2}$",
+        description="Start of time window, 'HH:MM' e.g. '16:00'")
+    window_end: str   = Field(..., pattern=r"^\d{2}:\d{2}$",
+        description="End of time window, 'HH:MM' e.g. '18:00'")
+    # Optional extras
+    title: Optional[str] = None
+    description: Optional[str] = None
+    budget_max: Optional[Decimal] = None
+
+    @field_validator("preferred_days")
+    @classmethod
+    def validate_days(cls, v):
+        today = date.today()
+        parsed = []
+        for d_str in v:
+            try:
+                d = date.fromisoformat(d_str)
+            except ValueError:
+                raise ValueError(f"Invalid date format: {d_str}. Use YYYY-MM-DD.")
+            if d < today:
+                raise ValueError(f"preferred_days cannot be in the past: {d_str}")
+            parsed.append(d_str)
+        if len(set(parsed)) != len(parsed):
+            raise ValueError("preferred_days must be unique.")
+        return parsed
+
+    @field_validator("window_end")
+    @classmethod
+    def validate_window(cls, v, info):
+        start = info.data.get("window_start")
+        if start:
+            t_start = time.fromisoformat(start)
+            t_end   = time.fromisoformat(v)
+            if t_end <= t_start:
+                raise ValueError("window_end must be after window_start")
+            # Require at least 1-hour window
+            from datetime import datetime as dt
+            delta = dt.combine(date.today(), t_end) - dt.combine(date.today(), t_start)
+            if delta.total_seconds() < 3600:
+                raise ValueError("Time window must be at least 1 hour")
+        return v
+
+
+class WorkerAvailabilitySet(BaseModel):
+    """Set or update availability for a single day."""
+    day_of_week: int = Field(..., ge=0, le=6,
+        description="0=Monday … 6=Sunday")
+    start_time: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    end_time: str   = Field(..., pattern=r"^\d{2}:\d{2}$")
+    is_open: bool = True
+
+    @field_validator("end_time")
+    @classmethod
+    def validate_times(cls, v, info):
+        start = info.data.get("start_time")
+        if start and time.fromisoformat(v) <= time.fromisoformat(start):
+            raise ValueError("end_time must be after start_time")
+        return v
+
+
+class WorkerAvailabilityResponse(KaargarBase):
+    id: UUID
+    worker_id: UUID
+    day_of_week: int
+    start_time: time
+    end_time: time
+    is_open: bool
+    updated_at: datetime
+
+
+class WorkerTimeOffCreate(BaseModel):
+    start_datetime: datetime
+    end_datetime: datetime
+    reason: Optional[str] = None
+
+    @field_validator("end_datetime")
+    @classmethod
+    def validate_range(cls, v, info):
+        start = info.data.get("start_datetime")
+        if start and v <= start:
+            raise ValueError("end_datetime must be after start_datetime")
+        return v
+
+
+class WorkerTimeOffResponse(KaargarBase):
+    id: UUID
+    worker_id: UUID
+    start_datetime: datetime
+    end_datetime: datetime
+    reason: Optional[str]
+    created_at: datetime
+
+
+class WorkerScheduleBlockResponse(KaargarBase):
+    id: UUID
+    worker_id: UUID
+    job_id: Optional[UUID]
+    date: date
+    window_start: time
+    window_end: time
+    created_at: datetime
+
+
+class ScheduledJobReschedule(BaseModel):
+    """Reschedule a failed scheduled job with new preferred days."""
+    preferred_days: List[str] = Field(..., min_length=1, max_length=3)
+    window_start: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    window_end: str   = Field(..., pattern=r"^\d{2}:\d{2}$")
+
+    @field_validator("preferred_days")
+    @classmethod
+    def validate_days(cls, v):
+        today = date.today()
+        for d_str in v:
+            try:
+                d = date.fromisoformat(d_str)
+            except ValueError:
+                raise ValueError(f"Invalid date: {d_str}")
+            if d < today:
+                raise ValueError(f"Date cannot be in the past: {d_str}")
+        return v
+
+
+class ScheduledJobResponse(KaargarBase):
+    """Full job response including scheduling fields."""
+    id: UUID
+    user_id: UUID
+    worker_id: Optional[UUID]
+    service_id: Optional[UUID]
+    package_id: Optional[UUID]
+    category_id: UUID
+    source: str
+    job_type: str
+    status: str
+    title: Optional[str]
+    description: Optional[str]
+    location_address: str
+    location_area: Optional[str]
+    is_flexible: bool
+    preferred_days: Optional[list]
+    window_start: Optional[time]
+    window_end: Optional[time]
+    assigned_date: Optional[date]
+    quoted_price: Optional[Decimal]
+    final_price: Optional[Decimal]
+    created_at: datetime
+    assigned_at: Optional[datetime]

@@ -17,6 +17,7 @@ import { Badge } from '@/components/ui/badge'
 import { Skeleton } from '@/components/ui/skeleton'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { Background } from '@/components/glass/Background'
+import { MobileBottomNav } from '@/components/glass/GlassNavbar'
 import { formatCurrency, formatRelativeTime } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -236,7 +237,7 @@ export default function WorkerProfilePage() {
     <div className="min-h-screen" style={{ background: 'var(--page-bg)' }}>
       <Background />
 
-      <div className="max-w-2xl mx-auto px-4 pt-5 pb-32 space-y-6">
+      <div className="max-w-2xl mx-auto px-4 pt-5 pb-44 space-y-6">
 
         {/* Back */}
         <button
@@ -506,10 +507,14 @@ export default function WorkerProfilePage() {
         </Section>
       </div>
 
-      {/* Sticky CTA */}
+      {/* Sticky CTA — sits above the bottom nav pill (bottom-4 + ~56px pill height) */}
       <div
-        className="fixed bottom-0 left-0 right-0 px-4 pb-6 pt-3"
-        style={{ background: 'linear-gradient(transparent, var(--page-bg) 40%)', zIndex: 20 }}
+        className="fixed left-0 right-0 px-4 pt-3"
+        style={{
+          bottom: 88,   /* clears the 56px nav pill + bottom-4 gap */
+          background: 'linear-gradient(transparent, var(--page-bg) 40%)',
+          zIndex: 20,
+        }}
       >
         <div className="max-w-2xl mx-auto">
           <GlassButton
@@ -522,6 +527,9 @@ export default function WorkerProfilePage() {
           </GlassButton>
         </div>
       </div>
+
+      {/* Role-aware bottom nav — workers see worker links, users see user links */}
+      <MobileBottomNav />
     </div>
   )
 }
