@@ -1,5 +1,5 @@
-import { useState } from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect, useState, useCallback } from 'react'
+import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
 
 import { AppLayout } from '@/components/layout/AppLayout'
@@ -17,7 +17,6 @@ import BookingsPage from '@/pages/bookings/BookingsPage'
 import ChatPage from '@/pages/chat/ChatPage'
 import ProfilePage from '@/pages/profile/ProfilePage'
 import SupportPage from '@/pages/profile/SupportPage'
-
 import ReviewPage from '@/pages/job/ReviewPage'
 import BookDiscoveryPage from '@/pages/discovery/BookDiscoveryPage'
 import WorkerOnboardPage from '@/pages/onboarding/WorkerOnboardPage'
@@ -47,7 +46,7 @@ function getDefaultRoute(user) {
 }
 
 function RequireAuth({ children }) {
-  const { isAuthenticated, user } = useAuthStore()
+  const { isAuthenticated } = useAuthStore()
   return isAuthenticated ? children : <Navigate to="/login" replace />
 }
 
@@ -82,58 +81,80 @@ function GuestOnly({ children }) {
   return !isAuthenticated ? children : <Navigate to={getDefaultRoute(user)} replace />
 }
 
+// Listens for the custom unauthorized event fired by api.js and does
+// a soft React Router navigation — NO full page reload.
+function UnauthorizedListener() {
+  const navigate = useNavigate()
+  const { user } = useAuthStore()
+
+  useEffect(() => {
+    const handler = () => {
+      const target = user?.role === 'admin' ? '/admin/login' : '/login'
+      navigate(target, { replace: true })
+    }
+    window.addEventListener('kaargar:unauthorized', handler)
+    return () => window.removeEventListener('kaargar:unauthorized', handler)
+  }, [navigate, user])
+
+  return null
+}
+
 export default function App() {
   const [loading, setLoading] = useState(true)
+  const handleDone = useCallback(() => setLoading(false), [])
 
   if (loading) {
-    return <LoadingScreen onDone={() => setLoading(false)} />
+    return <LoadingScreen onDone={handleDone} />
   }
 
   return (
-    <Routes>
-      <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
-      <Route path="/onboard/worker" element={<RequireAuth><WorkerOnboardPage /></RequireAuth>} />
+    <>
+      <UnauthorizedListener />
+      <Routes>
+        <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
+        <Route path="/onboard/worker" element={<RequireAuth><WorkerOnboardPage /></RequireAuth>} />
 
-      {/* Main app */}
-      <Route element={<RequireUser><AppLayout /></RequireUser>}>
-        <Route index element={<HomePage />} />
-        <Route path="bookings" element={<BookingsPage />} />
-        <Route path="chat" element={<ChatPage />} />
-        <Route path="chat/:jobId" element={<ChatPage />} />
-        <Route path="profile" element={<ProfilePage />} />
-        <Route path="support" element={<SupportPage />} />
-        <Route path="job/new" element={<NewJobPage />} />
-        <Route path="job/:jobId/searching" element={<SearchingPage />} />
-        <Route path="job/:jobId/active" element={<ActiveJobPage />} />
-        <Route path="job/:jobId/review" element={<ReviewPage />} />
-        <Route path="discover" element={<DiscoveryPage />} />
-        <Route path="worker/:workerId" element={<WorkerProfilePage />} />
-        <Route path="worker/:workerId/book" element={<BookDiscoveryPage />} />
-      </Route>
+        {/* Main user app */}
+        <Route element={<RequireUser><AppLayout /></RequireUser>}>
+          <Route index element={<HomePage />} />
+          <Route path="bookings" element={<BookingsPage />} />
+          <Route path="chat" element={<ChatPage />} />
+          <Route path="chat/:jobId" element={<ChatPage />} />
+          <Route path="profile" element={<ProfilePage />} />
+          <Route path="support" element={<SupportPage />} />
+          <Route path="job/new" element={<NewJobPage />} />
+          <Route path="job/:jobId/searching" element={<SearchingPage />} />
+          <Route path="job/:jobId/active" element={<ActiveJobPage />} />
+          <Route path="job/:jobId/review" element={<ReviewPage />} />
+          <Route path="discover" element={<DiscoveryPage />} />
+          <Route path="worker/:workerId" element={<WorkerProfilePage />} />
+          <Route path="worker/:workerId/book" element={<BookDiscoveryPage />} />
+        </Route>
 
-      {/* Worker portal */}
-      <Route path="worker" element={<RequireWorker><WorkerLayout /></RequireWorker>}>
-        <Route index element={<WorkerDashboard />} />
-        <Route path="services" element={<WorkerServices />} />
-        <Route path="packages" element={<WorkerPackages />} />
-        <Route path="offers" element={<WorkerOffers />} />
-        <Route path="media" element={<WorkerMedia />} />
-        <Route path="profile" element={<WorkerProfile />} />
-        <Route path="analytics" element={<WorkerAnalytics />} />
-        <Route path="support" element={<WorkerSupport />} />
-      </Route>
+        {/* Worker portal */}
+        <Route path="worker" element={<RequireWorker><WorkerLayout /></RequireWorker>}>
+          <Route index element={<WorkerDashboard />} />
+          <Route path="services" element={<WorkerServices />} />
+          <Route path="packages" element={<WorkerPackages />} />
+          <Route path="offers" element={<WorkerOffers />} />
+          <Route path="media" element={<WorkerMedia />} />
+          <Route path="profile" element={<WorkerProfile />} />
+          <Route path="analytics" element={<WorkerAnalytics />} />
+          <Route path="support" element={<WorkerSupport />} />
+        </Route>
 
-      {/* Admin portal — separate auth, no main layout */}
-      <Route path="/admin/login" element={<AdminLogin />} />
-      <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
-        <Route index element={<AdminDashboard />} />
-        <Route path="workers" element={<AdminWorkers />} />
-        <Route path="jobs" element={<AdminJobs />} />
-        <Route path="support" element={<AdminSupport />} />
-        <Route path="config" element={<AdminConfig />} />
-      </Route>
+        {/* Admin portal */}
+        <Route path="/admin/login" element={<AdminLogin />} />
+        <Route path="/admin" element={<RequireAdmin><AdminLayout /></RequireAdmin>}>
+          <Route index element={<AdminDashboard />} />
+          <Route path="workers" element={<AdminWorkers />} />
+          <Route path="jobs" element={<AdminJobs />} />
+          <Route path="support" element={<AdminSupport />} />
+          <Route path="config" element={<AdminConfig />} />
+        </Route>
 
-      <Route path="*" element={<RequireAuth><RoleRedirect /></RequireAuth>} />
-    </Routes>
+        <Route path="*" element={<RequireAuth><RoleRedirect /></RequireAuth>} />
+      </Routes>
+    </>
   )
 }

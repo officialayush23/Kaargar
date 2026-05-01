@@ -3,51 +3,83 @@ import { gsap } from 'gsap'
 
 export default function LoadingScreen({ onDone }) {
   const containerRef = useRef(null)
-  const textRef = useRef(null)
+  const textRef      = useRef(null)
+  const onDoneRef    = useRef(onDone)
+
+  // Keep ref in sync without re-running the effect
+  useEffect(() => { onDoneRef.current = onDone }, [onDone])
 
   useEffect(() => {
-    // Inject Playwrite Font dynamically for the loading screen
-    const link = document.createElement('link')
-    link.href = 'https://fonts.googleapis.com/css2?family=Playwrite+NO:wght@100..400&display=swap'
-    link.rel = 'stylesheet'
-    document.head.appendChild(link)
-
     const ctx = gsap.context(() => {
       const tl = gsap.timeline({
         onComplete: () => {
           gsap.to(containerRef.current, {
-            opacity: 0, duration: 0.6, ease: 'power2.inOut', onComplete: onDone
+            opacity: 0,
+            duration: 0.5,
+            ease: 'power2.inOut',
+            onComplete: () => onDoneRef.current?.(),
           })
-        }
+        },
       })
 
-      // Smooth Left-to-Right Reveal using clip-path
-      tl.fromTo(textRef.current,
-        { clipPath: 'inset(0 100% 0 0)', opacity: 1 },
-        { clipPath: 'inset(0 0% 0 0)', duration: 1.5, ease: 'power3.inOut' }
-      )
-      
-      // Hold for a moment to let the user see it
-      tl.to({}, { duration: 0.8 })
+      // Set initial state explicitly so it doesn't flash
+      gsap.set(textRef.current, { opacity: 1, clipPath: 'inset(0 100% 0 0)' })
+
+      // Left-to-right reveal
+      tl.to(textRef.current, {
+        clipPath: 'inset(0 0% 0 0)',
+        duration: 1.4,
+        ease: 'power3.inOut',
+      })
+      // Hold
+      tl.to({}, { duration: 0.7 })
     }, containerRef)
 
     return () => ctx.revert()
-  }, [onDone])
+  }, []) // empty deps — runs once, onDone accessed via ref
 
   return (
     <div
       ref={containerRef}
-      className="fixed inset-0 z-[9999] flex flex-col items-center justify-center select-none bg-black"
+      style={{
+        position: 'fixed',
+        inset: 0,
+        zIndex: 9999,
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#000000',
+        userSelect: 'none',
+      }}
     >
-      {/* Subtle Glow */}
-      <div className="absolute w-[300px] h-[350px] bg-amber-500/10 blur-[80px] rounded-full pointer-events-none" />
-      
+      {/* Ambient glow */}
+      <div style={{
+        position: 'absolute',
+        width: 300,
+        height: 300,
+        background: 'rgba(245,158,11,0.12)',
+        filter: 'blur(80px)',
+        borderRadius: '50%',
+        pointerEvents: 'none',
+      }} />
+
+      {/* Logo text — always white, Playwrite NO font */}
       <h1
         ref={textRef}
-        className="text-5xl md:text-7xl font-bold tracking-tight text-white relative z-10"
-        style={{ 
-          fontFamily: '"Playwrite NO", cursive', // Applied Playwrite Font
-          opacity: 0 
+        style={{
+          fontFamily: '"Playwrite NO", cursive',
+          fontSize: 'clamp(3rem, 10vw, 5rem)',
+          fontWeight: 700,
+          letterSpacing: '-0.02em',
+          color: '#FFFFFF',
+          position: 'relative',
+          zIndex: 10,
+          margin: 0,
+          lineHeight: 1,
+          // Start hidden — GSAP will animate clipPath
+          clipPath: 'inset(0 100% 0 0)',
+          opacity: 1,
         }}
       >
         Kaargar
