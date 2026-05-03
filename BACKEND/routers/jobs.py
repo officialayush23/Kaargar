@@ -8,6 +8,7 @@ from sqlalchemy import select
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from decimal import Decimal
 from datetime import datetime, timezone
+from uuid import UUID
 import uuid
 
 from database import get_db
