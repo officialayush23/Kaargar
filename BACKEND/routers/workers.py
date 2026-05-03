@@ -19,6 +19,7 @@ from models import (
     User, WorkerProfile, WorkerCategory, WorkerAnalytics, Service, ServiceMedia,
     Package, PackageService as PackageServiceModel, Offer, PackageOrder, PackageUsage,
     WorkerAvailability, WorkerTimeOff, WorkerScheduleBlock,
+    ServiceSlotConfig, ServiceSlot,
 )
 from schemas import (
     WorkerProfileCreate, WorkerProfileUpdate, WorkerProfileResponse,
@@ -30,6 +31,7 @@ from schemas import (
     PackageOrderCreate, PackageOrderResponse, PackageUsageResponse,
     WorkerAvailabilitySet, WorkerAvailabilityResponse,
     WorkerTimeOffCreate, WorkerTimeOffResponse, WorkerScheduleBlockResponse,
+    SlotConfigCreate, SlotConfigResponse, SlotResponse, SlotGenerateRequest,
 )
 from dependencies import get_current_user
 from services.storage import get_public_url, BUCKET_DOCUMENTS
@@ -1165,8 +1167,289 @@ async def get_my_schedule(
         .where(
             WorkerScheduleBlock.worker_id == wp.id,
             WorkerScheduleBlock.date >= today,
-            WorkerScheduleBlock.date <= until,
+            WorkerScheduleBlock.date <= until,  # noqa
         )
         .order_by(WorkerScheduleBlock.date, WorkerScheduleBlock.window_start)
+    )
+    return result.scalars().all()
+
+
+# ── SLOT MANAGEMENT (migration 007) ──────────────────────────────────────────
+# These endpoints let workers configure and manage time slots for slot-based services.
+
+def _require_worker(user: User, db) -> None:
+    """Helper used inline when we already have wp."""
+    pass  # wp check done inline below
+
+
+async def _get_wp(user: User, db: AsyncSession) -> WorkerProfile:
+    """Get worker profile or raise 404."""
+    result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    return wp
+
+
+# ── Slot config CRUD ──────────────────────────────────────────────────────────
+
+@router.get("/me/services/{service_id}/slot-config", response_model=SlotConfigResponse)
+async def get_slot_config(
+    service_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get slot configuration for a service."""
+    wp = await _get_wp(user, db)
+    result = await db.execute(
+        select(ServiceSlotConfig)
+        .where(ServiceSlotConfig.service_id == service_id, ServiceSlotConfig.worker_id == wp.id)
+    )
+    cfg = result.scalar_one_or_none()
+    if not cfg:
+        raise HTTPException(404, "No slot config for this service")
+    return cfg
+
+
+@router.put("/me/services/{service_id}/slot-config", response_model=SlotConfigResponse)
+async def upsert_slot_config(
+    service_id: uuid.UUID,
+    body: SlotConfigCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create or update slot configuration for a service. Also enables requires_slot on the service."""
+    wp = await _get_wp(user, db)
+
+    # Verify service belongs to worker
+    svc_result = await db.execute(
+        select(Service).where(Service.id == service_id, Service.worker_id == wp.id)
+    )
+    svc = svc_result.scalar_one_or_none()
+    if not svc:
+        raise HTTPException(404, "Service not found")
+
+    # Upsert config
+    cfg_result = await db.execute(
+        select(ServiceSlotConfig)
+        .where(ServiceSlotConfig.service_id == service_id, ServiceSlotConfig.worker_id == wp.id)
+    )
+    cfg = cfg_result.scalar_one_or_none()
+
+    if cfg:
+        cfg.slot_duration_min = body.slot_duration_min
+        cfg.buffer_min        = body.buffer_min
+        cfg.capacity          = body.capacity
+        cfg.max_slots_per_day = body.max_slots_per_day
+        cfg.auto_generate     = body.auto_generate
+    else:
+        cfg = ServiceSlotConfig(
+            service_id        = service_id,
+            worker_id         = wp.id,
+            slot_duration_min = body.slot_duration_min,
+            buffer_min        = body.buffer_min,
+            capacity          = body.capacity,
+            max_slots_per_day = body.max_slots_per_day,
+            auto_generate     = body.auto_generate,
+        )
+        db.add(cfg)
+
+    # Enable slot mode on the service
+    svc.requires_slot      = True
+    svc.slot_duration_min  = body.slot_duration_min
+    svc.max_slots_per_day  = body.max_slots_per_day
+
+    await db.commit()
+    await db.refresh(cfg)
+    return cfg
+
+
+# ── View / generate slots ─────────────────────────────────────────────────────
+
+@router.get("/me/services/{service_id}/slots", response_model=list[SlotResponse])
+async def get_my_slots(
+    service_id: uuid.UUID,
+    from_date: str = Query(..., description="YYYY-MM-DD"),
+    to_date:   str = Query(..., description="YYYY-MM-DD"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List all slots for a service in a date range (worker view)."""
+    from datetime import date as _date
+    wp = await _get_wp(user, db)
+    fd = _date.fromisoformat(from_date)
+    td = _date.fromisoformat(to_date)
+
+    result = await db.execute(
+        select(ServiceSlot)
+        .where(
+            ServiceSlot.worker_id  == wp.id,
+            ServiceSlot.service_id == service_id,
+            ServiceSlot.slot_date  >= fd,
+            ServiceSlot.slot_date  <= td,
+        )
+        .order_by(ServiceSlot.slot_date, ServiceSlot.slot_start)
+    )
+    return result.scalars().all()
+
+
+@router.post("/me/services/{service_id}/slots/generate", response_model=list[SlotResponse])
+async def generate_slots(
+    service_id: uuid.UUID,
+    body: SlotGenerateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Auto-generate slots from worker_availability + slot_config for a date range.
+    Skips days already seeded. Respects max_slots_per_day and buffer_min.
+    """
+    from datetime import date as _date, timedelta, time as _time
+    wp = await _get_wp(user, db)
+
+    # Get slot config
+    cfg_result = await db.execute(
+        select(ServiceSlotConfig)
+        .where(ServiceSlotConfig.service_id == service_id, ServiceSlotConfig.worker_id == wp.id)
+    )
+    cfg = cfg_result.scalar_one_or_none()
+    if not cfg:
+        raise HTTPException(400, "Configure slot settings first (PUT /slot-config)")
+
+    # Get worker availability (recurring weekly schedule)
+    avail_result = await db.execute(
+        select(WorkerAvailability).where(WorkerAvailability.worker_id == wp.id, WorkerAvailability.is_open == True)
+    )
+    availability = {row.day_of_week: row for row in avail_result.scalars().all()}
+
+    created: list[ServiceSlot] = []
+    current = body.from_date
+    slot_dur = cfg.slot_duration_min
+    buffer   = cfg.buffer_min
+    capacity = cfg.capacity
+
+    while current <= body.to_date:
+        dow = current.weekday()  # 0=Mon
+        if dow in availability:
+            av = availability[dow]
+            # Generate slots from av.start_time to av.end_time
+            cursor_min = av.start_time.hour * 60 + av.start_time.minute
+            end_min    = av.end_time.hour   * 60 + av.end_time.minute
+            slots_today = 0
+
+            while cursor_min + slot_dur <= end_min and slots_today < cfg.max_slots_per_day:
+                start_h, start_m = divmod(cursor_min, 60)
+                end_h,   end_m   = divmod(cursor_min + slot_dur, 60)
+                slot_start = _time(start_h, start_m)
+                slot_end   = _time(end_h,   end_m)
+
+                # Check if slot already exists
+                existing = await db.execute(
+                    select(ServiceSlot).where(
+                        ServiceSlot.worker_id  == wp.id,
+                        ServiceSlot.service_id == service_id,
+                        ServiceSlot.slot_date  == current,
+                        ServiceSlot.slot_start == slot_start,
+                    )
+                )
+                if not existing.scalar_one_or_none():
+                    slot = ServiceSlot(
+                        service_id   = service_id,
+                        worker_id    = wp.id,
+                        slot_date    = current,
+                        slot_start   = slot_start,
+                        slot_end     = slot_end,
+                        capacity     = capacity,
+                        booked_count = 0,
+                    )
+                    db.add(slot)
+                    created.append(slot)
+
+                cursor_min += slot_dur + buffer
+                slots_today += 1
+
+        current += timedelta(days=1)
+
+    await db.commit()
+    for s in created:
+        await db.refresh(s)
+    return created
+
+
+@router.patch("/me/services/{service_id}/slots/{slot_id}/block", response_model=SlotResponse)
+async def block_slot(
+    service_id: uuid.UUID,
+    slot_id:    uuid.UUID,
+    reason: str = Query("Blocked by worker"),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Block a slot so it can't be booked."""
+    wp = await _get_wp(user, db)
+    result = await db.execute(
+        select(ServiceSlot).where(ServiceSlot.id == slot_id, ServiceSlot.worker_id == wp.id)
+    )
+    slot = result.scalar_one_or_none()
+    if not slot:
+        raise HTTPException(404)
+    slot.is_blocked   = True
+    slot.block_reason = reason[:100]
+    await db.commit()
+    await db.refresh(slot)
+    return slot
+
+
+@router.patch("/me/services/{service_id}/slots/{slot_id}/unblock", response_model=SlotResponse)
+async def unblock_slot(
+    service_id: uuid.UUID,
+    slot_id:    uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Unblock a previously blocked slot."""
+    wp = await _get_wp(user, db)
+    result = await db.execute(
+        select(ServiceSlot).where(ServiceSlot.id == slot_id, ServiceSlot.worker_id == wp.id)
+    )
+    slot = result.scalar_one_or_none()
+    if not slot:
+        raise HTTPException(404)
+    slot.is_blocked   = False
+    slot.block_reason = None
+    await db.commit()
+    await db.refresh(slot)
+    return slot
+
+
+# ── Public slot view (for booking calendar) ───────────────────────────────────
+
+@router.get("/{worker_id}/services/{service_id}/slots", response_model=list[SlotResponse])
+async def public_get_slots(
+    worker_id:  uuid.UUID,
+    service_id: uuid.UUID,
+    from_date:  str = Query(..., description="YYYY-MM-DD"),
+    to_date:    str = Query(..., description="YYYY-MM-DD"),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Public endpoint — returns available (non-full, non-blocked) slots for a service.
+    Used by the booking calendar on the worker profile page.
+    """
+    from datetime import date as _date
+    fd = _date.fromisoformat(from_date)
+    td = _date.fromisoformat(to_date)
+    if (td - fd).days > 60:
+        raise HTTPException(400, "Date range too large (max 60 days)")
+
+    result = await db.execute(
+        select(ServiceSlot)
+        .where(
+            ServiceSlot.worker_id  == worker_id,
+            ServiceSlot.service_id == service_id,
+            ServiceSlot.slot_date  >= fd,
+            ServiceSlot.slot_date  <= td,
+            ServiceSlot.is_blocked == False,
+        )
+        .order_by(ServiceSlot.slot_date, ServiceSlot.slot_start)
     )
     return result.scalars().all()

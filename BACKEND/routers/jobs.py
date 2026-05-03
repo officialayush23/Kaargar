@@ -11,8 +11,8 @@ from datetime import datetime, timezone
 import uuid
 
 from database import get_db
-from models import User, Job, JobEvent, SOSEvent
-from schemas import JobCreate, JobResponse, JobCancel, SuccessResponse, ScheduledJobCreate, ScheduledJobReschedule, ScheduledJobResponse
+from models import User, Job, JobEvent, SOSEvent, ServiceSlot, Service
+from schemas import JobCreate, JobResponse, JobCancel, SuccessResponse, ScheduledJobCreate, ScheduledJobReschedule, ScheduledJobResponse, SlotBookingCreate
 from dependencies import get_current_user
 
 router = APIRouter()
@@ -368,39 +368,101 @@ async def create_scheduled_job(
     return job
 
 
-@router.post("/{job_id}/reschedule", response_model=ScheduledJobResponse)
-async def reschedule_job(
-    job_id: uuid.UUID,
-    body: ScheduledJobReschedule,
+@router.post("/book-slot", response_model=ScheduledJobResponse, status_code=201)
+async def book_slot(
+    body: SlotBookingCreate,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Reschedule a failed or cancelled scheduled job with new preferred days.
-    Resets status to 'scheduled' so the scheduler picks it up again.
+    Book a specific time slot (slot-based services only).
+    Atomically increments booked_count on the slot and creates a job.
+    Returns 409 if the slot is full or blocked.
     """
-    from datetime import time as _time
-    result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user.id))
+    # Load and validate slot
+    slot_result = await db.execute(
+        select(ServiceSlot).where(ServiceSlot.id == body.slot_id)
+    )
+    slot = slot_result.scalar_one_or_none()
+    if not slot:
+        raise HTTPException(404, "Slot not found")
+    if slot.is_blocked:
+        raise HTTPException(409, "This slot is no longer available")
+    if slot.booked_count >= slot.capacity:
+        raise HTTPException(409, "This slot is fully booked — please pick another time")
+
+    # Load service for metadata
+    svc_result = await db.execute(select(Service).where(Service.id == body.service_id))
+    svc = svc_result.scalar_one_or_none()
+    if not svc:
+        raise HTTPException(404, "Service not found")
+
+    from datetime import date as _date, datetime as _dt, timezone as _tz, time as _time
+    from geoalchemy2.functions import ST_MakePoint, ST_SetSRID as _SRSID
+
+    slot_dt = _dt.combine(slot.slot_date, slot.slot_start, tzinfo=_tz.utc)
+
+    job = Job(
+        user_id=user.id,
+        category_id=svc.category_id,
+        service_id=body.service_id,
+        job_type='discovery',
+        source='slot',
+        status='confirmed',
+        location_address=body.location_address,
+        location=_SRSID(ST_MakePoint(body.location_lon, body.location_lat), 4326),
+        slot_id=slot.id,
+        scheduled_for=slot_dt,
+        estimated_price=svc.base_price,
+        notes=body.notes,
+    )
+    db.add(job)
+
+    # Assign the worker who owns this slot immediately
+    job.worker_id = slot.worker_id
+    job.status = 'worker_assigned'
+
+    # slot booked_count is updated by DB trigger trg_slot_booking on commit
+    await db.commit()
+    await db.refresh(job)
+
+    # Fire notification to worker
+    from services.notifications import send_notification
+    await send_notification(
+        db=db,
+        user_id=slot.worker_id,
+        title='New Slot Booking',
+        body=f'You have a new booking for {svc.title} on {slot.slot_date} at {slot.slot_start.strftime("%H:%M")}',
+        notif_type='job_assigned',
+        data={'job_id': str(job.id)},
+    )
+
+    return {'job_id': str(job.id), 'status': job.status, 'scheduled_for': slot_dt.isoformat()}
+
+
+@router.patch("/{job_id}/reschedule", summary="Reschedule a window-based job (user)")
+async def reschedule_job(
+    job_id: UUID,
+    body: ScheduledJobReschedule,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Allow user to change preferred days/window before a worker is assigned."""
+    result = await db.execute(
+        select(Job).where(Job.id == job_id, Job.user_id == user.id)
+    )
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(404, "Job not found")
-    if job.status not in ("failed", "cancelled"):
-        raise HTTPException(400, f"Cannot reschedule a job with status '{job.status}'")
-    if job.source not in ("scheduled", "package"):
-        raise HTTPException(400, "Only scheduled or package jobs can be rescheduled")
+    if job.status not in ('pending', 'searching'):
+        raise HTTPException(409, f"Cannot reschedule a job in '{job.status}' status")
+    if job.slot_id:
+        raise HTTPException(400, "Slot-based bookings cannot be rescheduled here — cancel and rebook")
 
-    job.status         = "scheduled"
     job.preferred_days = body.preferred_days
-    job.window_start   = _time.fromisoformat(body.window_start)
-    job.window_end     = _time.fromisoformat(body.window_end)
-    job.worker_id      = None
-    job.assigned_date  = None
-    job.assigned_at    = None
+    job.preferred_window_start = body.window_start
+    job.preferred_window_end = body.window_end
 
-    await _log_event(db, job.id, "rescheduled", "user", user.id, {
-        "new_preferred_days": body.preferred_days,
-        "window": f"{body.window_start}–{body.window_end}",
-    })
     await db.commit()
     await db.refresh(job)
-    return job
+    return {'job_id': str(job.id), 'status': job.status, 'message': 'Reschedule request updated'}

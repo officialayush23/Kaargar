@@ -55,8 +55,19 @@ async def _send_via_resend(to_email: str, subject: str, html: str) -> bool:
         import resend
         resend.api_key = settings.resend_api_key
 
-        # Use verified domain if configured, otherwise Resend's test address
-        from_addr = "Kaargar <onboarding@resend.dev>"
+        # Use configured from-email if it's on a verified domain,
+        # otherwise fall back to Resend's shared test address.
+        # NOTE: onboarding@resend.dev only delivers to the Resend account-owner's
+        # email. For any recipient, you must verify kaargar.in in Resend dashboard
+        # and set SMTP_FROM_EMAIL=noreply@kaargar.in in Render env vars.
+        configured = settings.smtp_from_email or ""
+        if configured and not configured.endswith("@kaargar.in"):
+            # Not a verified domain yet — use resend test address
+            from_addr = "Kaargar <onboarding@resend.dev>"
+        elif configured:
+            from_addr = f"{settings.smtp_from_name} <{configured}>"
+        else:
+            from_addr = "Kaargar <onboarding@resend.dev>"
 
         params: resend.Emails.SendParams = {
             "from": from_addr,
@@ -64,11 +75,11 @@ async def _send_via_resend(to_email: str, subject: str, html: str) -> bool:
             "subject": subject,
             "html": html,
         }
-        resend.Emails.send(params)
-        logger.info(f"[RESEND] Email sent to {to_email}")
+        result = resend.Emails.send(params)
+        logger.info(f"[RESEND] Email sent to {to_email} — id={result.get('id', 'n/a')}")
         return True
     except Exception as e:
-        logger.error(f"[RESEND] Failed to send to {to_email}: {e}")
+        logger.error(f"[RESEND] Failed to send to {to_email}: {e}", exc_info=True)
         return False
 
 

@@ -195,8 +195,17 @@ class Service(Base):
     service_mode: Mapped[str] = mapped_column(String(10), default="both")
     visit_fee: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
 
+    # ── Slot-based scheduling (migration 007) ─────────────────────
+    # requires_slot=True  → strict slot booking (salon, doctor-style)
+    # requires_slot=False → flexible window assignment (plumber, electrician)
+    requires_slot: Mapped[bool] = mapped_column(Boolean, default=False)
+    slot_duration_min: Mapped[int | None] = mapped_column(Integer)     # minutes per slot
+    max_slots_per_day: Mapped[int | None] = mapped_column(Integer)     # daily cap
+    base_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))  # alias for price
+
     worker = relationship("WorkerProfile", back_populates="services")
     category = relationship("Category")
+    slot_config = relationship("ServiceSlotConfig", back_populates="service", uselist=False)
 
 
 # ── 9. SERVICE TAGS ───────────────────────────────────────────
@@ -357,6 +366,9 @@ class Job(Base):
     created_at: Mapped[datetime] = now()
     updated_at: Mapped[datetime] = now()
     budget_max: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+
+    # ── Slot reference (migration 007) ───────────────────────
+    slot_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("service_slots.id", ondelete="SET NULL"))
 
     # ── Scheduling fields (migration 006) ─────────────────────
     # source distinguishes how the job was created:
@@ -775,6 +787,7 @@ class WorkerTimeOff(Base):
 
 
 # ── 37. WORKER SCHEDULE BLOCKS — reserved time windows ────────
+# ── 37. WORKER SCHEDULE BLOCKS — reserved time windows ────────
 class WorkerScheduleBlock(Base):
     """
     A concrete time window reserved for a scheduled job on a specific date.
@@ -805,3 +818,65 @@ class WorkerScheduleBlock(Base):
 
     worker = relationship("WorkerProfile")
     job    = relationship("Job")
+
+
+# ── 38. SERVICE SLOT CONFIG — per-service slot settings ───────
+class ServiceSlotConfig(Base):
+    """
+    Defines how slots are generated for a slot-based service.
+    One row per service (unique constraint on service_id).
+    """
+    __tablename__ = "service_slot_config"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    service_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("services.id", ondelete="CASCADE"), nullable=False, unique=True
+    )
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("worker_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    slot_duration_min: Mapped[int] = mapped_column(Integer, default=60)
+    buffer_min: Mapped[int] = mapped_column(Integer, default=15)
+    capacity: Mapped[int] = mapped_column(Integer, default=1)
+    max_slots_per_day: Mapped[int] = mapped_column(Integer, default=8)
+    auto_generate: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = now()
+    updated_at: Mapped[datetime] = now()
+
+    service = relationship("Service", back_populates="slot_config")
+    worker  = relationship("WorkerProfile")
+
+
+# ── 39. SERVICE SLOTS — bookable time slots ───────────────────
+class ServiceSlot(Base):
+    """
+    A concrete bookable slot for a slot-based service on a specific date.
+    booked_count is updated by a DB trigger (trg_slot_booking) when jobs
+    are created or cancelled.
+    """
+    __tablename__ = "service_slots"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    service_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("services.id", ondelete="CASCADE"), nullable=False
+    )
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("worker_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    slot_date  = mapped_column(Date, nullable=False)
+    slot_start = mapped_column(Time, nullable=False)
+    slot_end   = mapped_column(Time, nullable=False)
+    capacity: Mapped[int] = mapped_column(Integer, default=1)
+    booked_count: Mapped[int] = mapped_column(Integer, default=0)
+    is_blocked: Mapped[bool] = mapped_column(Boolean, default=False)
+    block_reason: Mapped[str | None] = mapped_column(String(100))
+    created_at: Mapped[datetime] = now()
+
+    __table_args__ = (
+        UniqueConstraint("worker_id", "service_id", "slot_date", "slot_start", name="uq_slot"),
+        CheckConstraint("slot_end > slot_start", name="chk_slot_times"),
+        CheckConstraint("booked_count >= 0 AND booked_count <= capacity", name="chk_booked_count"),
+    )
+
+    service = relationship("Service")
+    worker  = relationship("WorkerProfile")

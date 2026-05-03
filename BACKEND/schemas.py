@@ -177,6 +177,10 @@ class ServiceCreate(BaseModel):
     duration_min: Optional[int] = None
     service_mode: str = Field(default="both", pattern="^(walkin|onsite|both)$")
     visit_fee: Optional[Decimal] = None
+    # Slot-based scheduling
+    requires_slot: bool = False
+    slot_duration_min: Optional[int] = Field(default=None, ge=15, le=480)
+    max_slots_per_day: Optional[int] = Field(default=None, ge=1, le=50)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -190,6 +194,9 @@ class ServiceUpdate(BaseModel):
     is_active: Optional[bool] = None
     service_mode: Optional[str] = Field(default=None, pattern="^(walkin|onsite|both)$")
     visit_fee: Optional[Decimal] = None
+    requires_slot: Optional[bool] = None
+    slot_duration_min: Optional[int] = Field(default=None, ge=15, le=480)
+    max_slots_per_day: Optional[int] = Field(default=None, ge=1, le=50)
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -209,11 +216,19 @@ class ServiceResponse(KaargarBase):
     total_bookings: int
     avg_rating: Decimal
     rating_count: int
+    requires_slot: bool = False
+    slot_duration_min: Optional[int] = None
+    max_slots_per_day: Optional[int] = None
     created_at: datetime
 
     @computed_field
     @property
     def hourly_rate(self) -> Decimal:
+        return self.price
+
+    @computed_field
+    @property
+    def base_price(self) -> Decimal:
         return self.price
 
 
@@ -746,27 +761,82 @@ class ScheduledJobReschedule(BaseModel):
         return v
 
 
+
 class ScheduledJobResponse(KaargarBase):
-    """Full job response including scheduling fields."""
+    """Full job response for a scheduled (window-based) booking."""
     id: UUID
-    user_id: UUID
-    worker_id: Optional[UUID]
-    service_id: Optional[UUID]
-    package_id: Optional[UUID]
-    category_id: UUID
-    source: str
-    job_type: str
     status: str
-    title: Optional[str]
-    description: Optional[str]
+    category_id: UUID
+    service_id: Optional[UUID] = None
+    worker_id: Optional[UUID] = None
     location_address: str
-    location_area: Optional[str]
-    is_flexible: bool
-    preferred_days: Optional[list]
-    window_start: Optional[time]
-    window_end: Optional[time]
-    assigned_date: Optional[date]
-    quoted_price: Optional[Decimal]
-    final_price: Optional[Decimal]
+    preferred_days: Optional[List[str]] = None
+    preferred_window_start: Optional[str] = None
+    preferred_window_end: Optional[str] = None
+    scheduled_for: Optional[datetime] = None
+    slot_id: Optional[UUID] = None
+    estimated_price: Optional[float] = None
     created_at: datetime
-    assigned_at: Optional[datetime]
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ─── Slot Scheduling Schemas ────────────────────────────────────────────────
+
+class SlotConfigCreate(KaargarBase):
+    """Create or update slot configuration for a service."""
+    duration_minutes: int = Field(ge=15, le=480, default=60)
+    buffer_minutes: int = Field(ge=0, le=60, default=15)
+    capacity_per_slot: int = Field(ge=1, le=20, default=1)
+    auto_generate_days_ahead: int = Field(ge=1, le=90, default=14)
+
+
+class SlotConfigResponse(KaargarBase):
+    id: UUID
+    service_id: UUID
+    duration_minutes: int
+    buffer_minutes: int
+    capacity_per_slot: int
+    auto_generate_days_ahead: int
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class SlotResponse(KaargarBase):
+    id: UUID
+    service_id: UUID
+    worker_id: UUID
+    slot_date: date
+    slot_start: time
+    slot_end: time
+    capacity: int
+    booked_count: int
+    is_blocked: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+    @property
+    def available(self) -> bool:
+        return not self.is_blocked and self.booked_count < self.capacity
+
+    @property
+    def spots_left(self) -> int:
+        return max(0, self.capacity - self.booked_count)
+
+
+class SlotBookingCreate(KaargarBase):
+    """Request body for POST /jobs/book-slot."""
+    service_id: UUID
+    slot_id: UUID
+    location_address: str
+    location_lat: float = Field(ge=-90, le=90)
+    location_lon: float = Field(ge=-180, le=180)
+    notes: Optional[str] = None
+
+
+class SlotGenerateRequest(KaargarBase):
+    """Request body for POST /workers/me/services/{service_id}/slots/generate."""
+    start_date: date
+    end_date: date
+    work_start: str = Field(default="09:00", description="HH:MM")
+    work_end: str = Field(default="18:00", description="HH:MM")
+    skip_days: Optional[List[str]] = Field(default=None, description="List of ISO date strings to skip")
