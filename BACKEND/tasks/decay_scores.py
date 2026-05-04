@@ -2,6 +2,7 @@
 APScheduler task — reset workers from auto-offline after timeout.
 """
 
+import asyncio
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timezone
 
@@ -34,5 +35,7 @@ async def restore_auto_offline_workers():
             if workers:
                 await db.commit()
                 print(f"[DECAY] Restored {len(workers)} workers from auto-offline")
+    except asyncio.CancelledError:
+        pass  # server is shutting down / reloading — clean exit, no traceback
     except Exception as exc:
         print(f"[DECAY] Skipped run due to DB error: {exc}")

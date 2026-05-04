@@ -68,6 +68,7 @@ app.include_router(support.router,       prefix="/v1/support",       tags=["supp
 app.include_router(admin.router,         prefix="/v1/admin",         tags=["admin"])
 app.include_router(users.router,         prefix="/v1/users",         tags=["users"])
 app.include_router(geocode.router,       prefix="/v1/geocode",       tags=["geocode"])
+app.include_router(addresses.router,     prefix="/v1/addresses",     tags=["addresses"])
 
 
 @app.get("/health")

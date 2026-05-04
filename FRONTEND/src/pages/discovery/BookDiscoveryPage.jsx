@@ -52,7 +52,7 @@ function formatShort(str) {
   if (!str) return ''
   return new Date(str + 'T00:00:00').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
 }
-function to24h(hhmm) { return hhmm + ':00' }
+function to24h(hhmm) { return hhmm }   // already HH:MM from the time picker
 function to12h(hhmm) {
   if (!hhmm) return ''
   const [h, m] = hhmm.split(':').map(Number)
