@@ -18,7 +18,7 @@ import {
   CheckCircle2, XCircle, CalendarClock, Zap, Navigation,
   MessageCircle, Calendar, RotateCcw, AlertTriangle,
   Ban, CheckCheck, CircleDot, IndianRupee, Loader2,
-  PhoneOff, ShieldAlert,
+  PhoneOff, ShieldAlert, HeadphonesIcon, ChevronRight,
 } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
@@ -26,7 +26,6 @@ import { api } from '@/lib/api'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { Background } from '@/components/glass/Background'
-import { MobileBottomNav } from '@/components/glass/GlassNavbar'
 
 // ─── Status config ─────────────────────────────────────────────────────────────
 
@@ -266,13 +265,155 @@ function CancelModal({ open, onClose, onConfirm, loading }) {
   )
 }
 
+// ─── Reschedule modal ──────────────────────────────────────────────────────────
+
+function RescheduleModal({ open, onClose, currentDays, currentStart, currentEnd, onConfirm, loading }) {
+  const [days,        setDays]        = useState(currentDays)
+  const [windowStart, setWindowStart] = useState(currentStart)
+  const [windowEnd,   setWindowEnd]   = useState(currentEnd)
+
+  // Reset to current values when modal opens
+  const [init, setInit] = useState(false)
+  if (open && !init) { setDays(currentDays); setWindowStart(currentStart); setWindowEnd(currentEnd); setInit(true) }
+  if (!open && init) setInit(false)
+
+  function todayStr() { return new Date().toISOString().split('T')[0] }
+  function addDays(str, n) {
+    const d = new Date(str + 'T12:00:00Z'); d.setUTCDate(d.getUTCDate() + n)
+    return d.toISOString().split('T')[0]
+  }
+  function formatShort(str) {
+    return new Date(str + 'T12:00:00Z').toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+  }
+  function to12h(hhmm) {
+    if (!hhmm) return ''
+    const [h, m] = hhmm.split(':').map(Number)
+    return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+  }
+
+  const futureDays = Array.from({ length: 14 }, (_, i) => addDays(todayStr(), i + 1))
+
+  function toggleDay(d) {
+    if (days.includes(d)) { setDays(days.filter(x => x !== d)); return }
+    if (days.length >= 3) return
+    setDays([...days, d].sort())
+  }
+
+  // Time options 06:00 – 22:00 in 30-min steps
+  const timeOpts = []
+  for (let h = 6; h <= 22; h++) for (const m of [0, 30]) {
+    if (h === 22 && m === 30) continue
+    timeOpts.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+  }
+  const endOpts = timeOpts.filter(t => {
+    if (!windowStart) return true
+    const [sh, sm] = windowStart.split(':').map(Number)
+    const [eh, em] = t.split(':').map(Number)
+    return (eh * 60 + em) - (sh * 60 + sm) >= 60
+  })
+
+  const valid = days.length >= 1 && windowStart && windowEnd
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            onClick={onClose}
+            style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 1000 }} />
+          <motion.div initial={{ opacity: 0, y: 48 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 32 }}
+            style={{
+              position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 1001,
+              background: 'var(--bg-elevated, #141B26)',
+              borderRadius: '20px 20px 0 0', padding: '24px 20px 44px',
+              border: '1px solid var(--card-border)', maxHeight: '80vh', overflowY: 'auto',
+            }}>
+            <p style={{ fontSize: 16, fontWeight: 700, color: 'var(--text-primary)', marginBottom: 4 }}>
+              Reschedule booking
+            </p>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+              Pick new preferred dates and arrival window.
+            </p>
+
+            {/* Day picker */}
+            <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
+              letterSpacing: '0.06em', marginBottom: 8 }}>Preferred days (up to 3)</p>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 18 }}>
+              {futureDays.map(day => {
+                const active = days.includes(day)
+                const dt = new Date(day + 'T12:00:00Z')
+                return (
+                  <button key={day} onClick={() => toggleDay(day)}
+                    style={{
+                      padding: '8px 4px', borderRadius: 10, cursor: 'pointer',
+                      border: active ? '1.5px solid var(--amber, #F59E0B)' : '1px solid var(--card-border)',
+                      background: active ? 'rgba(245,158,11,0.12)' : 'var(--card-bg)',
+                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
+                    }}>
+                    <span style={{ fontSize: 9, color: active ? '#F59E0B' : 'var(--text-muted)' }}>
+                      {dt.toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'UTC' })}
+                    </span>
+                    <span style={{ fontSize: 16, fontWeight: 700, color: active ? '#F59E0B' : 'var(--text-primary)', lineHeight: 1 }}>
+                      {dt.getUTCDate()}
+                    </span>
+                    <span style={{ fontSize: 9, color: active ? '#F59E0B' : 'var(--text-muted)' }}>
+                      {dt.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Time window */}
+            <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
+              letterSpacing: '0.06em', marginBottom: 8 }}>Arrival window (min 1 hour)</p>
+            <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+              {[['From', timeOpts, windowStart, setWindowStart], ['To', endOpts, windowEnd, setWindowEnd]].map(([label, opts, val, setter]) => (
+                <div key={label} style={{ flex: 1 }}>
+                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{label}</p>
+                  <select value={val} onChange={e => setter(e.target.value)}
+                    style={{
+                      width: '100%', padding: '10px 10px', borderRadius: 10,
+                      border: val ? '1.5px solid var(--amber, #F59E0B)' : '1px solid var(--card-border)',
+                      background: 'var(--card-bg)', color: val ? 'var(--text-primary)' : 'var(--text-muted)',
+                      fontSize: 13, outline: 'none', appearance: 'none',
+                    }}>
+                    <option value="">Select</option>
+                    {opts.map(t => <option key={t} value={t}>{to12h(t)}</option>)}
+                  </select>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', gap: 10 }}>
+              <GlassButton variant="ghost" size="md" className="flex-1" onClick={onClose}>Cancel</GlassButton>
+              <button onClick={() => valid && onConfirm({ days, windowStart, windowEnd })}
+                disabled={!valid || loading}
+                style={{
+                  flex: 1, padding: '12px 16px', borderRadius: 12, fontSize: 14, fontWeight: 600,
+                  background: valid ? '#F59E0B' : 'rgba(245,158,11,0.3)',
+                  color: '#000', border: 'none', cursor: valid ? 'pointer' : 'not-allowed',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+                }}>
+                {loading ? <Loader2 size={16} className="animate-spin" /> : null}
+                Confirm
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
+  )
+}
+
 // ─── Main page ─────────────────────────────────────────────────────────────────
 
 export default function JobDetailPage() {
   const { jobId }   = useParams()
   const navigate    = useNavigate()
   const qc          = useQueryClient()
-  const [showCancel, setShowCancel] = useState(false)
+  const [showCancel,    setShowCancel]    = useState(false)
+  const [showReschedule, setShowReschedule] = useState(false)
 
   // Fetch job
   const { data: job, isLoading, error } = useQuery({
@@ -296,6 +437,23 @@ export default function JobDetailPage() {
       return data
     },
     enabled: !!job?.worker_id,
+  })
+
+  // Reschedule mutation
+  const rescheduleMut = useMutation({
+    mutationFn: async ({ days, windowStart, windowEnd }) => {
+      await api.patch(`/jobs/${jobId}/reschedule`, {
+        preferred_days: days,
+        window_start: windowStart,
+        window_end: windowEnd,
+      })
+    },
+    onSuccess: () => {
+      toast.success('Booking rescheduled!')
+      qc.invalidateQueries({ queryKey: ['job', jobId] })
+      setShowReschedule(false)
+    },
+    onError: (e) => toast.error(errMsg(e, 'Reschedule failed')),
   })
 
   // Cancel mutation
@@ -440,18 +598,22 @@ export default function JobDetailPage() {
         {worker ? (
           <GlassCard className="p-5" style={{ marginBottom: 12 }}>
             <SectionTitle>Your Worker</SectionTitle>
-            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+            {/* Tappable row → worker public profile */}
+            <button
+              onClick={() => navigate(`/worker/${job.worker_id}`)}
+              style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+                display: 'flex', gap: 12, alignItems: 'center', padding: 0 }}>
               {worker.avatar_url ? (
                 <img src={worker.avatar_url} alt={worker.full_name}
                   style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover',
-                    border: '2px solid var(--card-border)' }} />
+                    border: '2px solid var(--card-border)', flexShrink: 0 }} />
               ) : (
                 <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(75,123,255,0.15)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                   <User size={22} style={{ color: '#4B7BFF' }} />
                 </div>
               )}
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, textAlign: 'left' }}>
                 <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
                   {worker.full_name || 'Your Worker'}
                 </p>
@@ -470,12 +632,18 @@ export default function JobDetailPage() {
                   <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>{worker.bio}</p>
                 )}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px',
-                borderRadius: 20, background: 'rgba(75,123,255,0.10)', border: '1px solid rgba(75,123,255,0.20)' }}>
-                <PhoneOff size={10} style={{ color: '#4B7BFF' }} />
-                <span style={{ fontSize: 10, color: '#4B7BFF', fontWeight: 600 }}>Phone hidden</span>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px',
+                  borderRadius: 20, background: 'rgba(75,123,255,0.10)', border: '1px solid rgba(75,123,255,0.20)' }}>
+                  <PhoneOff size={10} style={{ color: '#4B7BFF' }} />
+                  <span style={{ fontSize: 10, color: '#4B7BFF', fontWeight: 600 }}>Phone hidden</span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+                  <span style={{ fontSize: 11, color: 'var(--brand)' }}>View profile</span>
+                  <ChevronRight size={12} style={{ color: 'var(--brand)' }} />
+                </div>
               </div>
-            </div>
+            </button>
           </GlassCard>
         ) : isScheduledPending ? (
           <GlassCard className="p-4" style={{ marginBottom: 12 }}>
@@ -572,7 +740,7 @@ export default function JobDetailPage() {
           {isScheduledPending && hasWindow && (
             <GlassButton variant="discovery" size="lg" className="w-full"
               icon={RotateCcw} iconPosition="left"
-              onClick={() => navigate(`/job/${jobId}/reschedule`)}>
+              onClick={() => setShowReschedule(true)}>
               Reschedule
             </GlassButton>
           )}
@@ -606,6 +774,19 @@ export default function JobDetailPage() {
               Book Again
             </GlassButton>
           )}
+
+          {/* Support — always visible */}
+          <button
+            onClick={() => navigate(`/support?job_id=${jobId}`)}
+            style={{
+              width: '100%', padding: '12px 16px', borderRadius: 12, fontSize: 14,
+              fontWeight: 500, color: 'var(--text-secondary)', cursor: 'pointer',
+              background: 'transparent', border: '1px solid var(--card-border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>
+            <HeadphonesIcon size={15} />
+            Get Help / Report Issue
+          </button>
         </div>
 
       </div>
@@ -617,7 +798,16 @@ export default function JobDetailPage() {
         loading={cancelMut.isPending}
       />
 
-      <MobileBottomNav />
+      <RescheduleModal
+        open={showReschedule}
+        onClose={() => setShowReschedule(false)}
+        currentDays={job.preferred_days || []}
+        currentStart={job.window_start ? job.window_start.slice(0, 5) : ''}
+        currentEnd={job.window_end   ? job.window_end.slice(0, 5)   : ''}
+        onConfirm={({ days, windowStart, windowEnd }) =>
+          rescheduleMut.mutate({ days, windowStart, windowEnd })}
+        loading={rescheduleMut.isPending}
+      />
     </div>
   )
 }

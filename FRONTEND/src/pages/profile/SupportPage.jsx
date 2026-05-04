@@ -1,7 +1,8 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 import { LifeBuoy, Plus } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useSearchParams } from 'react-router-dom'
 import { api } from '@/lib/api'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
@@ -13,8 +14,23 @@ import { toast } from 'sonner'
 
 export default function SupportPage() {
   const qc = useQueryClient()
+  const [searchParams] = useSearchParams()
+  const jobIdParam = searchParams.get('job_id')
+
   const [openNew, setOpenNew] = useState(false)
   const [form, setForm] = useState({ title: '', description: '', type: 'general' })
+
+  // Auto-open new ticket form if coming from a job detail page
+  useEffect(() => {
+    if (jobIdParam) {
+      setForm({
+        title: 'Issue with my booking',
+        description: `Job ID: ${jobIdParam}\n\nPlease describe your issue:\n`,
+        type: 'job',
+      })
+      setOpenNew(true)
+    }
+  }, [jobIdParam])
 
   const { data: tickets, isLoading } = useQuery({
     queryKey: ['tickets'],
