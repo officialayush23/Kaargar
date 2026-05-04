@@ -1,153 +1,278 @@
 /**
- * PuneMap — Mapbox GL JS map component for location selection.
- * Uses react-map-gl v8 API.
+ * PuneMap — Uber/Rapido-style location picker.
  *
- * Requires VITE_MAPBOX_TOKEN in .env
- * If token is missing/invalid, renders a styled fallback.
+ * Behavior:
+ *  • Auto-geolocates on mount (silently flies to real location)
+ *  • Fixed center crosshair — drag map under the pin
+ *  • GPS button uses mapRef.flyTo() for smooth zoom animation
+ *  • centerLat/centerLon prop change also triggers flyTo (for search results)
+ *  • Reverse geocodes via backend /v1/geocode/reverse on drag-end
+ *  • Colored streets-v12 style (not dark)
+ *  • Falls back to area grid if no Mapbox token
  */
-import { useState, useCallback, useRef, useEffect } from 'react'
-import Map, { Marker, NavigationControl } from 'react-map-gl/mapbox'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import Map, { NavigationControl } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
-import { MapPin, Navigation } from 'lucide-react'
+import { MapPin, Navigation, Loader2 } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 const PUNE_CENTER = { longitude: 73.8567, latitude: 18.5204 }
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-const VALID_TOKEN = MAPBOX_TOKEN && !MAPBOX_TOKEN.includes('placeholder')
+const VALID_TOKEN  = MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith('pk.')
+const MAP_STYLE    = 'mapbox://styles/mapbox/streets-v12'
+const API_BASE     = import.meta.env.VITE_API_URL || 'http://localhost:8000/v1'
 
-// Dark 3D Mapbox style
-const MAP_STYLE = 'mapbox://styles/mapbox/dark-v11'
-
-async function reverseGeocode(lat, lng) {
+async function backendReverseGeocode(lat, lon) {
   try {
+    const token = localStorage.getItem('kaargar_token') || ''
     const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`,
-      { headers: { 'Accept-Language': 'en' } }
+      `${API_BASE}/geocode/reverse?lat=${lat}&lon=${lon}`,
+      token ? { headers: { Authorization: `Bearer ${token}` } } : {}
     )
+    if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
-    const parts = [
-      data.address?.road,
-      data.address?.suburb || data.address?.neighbourhood,
-      data.address?.city || data.address?.town,
-    ].filter(Boolean)
-    return parts.slice(0, 2).join(', ') || data.display_name || 'Selected location'
-  } catch {
-    return 'Selected location'
+    return data.formatted_address || null
+  } catch (e) {
+    console.warn('[PuneMap] reverse geocode failed:', e.message)
+    return null
   }
 }
 
-export function PuneMap({ onLocationSelect, initialLat, initialLon, className = '' }) {
+// ── Fixed center crosshair ────────────────────────────────────
+function CenterPin({ dragging }) {
+  return (
+    <div style={{
+      position: 'absolute',
+      top: '50%', left: '50%',
+      transform: 'translate(-50%, -100%)',
+      pointerEvents: 'none', zIndex: 10,
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+    }}>
+      <motion.div
+        animate={{ y: dragging ? -10 : 0, scale: dragging ? 1.1 : 1 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+        style={{
+          width: 44, height: 44, borderRadius: '50%',
+          background: '#4B7BFF',
+          border: '3px solid #fff',
+          boxShadow: dragging
+            ? '0 8px 32px rgba(75,123,255,0.7)'
+            : '0 4px 16px rgba(75,123,255,0.45)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+        <MapPin size={22} color="#fff" strokeWidth={2.5} />
+      </motion.div>
+      <motion.div
+        animate={{ scaleX: dragging ? 0.5 : 1, opacity: dragging ? 0.2 : 0.25 }}
+        transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+        style={{
+          width: 14, height: 4, borderRadius: 2,
+          background: '#000', marginTop: 3, filter: 'blur(2px)',
+        }}
+      />
+    </div>
+  )
+}
+
+export function PuneMap({
+  onLocationSelect,
+  initialLat,
+  initialLon,
+  centerLat,   // fly to this when changed (e.g. autocomplete picks a place)
+  centerLon,
+  height = '360px',
+  className = '',
+}) {
+  const mapRef = useRef(null)
+
   const [viewState, setViewState] = useState({
     longitude: initialLon || PUNE_CENTER.longitude,
     latitude:  initialLat || PUNE_CENTER.latitude,
-    zoom: 14,
-    pitch: 45,
-    bearing: -10,
+    zoom: initialLat ? 17 : 14,
+    pitch: 0, bearing: 0,
   })
-  const [marker, setMarker] = useState(
-    initialLat ? { lng: initialLon, lat: initialLat } : null
-  )
+
+  const [dragging, setDragging]   = useState(false)
   const [resolving, setResolving] = useState(false)
-  const [address, setAddress] = useState('')
+  const [address, setAddress]     = useState('')
+  const [gpsLoading, setGpsLoading] = useState(false)
   const resolveTimer = useRef(null)
 
-  async function handleMapClick(e) {
-    const { lng, lat } = e.lngLat
-    setMarker({ lng, lat })
+  // ── flyTo helper — uses Mapbox GL JS directly for smooth animation ──
+  const flyTo = useCallback((lat, lon, zoom = 17) => {
+    const map = mapRef.current?.getMap()
+    if (map) {
+      map.flyTo({ center: [lon, lat], zoom, speed: 1.6, curve: 1.4 })
+    } else {
+      // Map not yet loaded — fall back to setting viewState
+      setViewState(v => ({ ...v, latitude: lat, longitude: lon, zoom }))
+    }
+  }, [])
+
+  // ── Auto-geolocate on mount ─────────────────────────────────
+  useEffect(() => {
+    if (initialLat && initialLon) {
+      // Already have a location — geocode it
+      resolveAndNotify(initialLat, initialLon)
+      return
+    }
+    // No initial location — ask browser silently
+    if (!navigator.geolocation) return
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude
+        const lon = pos.coords.longitude
+        flyTo(lat, lon, 17)
+        resolveAndNotify(lat, lon)
+      },
+      (err) => console.warn('[PuneMap] auto-geolocation denied:', err.message),
+      { enableHighAccuracy: false, timeout: 6000, maximumAge: 30000 }
+    )
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Fly to centerLat/centerLon when prop changes (autocomplete) ──
+  useEffect(() => {
+    if (centerLat && centerLon) {
+      flyTo(centerLat, centerLon, 17)
+    }
+  }, [centerLat, centerLon, flyTo])
+
+  // ── Reverse geocode + notify parent ────────────────────────
+  async function resolveAndNotify(lat, lon) {
     setResolving(true)
-
-    clearTimeout(resolveTimer.current)
-    resolveTimer.current = setTimeout(async () => {
-      const addr = await reverseGeocode(lat, lng)
+    const addr = await backendReverseGeocode(lat, lon)
+    setResolving(false)
+    if (addr) {
       setAddress(addr)
-      setResolving(false)
-      onLocationSelect?.({ lat, lon: lng, address: addr })
-    }, 400)
+      onLocationSelect?.({ lat, lon, address: addr })
+    }
   }
 
-  function handleDragEnd(e) {
-    const { lng, lat } = e.lngLat
-    setMarker({ lng, lat })
-    setResolving(true)
+  // ── Map drag handlers ───────────────────────────────────────
+  function handleMoveStart() {
+    setDragging(true)
     clearTimeout(resolveTimer.current)
-    resolveTimer.current = setTimeout(async () => {
-      const addr = await reverseGeocode(lat, lng)
-      setAddress(addr)
-      setResolving(false)
-      onLocationSelect?.({ lat, lon: lng, address: addr })
-    }, 400)
   }
 
-  if (!VALID_TOKEN) {
-    return <MapFallback onSelect={onLocationSelect} />
+  function handleMoveEnd(e) {
+    setDragging(false)
+    const { latitude: lat, longitude: lon } = e.viewState
+    clearTimeout(resolveTimer.current)
+    resolveTimer.current = setTimeout(() => resolveAndNotify(lat, lon), 500)
   }
+
+  // ── GPS button ──────────────────────────────────────────────
+  function handleGPS() {
+    if (!navigator.geolocation) return
+    setGpsLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude
+        const lon = pos.coords.longitude
+        flyTo(lat, lon, 17)
+        resolveAndNotify(lat, lon)
+        setGpsLoading(false)
+      },
+      (err) => {
+        console.warn('[PuneMap] GPS error:', err.message)
+        setGpsLoading(false)
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    )
+  }
+
+  if (!VALID_TOKEN) return <MapFallback onSelect={onLocationSelect} height={height} className={className} />
 
   return (
-    <div className={`relative rounded-2xl overflow-hidden ${className}`}>
+    <div className={`relative rounded-2xl overflow-hidden ${className}`} style={{ height }}>
       <Map
+        ref={mapRef}
         {...viewState}
         onMove={e => setViewState(e.viewState)}
-        onClick={handleMapClick}
+        onMoveStart={handleMoveStart}
+        onMoveEnd={handleMoveEnd}
         mapboxAccessToken={MAPBOX_TOKEN}
         mapStyle={MAP_STYLE}
         style={{ width: '100%', height: '100%' }}
         attributionControl={false}
+        reuseMaps
       >
         <NavigationControl position="top-right" showCompass={false} />
-
-        {marker && (
-          <Marker
-            longitude={marker.lng}
-            latitude={marker.lat}
-            draggable
-            onDragEnd={handleDragEnd}
-            anchor="bottom"
-          >
-            <motion.div
-              initial={{ scale: 0, y: -20 }}
-              animate={{ scale: 1, y: 0 }}
-              transition={{ type: 'spring', stiffness: 400, damping: 20 }}
-              className="flex flex-col items-center"
-            >
-              <div className="w-10 h-10 rounded-full bg-azure border-3 border-white shadow-[0_4px_20px_rgba(59,130,246,0.6)] flex items-center justify-center">
-                <MapPin className="h-5 w-5 text-white" />
-              </div>
-              <div className="w-2 h-2 rounded-full bg-azure/60 mt-0.5" />
-            </motion.div>
-          </Marker>
-        )}
       </Map>
 
-      {/* Tap hint overlay when no marker */}
-      {!marker && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <motion.div
-            animate={{ y: [0, -6, 0] }}
-            transition={{ repeat: Infinity, duration: 2 }}
-            className="glass rounded-2xl px-4 py-2.5 flex items-center gap-2"
-          >
-            <MapPin className="h-4 w-4 text-azure" />
-            <span className="text-sm text-white/80">Tap map to drop pin</span>
-          </motion.div>
-        </div>
-      )}
+      {/* Fixed center crosshair */}
+      <CenterPin dragging={dragging} />
 
-      {/* Address overlay */}
-      {(marker || resolving) && (
-        <div className="absolute bottom-3 left-3 right-3 glass rounded-xl px-3 py-2.5 flex items-center gap-2">
-          <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 ${resolving ? 'bg-white/20' : 'bg-azure/30'}`}>
-            <MapPin className="h-3 w-3 text-azure" />
-          </div>
-          <span className="text-xs text-white/80 truncate">
-            {resolving ? 'Locating address…' : address || 'Address found'}
-          </span>
+      {/* GPS button */}
+      <button
+        onClick={handleGPS}
+        title="Use my location"
+        style={{
+          position: 'absolute', bottom: 72, right: 12, zIndex: 20,
+          width: 40, height: 40, borderRadius: 10,
+          background: '#fff', border: 'none',
+          boxShadow: '0 2px 12px rgba(0,0,0,0.2)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          cursor: 'pointer',
+        }}>
+        {gpsLoading
+          ? <Loader2 size={18} color="#4B7BFF" style={{ animation: 'spin 0.8s linear infinite' }} />
+          : <Navigation size={18} color="#4B7BFF" fill="#4B7BFF" />
+        }
+      </button>
+
+      {/* Address chip at bottom */}
+      <div style={{
+        position: 'absolute', bottom: 12, left: 12, right: 12, zIndex: 20,
+        background: '#fff', borderRadius: 14,
+        padding: '10px 14px',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
+        display: 'flex', alignItems: 'center', gap: 10,
+      }}>
+        <div style={{
+          width: 30, height: 30, borderRadius: 8, flexShrink: 0,
+          background: dragging ? '#FEF3C7' : 'rgba(75,123,255,0.10)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          transition: 'background 0.2s',
+        }}>
+          {resolving || dragging
+            ? <Loader2 size={15} color="#4B7BFF" style={{ animation: 'spin 0.8s linear infinite' }} />
+            : <MapPin size={15} color="#4B7BFF" />
+          }
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <p style={{ fontSize: 11, color: '#94A3B8', margin: 0, fontWeight: 500 }}>
+            {dragging ? 'Move map to adjust…' : resolving ? 'Finding address…' : 'Delivery address'}
+          </p>
+          <p style={{
+            fontSize: 13, fontWeight: 600, margin: 0, lineHeight: 1.3,
+            color: dragging ? '#94A3B8' : '#1E293B',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {resolving && !address ? 'Getting address…' : address || 'Drag map to set location'}
+          </p>
+        </div>
+      </div>
+
+      {/* First-load hint */}
+      {!address && !resolving && !dragging && (
+        <div style={{
+          position: 'absolute', top: 12, left: '50%', transform: 'translateX(-50%)',
+          background: 'rgba(0,0,0,0.6)', borderRadius: 20,
+          padding: '5px 14px', zIndex: 20, pointerEvents: 'none',
+        }}>
+          <p style={{ fontSize: 11, color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
+            Drag map to set your location
+          </p>
         </div>
       )}
     </div>
   )
 }
 
-function MapFallback({ onSelect }) {
+// ── Fallback: area grid when no Mapbox token ──────────────────
+function MapFallback({ onSelect, height, className }) {
   const [selected, setSelected] = useState(null)
   const AREAS = [
     { name: 'Baner',         lat: 18.5590, lon: 73.7847 },
@@ -161,38 +286,32 @@ function MapFallback({ onSelect }) {
     { name: 'Magarpatta',    lat: 18.5167, lon: 73.9278 },
     { name: 'Kalyani Nagar', lat: 18.5468, lon: 73.9012 },
   ]
-
   function pick(area) {
     setSelected(area.name)
     onSelect?.({ lat: area.lat, lon: area.lon, address: `${area.name}, Pune` })
   }
-
   return (
-    <div className="rounded-2xl overflow-hidden border border-white/10 bg-navy p-4 space-y-3">
-      <div className="flex items-center gap-2 text-amber-400">
-        <Navigation className="h-4 w-4" />
-        <span className="text-xs font-medium">Select your area in Pune</span>
+    <div className={`rounded-2xl overflow-hidden border border-white/10 ${className}`}
+      style={{ height, background: 'var(--bg-elevated)', padding: 16, boxSizing: 'border-box', overflowY: 'auto' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+        <Navigation size={14} color="#F59E0B" />
+        <span style={{ fontSize: 12, fontWeight: 500, color: '#F59E0B' }}>Select your area in Pune</span>
       </div>
-      <div className="grid grid-cols-2 gap-2">
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         {AREAS.map(area => (
-          <button
-            key={area.name}
-            onClick={() => pick(area)}
-            className={`text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all border ${
-              selected === area.name
-                ? 'bg-azure/20 border-azure/40 text-azure'
-                : 'bg-white/5 border-white/10 text-white/60 hover:bg-white/10 hover:text-white/80'
-            }`}
-          >
+          <button key={area.name} onClick={() => pick(area)} style={{
+            textAlign: 'left', padding: '10px 12px', borderRadius: 12, fontSize: 13,
+            fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s',
+            background: selected === area.name ? 'rgba(75,123,255,0.15)' : 'rgba(255,255,255,0.05)',
+            border: selected === area.name ? '1.5px solid rgba(75,123,255,0.5)' : '1px solid rgba(255,255,255,0.08)',
+            color: selected === area.name ? '#4B7BFF' : 'rgba(255,255,255,0.6)',
+          }}>
             {area.name}
           </button>
         ))}
       </div>
-      {!import.meta.env.VITE_MAPBOX_TOKEN?.includes('placeholder') ? null : (
-        <p className="text-[10px] text-white/20 text-center">
-          Add VITE_MAPBOX_TOKEN to .env for full map experience
-        </p>
-      )}
     </div>
   )
 }
+
+export default PuneMap

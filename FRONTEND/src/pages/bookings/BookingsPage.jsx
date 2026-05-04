@@ -258,7 +258,7 @@ function PackagesTab() {
   const navigate = useNavigate()
   const { data: orders = [], isLoading } = useQuery({
     queryKey: ['package-orders'],
-    queryFn: () => api.get('/me/package-orders').then(r => r.data),
+    queryFn: () => api.get('/workers/me/package-orders').then(r => r.data),
   })
 
   if (isLoading) {

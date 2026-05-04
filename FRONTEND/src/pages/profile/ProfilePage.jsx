@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Pencil, Check, HelpCircle, HardHat } from 'lucide-react'
+import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Pencil, Check, HelpCircle, HardHat, MapPin } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
@@ -11,6 +11,7 @@ import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput } from '@/components/glass/GlassInput'
 import { getInitials } from '@/lib/utils'
 import { toast } from 'sonner'
+import { AddressBook } from '@/components/kaargar/AddressBook'
 import { cn } from '@/lib/utils'
 
 function MenuItem({ icon: Icon, label, sub, onClick, danger, color }) {
@@ -182,7 +183,15 @@ export default function ProfilePage() {
 
       {/* Account section */}
       <div>
-        <p className="text-xs uppercase tracking-widest font-medium mb-2 px-1" style={{ color: 'var(--text-muted)' }}>Account</p>
+      {/* Saved Addresses */}
+      <div>
+        <p className="text-xs uppercase tracking-widest font-medium mb-2 px-1" style={{ color: 'var(--text-muted)' }}>Saved Addresses</p>
+        <GlassCard style={{ padding: '14px' }}>
+          <AddressBook />
+        </GlassCard>
+      </div>
+
+              <p className="text-xs uppercase tracking-widest font-medium mb-2 px-1" style={{ color: 'var(--text-muted)' }}>Account</p>
         <GlassCard className="divide-y divide-white/8 overflow-hidden">
           <MenuItem icon={Briefcase} label="My Bookings" sub="View all service requests" onClick={() => navigate('/bookings')} />
           <MenuItem icon={Bell} label="Notifications" sub="Manage alerts" onClick={() => {}} />

@@ -840,3 +840,42 @@ class SlotGenerateRequest(KaargarBase):
     work_start: str = Field(default="09:00", description="HH:MM")
     work_end: str = Field(default="18:00", description="HH:MM")
     skip_days: Optional[List[str]] = Field(default=None, description="List of ISO date strings to skip")
+
+
+# ─── User Saved Addresses ────────────────────────────────────────────────────
+
+class UserAddressCreate(KaargarBase):
+    label: str = Field(..., min_length=1, max_length=50)
+    address_line: str = Field(..., min_length=3)
+    area: Optional[str] = None
+    city: str = "Pune"
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    place_id: Optional[str] = None
+    is_default: bool = False
+
+
+class UserAddressUpdate(KaargarBase):
+    label: Optional[str] = Field(None, min_length=1, max_length=50)
+    address_line: Optional[str] = None
+    area: Optional[str] = None
+    city: Optional[str] = None
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    place_id: Optional[str] = None
+    is_default: Optional[bool] = None
+
+
+class UserAddressResponse(KaargarBase):
+    id: UUID
+    user_id: UUID
+    label: str
+    address_line: str
+    area: Optional[str] = None
+    city: str
+    lat: Optional[float] = None
+    lon: Optional[float] = None
+    place_id: Optional[str] = None
+    is_default: bool
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)

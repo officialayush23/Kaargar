@@ -23,6 +23,7 @@ import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput } from '@/components/glass/GlassInput'
 import { InfoButton } from '@/components/kaargar/InfoButton'
 import { api } from '@/lib/api'
+import { useAddresses } from '@/hooks/useAddresses'
 import { toast } from 'sonner'
 import { MobileBottomNav } from '@/components/glass/GlassNavbar'
 
@@ -54,6 +55,33 @@ function timeOptions() {
 const TIME_OPTS = timeOptions()
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
+
+
+function SavedAddressPicker({ onSelect }) {
+  const { data: addresses = [] } = useAddresses()
+  if (!addresses.length) return null
+  return (
+    <div style={{ marginBottom: 10 }}>
+      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        Saved addresses
+      </p>
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
+        {addresses.map(addr => (
+          <button key={addr.id} onClick={() => onSelect(addr)}
+            style={{
+              flexShrink: 0, padding: '6px 13px', borderRadius: 20,
+              border: addr.is_default ? '1.5px solid var(--brand)' : '1px solid var(--card-border)',
+              background: addr.is_default ? 'rgba(75,123,255,0.10)' : 'var(--card-bg)',
+              color: addr.is_default ? 'var(--brand)' : 'var(--text-secondary)',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>
+            {addr.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
 
 function DayPicker({ selected, onChange }) {
   const days = Array.from({ length: 14 }, (_, i) => addDays(todayStr(), i + 1))
@@ -591,7 +619,12 @@ export default function BookDiscoveryPage() {
                   <InfoButton text="The worker will come to this address. Enter a complete address so they can find you easily." />
                 </div>
                 <div className="space-y-3">
-                  <GlassInput label="Full address" placeholder="Flat no., building, street…" value={address} onChange={e => setAddress(e.target.value)} icon={MapPin} autoFocus />
+                  {/* Saved addresses quick-pick */}
+                <SavedAddressPicker onSelect={(addr) => {
+                  setAddress(addr.address_line)
+                  if (addr.area) setLocationArea(addr.area)
+                }} />
+                                <GlassInput label="Full address" placeholder="Flat no., building, street…" value={address} onChange={e => setAddress(e.target.value)} icon={MapPin} autoFocus />
                   <GlassInput label="Area / locality" placeholder="e.g. Baner, Kothrud…" value={locationArea} onChange={e => setLocationArea(e.target.value)} />
                   <GlassInput label="Landmark (optional)" placeholder="Near blue gate, 3rd floor…" value={locationNote} onChange={e => setLocationNote(e.target.value)} />
                 </div>

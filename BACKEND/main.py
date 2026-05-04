@@ -7,7 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
 from config import get_settings
-from routers import auth, categories, workers, jobs, upload, search, chat, payments, reviews, notifications, admin, support, users, geocode
+from routers import auth, categories, workers, jobs, upload, search, chat, payments, reviews, notifications, admin, support, users, geocode, addresses
 
 settings = get_settings()
 

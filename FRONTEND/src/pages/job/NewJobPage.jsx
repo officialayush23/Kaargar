@@ -20,6 +20,8 @@ import { GlassInput, GlassTextarea } from '@/components/glass/GlassInput'
 import { PuneMap } from '@/components/kaargar/PuneMap'
 import { formatCurrency } from '@/lib/utils'
 import { toast } from 'sonner'
+import { AddressBook } from '@/components/kaargar/AddressBook'
+import { useAddresses } from '@/hooks/useAddresses'
 import { cn } from '@/lib/utils'
 
 const STEPS = ['service', 'location', 'estimate', 'confirm']
@@ -151,6 +153,33 @@ function CategoryStep({ mode, onSelect }) {
 
 // ── Step 2: Location ─────────────────────────────────────────
 
+
+function SavedAddressPicker({ onSelect }) {
+  const { data: addresses = [] } = useAddresses()
+  if (!addresses.length) return null
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        Saved addresses
+      </p>
+      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
+        {addresses.map(addr => (
+          <button key={addr.id} onClick={() => onSelect(addr)}
+            style={{
+              flexShrink: 0, padding: '7px 13px', borderRadius: 20,
+              border: addr.is_default ? '1.5px solid var(--brand)' : '1px solid var(--card-border)',
+              background: addr.is_default ? 'rgba(75,123,255,0.10)' : 'var(--card-bg)',
+              color: addr.is_default ? 'var(--brand)' : 'var(--text-secondary)',
+              fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
+            }}>
+            {addr.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 function LocationStep({ location, onLocationSelect, category }) {
   const { getLocation, loading: geoLoading } = useGeoLocation()
   const { suggestions, loading: acLoading, search, resolvePlace, clear } = useAddressAutocomplete()
@@ -198,120 +227,121 @@ function LocationStep({ location, onLocationSelect, category }) {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: -40 }}
       transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-      className="space-y-4"
+      style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
     >
-      <div>
-        <h2 className="text-xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>Where do you need it?</h2>
-        <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
-          {category ? `${category.name} at your location` : 'Choose location'}
-        </p>
-      </div>
+      {/* ── HERO MAP — with floating search bar on top ─────── */}
+      <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', marginBottom: 16 }}>
 
-      {/* Address search with autocomplete */}
-      <div style={{ position: 'relative' }}>
-        <div style={{ position: 'relative' }}>
-          <MapPin
-            className="h-4 w-4"
-            style={{
-              position: 'absolute', left: '12px', top: '50%',
-              transform: 'translateY(-50%)', color: 'var(--text-muted)', pointerEvents: 'none', zIndex: 1,
-            }}
-          />
-          <input
-            type="text"
-            value={addressInput}
-            onChange={e => handleAddressInput(e.target.value)}
-            onFocus={() => addressInput && setShowSuggestions(true)}
-            onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
-            placeholder="Search for an address in Pune..."
-            className="glass-input w-full rounded-xl text-sm"
-            style={{
-              paddingLeft: '36px', paddingRight: '12px', paddingTop: '11px', paddingBottom: '11px',
-              color: 'var(--text-primary)', width: '100%',
-            }}
-          />
-          {acLoading && (
-            <div style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)' }}>
-              <div className="w-4 h-4 border-2 border-azure/30 border-t-azure rounded-full animate-spin" />
-            </div>
-          )}
-        </div>
+        {/* Map fills container */}
+        <PuneMap
+          onLocationSelect={(loc) => {
+            onLocationSelect({ ...loc })
+            if (loc.address) setAddressInput(loc.address)
+          }}
+          initialLat={location?.lat}
+          initialLon={location?.lon}
+          centerLat={location?.lat}
+          centerLon={location?.lon}
+          height="420px"
+        />
 
-        {/* Suggestions dropdown */}
-        <AnimatePresence>
-          {showSuggestions && suggestions.length > 0 && (
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
+        {/* Search bar floats over top of map */}
+        <div style={{
+          position: 'absolute', top: 12, left: 12, right: 12, zIndex: 30,
+        }}>
+          <div style={{ position: 'relative' }}>
+            <MapPin
+              size={16}
               style={{
-                position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
-                background: 'var(--g-bg-mid)', border: '1px solid var(--g-border)',
-                borderRadius: '12px', marginTop: '4px', overflow: 'hidden',
-                backdropFilter: 'blur(24px)',
-                boxShadow: '0 8px 32px rgba(0,0,0,0.3)',
+                position: 'absolute', left: 12, top: '50%',
+                transform: 'translateY(-50%)', color: '#4B7BFF', pointerEvents: 'none', zIndex: 1,
               }}
-            >
-              {suggestions.map((s, i) => (
-                <button
-                  key={s.place_id || i}
-                  onMouseDown={() => handleSelectSuggestion(s)}
+            />
+            <input
+              type="text"
+              value={addressInput}
+              onChange={e => handleAddressInput(e.target.value)}
+              onFocus={() => addressInput && setShowSuggestions(true)}
+              onBlur={() => setTimeout(() => setShowSuggestions(false), 180)}
+              placeholder="Search address in Pune…"
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                paddingLeft: 36, paddingRight: 12, paddingTop: 12, paddingBottom: 12,
+                borderRadius: 14, border: 'none', outline: 'none',
+                background: '#fff', color: '#1E293B',
+                fontSize: 14, fontWeight: 500,
+                boxShadow: '0 4px 20px rgba(0,0,0,0.18)',
+              }}
+            />
+            {acLoading && (
+              <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}>
+                <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #4B7BFF33', borderTopColor: '#4B7BFF', animation: 'spin 0.8s linear infinite' }} />
+              </div>
+            )}
+
+            {/* Autocomplete dropdown */}
+            <AnimatePresence>
+              {showSuggestions && suggestions.length > 0 && (
+                <motion.div
+                  initial={{ opacity: 0, y: -4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -4 }}
                   style={{
-                    width: '100%', textAlign: 'left', padding: '10px 14px',
-                    display: 'flex', alignItems: 'flex-start', gap: '10px',
-                    borderBottom: i < suggestions.length - 1 ? '1px solid var(--g-border)' : 'none',
-                    background: 'transparent', cursor: 'pointer', transition: 'background 0.1s',
+                    position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                    background: '#fff', borderRadius: 14, marginTop: 6, overflow: 'hidden',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
                   }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--g-bg)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                 >
-                  <MapPin className="h-3.5 w-3.5 mt-0.5 shrink-0" style={{ color: 'var(--azure)' }} />
-                  <div style={{ minWidth: 0 }}>
-                    <p className="text-xs font-medium truncate" style={{ color: 'var(--text-primary)' }}>
-                      {s.main_text || s.description}
-                    </p>
-                    {s.secondary_text && (
-                      <p className="text-[10px] truncate mt-0.5" style={{ color: 'var(--text-muted)' }}>
-                        {s.secondary_text}
-                      </p>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+                  {suggestions.map((s, i) => (
+                    <button
+                      key={s.place_id || i}
+                      onMouseDown={() => handleSelectSuggestion(s)}
+                      style={{
+                        width: '100%', textAlign: 'left', padding: '11px 14px',
+                        display: 'flex', alignItems: 'flex-start', gap: 10,
+                        borderBottom: i < suggestions.length - 1 ? '1px solid #F1F5F9' : 'none',
+                        background: 'transparent', cursor: 'pointer',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <MapPin size={14} color="#4B7BFF" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <div style={{ minWidth: 0 }}>
+                        <p style={{ fontSize: 13, fontWeight: 500, color: '#1E293B', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {s.main_text || s.description}
+                        </p>
+                        {s.secondary_text && (
+                          <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{s.secondary_text}</p>
+                        )}
+                      </div>
+                    </button>
+                  ))}
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
       </div>
 
-      {/* GPS button */}
-      <GlassButton
-        variant="ghost"
-        className="w-full justify-start gap-3"
-        icon={Navigation}
-        loading={geoLoading}
-        onClick={handleGPS}
-      >
-        Use my current location
-      </GlassButton>
+      {/* ── BELOW MAP CONTROLS ───────────────────────────────── */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 
-      {/* Map */}
-      <PuneMap
-        onLocationSelect={(loc) => {
-          onLocationSelect({ ...loc })
-          if (loc.address) setAddressInput(loc.address)
-        }}
-        initialLat={location?.lat}
-        initialLon={location?.lon}
-        className="h-48"
-      />
+        {/* Saved addresses pill strip */}
+        <SavedAddressPicker onSelect={(addr) => {
+          setAddressInput(addr.address_line)
+          if (addr.lat && addr.lon) {
+            onLocationSelect({ lat: parseFloat(addr.lat), lon: parseFloat(addr.lon), address: addr.address_line })
+          }
+        }} />
 
-      {/* Description */}
-      <GlassTextarea
-        label="Describe the work (optional)"
-        placeholder="e.g. Fix leaking tap under the kitchen sink..."
-        rows={2}
-        onChange={e => onLocationSelect(prev => ({ ...prev, description: e.target.value }))}
-      />
+        {/* Description */}
+        <GlassTextarea
+          label="Describe the work (optional)"
+          placeholder="e.g. Fix leaking tap under the kitchen sink..."
+          rows={2}
+          onChange={e => onLocationSelect(prev => ({ ...prev, description: e.target.value }))}
+        />
+      </div>
     </motion.div>
   )
 }

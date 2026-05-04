@@ -7,8 +7,11 @@ GET  /v1/geocode/place?place_id=...            → { lat, lon, formatted_address
 """
 
 import httpx
+import logging
 from fastapi import APIRouter, HTTPException, Query
 from config import get_settings
+
+logger = logging.getLogger(__name__)
 
 settings = get_settings()
 router = APIRouter()
@@ -68,7 +71,12 @@ async def geocode_reverse(
         return {"formatted_address": None, "area": None, "city": "Pune"}
 
     top = results[0]
-    components = {c["types"][0]: c["long_name"] for c in top.get("address_components", [])}
+    # Some address components have an empty types array — guard against IndexError
+    components = {
+        c["types"][0]: c["long_name"]
+        for c in top.get("address_components", [])
+        if c.get("types")
+    }
     area = (
         components.get("sublocality_level_1")
         or components.get("sublocality")
@@ -97,7 +105,8 @@ async def place_autocomplete(
         })
     data = resp.json()
     if data.get("status") not in ("OK", "ZERO_RESULTS"):
-        raise HTTPException(502, f"Autocomplete error: {data.get('status')}")
+        logger.error("Places Autocomplete error: %s — %s", data.get("status"), data.get("error_message", ""))
+        raise HTTPException(502, f"Autocomplete error: {data.get('status')} — {data.get('error_message', 'check GOOGLE_MAPS_API_KEY')}")
     predictions = data.get("predictions", [])
     return [
         {

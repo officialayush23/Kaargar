@@ -50,6 +50,7 @@ class User(Base):
     updated_at: Mapped[datetime] = now()
 
     worker_profile = relationship("WorkerProfile", back_populates="user", uselist=False)
+    addresses      = relationship("UserAddress", back_populates="user", cascade="all, delete-orphan")
 
 
 # ── 2. OTP SESSIONS ──────────────────────────────────────────
@@ -880,3 +881,25 @@ class ServiceSlot(Base):
 
     service = relationship("Service")
     worker  = relationship("WorkerProfile")
+
+
+class UserAddress(Base):
+    """User saved address — labelled locations for quick reuse at booking."""
+    __tablename__ = "user_addresses"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False
+    )
+    label: Mapped[str] = mapped_column(String(50), nullable=False)       # "Home", "Work"
+    address_line: Mapped[str] = mapped_column(Text, nullable=False)
+    area: Mapped[str | None] = mapped_column(String(100))
+    city: Mapped[str] = mapped_column(String(100), default="Pune")
+    lat: Mapped[float | None] = mapped_column(Numeric(9, 6))
+    lon: Mapped[float | None] = mapped_column(Numeric(9, 6))
+    place_id: Mapped[str | None] = mapped_column(String(255))
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False)
+    created_at: Mapped[datetime] = now()
+    updated_at: Mapped[datetime] = now()
+
+    user = relationship("User", back_populates="addresses")
