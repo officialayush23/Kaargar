@@ -29,6 +29,20 @@ import { MobileBottomNav } from '@/components/glass/GlassNavbar'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/** Safely extract a human-readable message from an axios error.
+ *  FastAPI detail can be: string | {msg:string}[] | undefined */
+function errMsg(e, fallback = 'Something went wrong') {
+  const detail = e?.response?.data?.detail
+  if (!detail) return fallback
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail) && detail.length > 0) {
+    // FastAPI validation error: [{loc, msg, type}, ...]
+    const first = detail[0]
+    return typeof first?.msg === 'string' ? first.msg : fallback
+  }
+  return fallback
+}
+
 function todayStr() { return new Date().toISOString().split('T')[0] }
 function addDays(str, n) {
   const d = new Date(str + 'T00:00:00'); d.setDate(d.getDate() + n)
@@ -368,10 +382,11 @@ export default function BookDiscoveryPage() {
   const windowMutation = useMutation({
     mutationFn: async () => {
       const { data } = await api.post('/jobs/scheduled', {
-        source: 'discovery', job_type: 'scheduled',
+        source: 'discovery',
         category_id: selectedService?.category_id || null,
         service_id: selectedService?.id,
         package_id: selectedPackage?.id || null,
+        preferred_worker_id: workerId,          // pin to the specific worker the user chose
         title: selectedService?.title,
         description: null,
         preferred_days: preferredDays,
@@ -385,8 +400,8 @@ export default function BookDiscoveryPage() {
       })
       return data
     },
-    onSuccess: () => { toast.success("Booking confirmed! We'll assign a worker soon."); navigate('/bookings') },
-    onError: e => toast.error(e.response?.data?.detail || 'Booking failed'),
+    onSuccess: () => { toast.success('Booking confirmed! Your worker will arrive within the selected window.'); navigate('/bookings') },
+    onError: e => toast.error(errMsg(e, 'Booking failed')),
   })
 
   // Slot mode booking
@@ -400,14 +415,12 @@ export default function BookDiscoveryPage() {
         location_address: address,
         location_area: locationArea || null,
         location_note: locationNote || null,
-        description: null,
       })
       return data
     },
     onSuccess: () => { toast.success('Slot booked! Your worker is confirmed.'); navigate('/bookings') },
     onError: e => {
-      const msg = e.response?.data?.detail || 'Slot booking failed'
-      toast.error(msg)
+      toast.error(errMsg(e, 'Slot booking failed'))
       if (e.response?.status === 409) setSelectedSlot(null) // slot taken, force re-pick
     },
   })
@@ -639,12 +652,12 @@ export default function BookDiscoveryPage() {
                 <Sparkles size={17} style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 1 }} />
                 <div>
                   <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber)', marginBottom: 4 }}>
-                    {isSlotMode ? 'Slot confirmed immediately' : 'Flexible scheduling'}
+                    {isSlotMode ? 'Worker confirmed immediately' : 'Worker confirmed for your window'}
                   </p>
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.55 }}>
                     {isSlotMode
-                      ? 'Your slot is reserved for you. The worker is confirmed right away — no waiting. Payment happens after the job is done.'
-                      : "We'll assign the best available worker on your first preferred day. You'll be notified 2 hours before your window — no need to wait till then."}
+                      ? 'Your slot is reserved. This specific worker is confirmed right away — no waiting or matching needed. Payment happens after the job is done.'
+                      : 'This specific worker will arrive within your chosen window. You\'ll get a reminder 2 hours before — payment happens after the job is done.'}
                   </p>
                 </div>
               </div>

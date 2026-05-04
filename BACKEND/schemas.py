@@ -623,12 +623,15 @@ class ScheduledJobCreate(BaseModel):
     User creates a scheduled (discovery/package) job.
     preferred_days: list of ISO date strings, max 3, must be today or future.
     window_start / window_end: 'HH:MM' strings, window must be ≥ 1 hour.
+    preferred_worker_id: if set, the job is pinned to that specific worker
+                         (used for direct-worker discovery bookings).
     """
-    category_id: UUID
+    category_id: Optional[UUID] = None          # resolved from service if omitted
     service_id: Optional[UUID] = None
     package_id: Optional[UUID] = None
     package_order_id: Optional[UUID] = None
-    source: str = Field("scheduled", pattern="^(scheduled|package)$")
+    preferred_worker_id: Optional[UUID] = None  # pre-select worker (discovery flow)
+    source: str = Field("scheduled", pattern="^(scheduled|package|discovery)$")
     # Location
     location_lat: float
     location_lon: float
@@ -763,21 +766,32 @@ class ScheduledJobReschedule(BaseModel):
 
 
 class ScheduledJobResponse(KaargarBase):
-    """Full job response for a scheduled (window-based) booking."""
+    """Full job response for a scheduled (window-based or slot) booking."""
     id: UUID
     status: str
-    category_id: UUID
+    category_id: Optional[UUID] = None
     service_id: Optional[UUID] = None
     worker_id: Optional[UUID] = None
     location_address: str
     preferred_days: Optional[List[str]] = None
-    preferred_window_start: Optional[str] = None
-    preferred_window_end: Optional[str] = None
-    scheduled_for: Optional[datetime] = None
+    window_start: Optional[str] = None          # maps from Job.window_start (datetime.time)
+    window_end: Optional[str] = None            # maps from Job.window_end   (datetime.time)
+    scheduled_at: Optional[datetime] = None     # used for slot bookings
     slot_id: Optional[UUID] = None
-    estimated_price: Optional[float] = None
+    quoted_price: Optional[Decimal] = None
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+    # Job.window_start / window_end are datetime.time objects — coerce to 'HH:MM'
+    # before Pydantic tries to validate them as str (mode='before' runs first).
+    @field_validator('window_start', 'window_end', mode='before')
+    @classmethod
+    def _coerce_time_to_str(cls, v):
+        if v is None:
+            return None
+        if hasattr(v, 'strftime'):          # datetime.time object from ORM
+            return v.strftime('%H:%M')
+        return str(v)
 
 
 # ─── Slot Scheduling Schemas ────────────────────────────────────────────────
@@ -827,10 +841,12 @@ class SlotBookingCreate(KaargarBase):
     """Request body for POST /jobs/book-slot."""
     service_id: UUID
     slot_id: UUID
+    package_id: Optional[UUID] = None          # optional package to apply
     location_address: str
+    location_area: Optional[str] = None
+    location_note: Optional[str] = None         # renamed from 'notes'
     location_lat: float = Field(ge=-90, le=90)
     location_lon: float = Field(ge=-180, le=180)
-    notes: Optional[str] = None
 
 
 class SlotGenerateRequest(KaargarBase):

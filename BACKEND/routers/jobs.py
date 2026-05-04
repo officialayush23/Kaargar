@@ -314,21 +314,45 @@ async def create_scheduled_job(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Create a scheduled (discovery or package) job.
-    Worker is NOT assigned immediately — the scheduler assigns lazily,
-    same day or up to ASSIGN_AHEAD_HOURS before window_start.
+    Create a scheduled job — two modes:
+
+    Direct worker (preferred_worker_id set):
+      • Pinned to that specific worker immediately (status='confirmed').
+      • Worker is notified right away.
+      • Used by the discovery booking flow when user picked a specific worker.
+
+    Lazy assignment (no preferred_worker_id):
+      • status='scheduled', scheduler assigns the best worker ~2h before window.
+      • Used for generic/category-based bookings.
     """
     from datetime import time as _time, date as _date
-    from models import Notification
+    from models import Notification, WorkerProfile, Service
+
+    now_utc = datetime.now(timezone.utc)
+
+    # Resolve category_id from the service if not supplied directly
+    category_id = body.category_id
+    if category_id is None and body.service_id:
+        svc_r = await db.execute(select(Service).where(Service.id == body.service_id))
+        svc = svc_r.scalar_one_or_none()
+        if svc:
+            category_id = svc.category_id
+
+    if category_id is None:
+        raise HTTPException(422, "category_id is required when service_id is not provided")
+
+    is_direct = body.preferred_worker_id is not None
+    initial_status = "confirmed" if is_direct else "scheduled"
 
     job = Job(
         user_id          = user.id,
-        category_id      = body.category_id,
+        category_id      = category_id,
         service_id       = body.service_id,
         package_id       = body.package_id,
-        job_type         = body.source,        # 'scheduled' | 'package'
+        worker_id        = body.preferred_worker_id,  # None → lazy; UUID → direct
+        job_type         = body.source,
         source           = body.source,
-        status           = "scheduled",        # will move to 'assigned' by scheduler
+        status           = initial_status,
         is_flexible      = True,
         preferred_days   = body.preferred_days,
         window_start     = _time.fromisoformat(body.window_start),
@@ -342,27 +366,59 @@ async def create_scheduled_job(
         location_note    = body.location_note,
         location_geom    = _make_geom(body.location_lon, body.location_lat),
         budget_max       = body.budget_max,
+        assigned_at      = now_utc if is_direct else None,
     )
     db.add(job)
     await db.flush()
 
-    await _log_event(db, job.id, "scheduled", "user", user.id, {
+    event_meta = {
         "preferred_days": body.preferred_days,
         "window": f"{body.window_start}–{body.window_end}",
-    })
+    }
+    if is_direct:
+        event_meta["pinned_worker_id"] = str(body.preferred_worker_id)
 
-    # Notify user that the job is confirmed and pending worker assignment
+    await _log_event(db, job.id, initial_status, "user", user.id, event_meta)
+
+    # ── Notify user ───────────────────────────────────────────────────────────
+    first_day = _date.fromisoformat(body.preferred_days[0]).strftime('%d %b')
+    if is_direct:
+        user_notif_body = (
+            f"Your booking is confirmed for {first_day} "
+            f"between {body.window_start} – {body.window_end}. "
+            f"Your worker will arrive within this window."
+        )
+    else:
+        user_notif_body = (
+            f"We'll assign the best worker and notify you on {first_day} "
+            f"(or your next preferred date) between {body.window_start} – {body.window_end}."
+        )
+
     db.add(Notification(
         user_id = user.id,
         type    = "job_scheduled_confirm",
-        title   = "Job booked!",
-        body    = (
-            f"We'll assign the best worker and notify you on "
-            f"{_date.fromisoformat(body.preferred_days[0]).strftime('%d %b')} "
-            f"(or your next preferred date) between {body.window_start} – {body.window_end}."
-        ),
-        data    = {"job_id": ""},  # filled after commit
+        title   = "Booking confirmed!" if is_direct else "Booking received!",
+        body    = user_notif_body,
+        data    = {"job_id": str(job.id)},
     ))
+
+    # ── If direct booking, notify the chosen worker immediately ───────────────
+    if is_direct:
+        wp_r = await db.execute(
+            select(WorkerProfile).where(WorkerProfile.id == body.preferred_worker_id)
+        )
+        wp = wp_r.scalar_one_or_none()
+        if wp:
+            db.add(Notification(
+                user_id = wp.user_id,
+                type    = "job_assigned",
+                title   = "New Booking",
+                body    = (
+                    f"You have a new booking on {first_day} "
+                    f"between {body.window_start} – {body.window_end}."
+                ),
+                data    = {"job_id": str(job.id)},
+            ))
 
     await db.commit()
     await db.refresh(job)
@@ -377,68 +433,97 @@ async def book_slot(
 ):
     """
     Book a specific time slot (slot-based services only).
-    Atomically increments booked_count on the slot and creates a job.
+
+    Uses SELECT FOR UPDATE to prevent race conditions — if two users hit this
+    endpoint simultaneously for the same slot, one gets 409 while the other
+    succeeds. The DB trigger trg_slot_booking keeps booked_count in sync.
+
     Returns 409 if the slot is full or blocked.
     """
-    # Load and validate slot
+    from models import WorkerProfile, Notification
+
+    # ── Atomic slot lock (SELECT FOR UPDATE) ─────────────────────────────────
+    # Blocks concurrent requests targeting the same slot row until this
+    # transaction commits, preventing double-booking.
     slot_result = await db.execute(
-        select(ServiceSlot).where(ServiceSlot.id == body.slot_id)
+        select(ServiceSlot)
+        .where(ServiceSlot.id == body.slot_id)
+        .with_for_update()          # row-level lock released on commit
     )
     slot = slot_result.scalar_one_or_none()
     if not slot:
         raise HTTPException(404, "Slot not found")
     if slot.is_blocked:
         raise HTTPException(409, "This slot is no longer available")
-    if slot.booked_count >= slot.capacity:
         raise HTTPException(409, "This slot is fully booked — please pick another time")
 
-    # Load service for metadata
+    # ── Load service ──────────────────────────────────────────────────────────
     svc_result = await db.execute(select(Service).where(Service.id == body.service_id))
     svc = svc_result.scalar_one_or_none()
     if not svc:
         raise HTTPException(404, "Service not found")
 
-    from datetime import date as _date, datetime as _dt, timezone as _tz, time as _time
-    from geoalchemy2.functions import ST_MakePoint, ST_SetSRID as _SRSID
+    now_utc = datetime.now(timezone.utc)
+    slot_dt = datetime.combine(slot.slot_date, slot.slot_start, tzinfo=timezone.utc)
+    price   = svc.base_price if svc.base_price is not None else svc.price
 
-    slot_dt = _dt.combine(slot.slot_date, slot.slot_start, tzinfo=_tz.utc)
-
+    # ── Create job (worker pre-assigned from slot) ────────────────────────────
     job = Job(
-        user_id=user.id,
-        category_id=svc.category_id,
-        service_id=body.service_id,
-        job_type='discovery',
-        source='slot',
-        status='confirmed',
-        location_address=body.location_address,
-        location=_SRSID(ST_MakePoint(body.location_lon, body.location_lat), 4326),
-        slot_id=slot.id,
-        scheduled_for=slot_dt,
-        estimated_price=svc.base_price,
-        notes=body.notes,
+        user_id          = user.id,
+        category_id      = svc.category_id,
+        service_id       = body.service_id,
+        package_id       = body.package_id,
+        worker_id        = slot.worker_id,   # immediately assigned
+        job_type         = "discovery",
+        source           = "slot",
+        status           = "confirmed",
+        title            = svc.title,
+        location_lat     = Decimal(str(body.location_lat)),
+        location_lon     = Decimal(str(body.location_lon)),
+        location_address = body.location_address,
+        location_area    = body.location_area,
+        location_note    = body.location_note,
+        location_geom    = _make_geom(body.location_lon, body.location_lat),
+        slot_id          = slot.id,
+        scheduled_at     = slot_dt,
+        quoted_price     = price,
+        assigned_at      = now_utc,
     )
     db.add(job)
+    await db.flush()
 
-    # Assign the worker who owns this slot immediately
-    job.worker_id = slot.worker_id
-    job.status = 'worker_assigned'
+    await _log_event(db, job.id, "confirmed", "user", user.id, {
+        "slot_id":    str(slot.id),
+        "slot_date":  str(slot.slot_date),
+        "slot_start": str(slot.slot_start),
+        "worker_id":  str(slot.worker_id),
+    })
 
-    # slot booked_count is updated by DB trigger trg_slot_booking on commit
+    # DB trigger trg_slot_booking increments booked_count after commit
     await db.commit()
     await db.refresh(job)
 
-    # Fire notification to worker
-    from services.notifications import send_notification
-    await send_notification(
-        db=db,
-        user_id=slot.worker_id,
-        title='New Slot Booking',
-        body=f'You have a new booking for {svc.title} on {slot.slot_date} at {slot.slot_start.strftime("%H:%M")}',
-        notif_type='job_assigned',
-        data={'job_id': str(job.id)},
+    # ── Notify the worker (Notification.user_id = worker's auth user_id) ─────
+    from models import WorkerProfile, Notification
+    wp_r = await db.execute(
+        select(WorkerProfile).where(WorkerProfile.id == slot.worker_id)
     )
+    wp = wp_r.scalar_one_or_none()
+    if wp:
+        db.add(Notification(
+            user_id = wp.user_id,
+            type    = "job_assigned",
+            title   = "New Slot Booking",
+            body    = (
+                f"New booking: {svc.title} on "
+                f"{slot.slot_date.strftime('%d %b')} "
+                f"at {slot.slot_start.strftime('%H:%M')}"
+            ),
+            data    = {"job_id": str(job.id)},
+        ))
+        await db.commit()
 
-    return {'job_id': str(job.id), 'status': job.status, 'scheduled_for': slot_dt.isoformat()}
+    return job
 
 
 @router.patch("/{job_id}/reschedule", summary="Reschedule a window-based job (user)")
@@ -455,15 +540,15 @@ async def reschedule_job(
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(404, "Job not found")
-    if job.status not in ('pending', 'searching'):
+    if job.status not in ("pending", "searching", "scheduled"):
         raise HTTPException(409, f"Cannot reschedule a job in '{job.status}' status")
     if job.slot_id:
         raise HTTPException(400, "Slot-based bookings cannot be rescheduled here — cancel and rebook")
 
-    job.preferred_days = body.preferred_days
-    job.preferred_window_start = body.window_start
-    job.preferred_window_end = body.window_end
+    job.preferred_days  = body.preferred_days
+    job.window_start    = body.window_start
+    job.window_end      = body.window_end
 
     await db.commit()
     await db.refresh(job)
-    return {'job_id': str(job.id), 'status': job.status, 'message': 'Reschedule request updated'}
+    return {"job_id": str(job.id), "status": job.status, "message": "Reschedule request updated"}

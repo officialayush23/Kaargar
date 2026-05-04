@@ -1,134 +1,180 @@
 /**
- * InfoButton — reusable "?" / "i" popover for contextual help.
+ * InfoButton — "ⓘ" contextual help popover.
+ *
+ * Renders via React portal at document.body level so it is never clipped
+ * by ancestor containers that have overflow:hidden / overflow:scroll.
  *
  * Usage:
- *   <InfoButton text="This section shows your total earnings for today." />
+ *   <InfoButton text="This shows your total earnings today." />
  *   <InfoButton title="Earnings" text="..." side="bottom" />
- *
- * Works with no extra dependencies — pure inline CSS + Framer Motion.
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Info } from 'lucide-react'
 
+const POPUP_W   = 220   // px — fixed width of the popup
+const GAP       =  8    // px — gap between button edge and popup edge
+const EDGE_PAD  =  8    // px — minimum distance from viewport edge
+
 export function InfoButton({ text, title, size = 16, side = 'top', className = '' }) {
   const [open, setOpen] = useState(false)
-  const ref = useRef(null)
+  const [rect, setRect]  = useState(null)   // DOMRect of the button (at click time)
+  const btnRef = useRef(null)
 
-  // Close on outside click
+  // Compute and cache the button's viewport rect whenever it opens
+  const openPopup = useCallback((e) => {
+    e.stopPropagation()
+    if (btnRef.current) setRect(btnRef.current.getBoundingClientRect())
+    setOpen(v => !v)
+  }, [])
+
+  // Close on outside click / scroll
   useEffect(() => {
     if (!open) return
-    function handler(e) {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false)
+    const close = (e) => {
+      if (btnRef.current && btnRef.current.contains(e.target)) return
+      setOpen(false)
     }
-    document.addEventListener('mousedown', handler)
-    document.addEventListener('touchstart', handler)
+    const onScroll = () => setOpen(false)
+    document.addEventListener('mousedown', close)
+    document.addEventListener('touchstart', close)
+    window.addEventListener('scroll', onScroll, true)
     return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('touchstart', handler)
+      document.removeEventListener('mousedown', close)
+      document.removeEventListener('touchstart', close)
+      window.removeEventListener('scroll', onScroll, true)
     }
   }, [open])
 
-  const placement = {
-    top:    { bottom: '130%', left: '50%', transform: 'translateX(-50%)' },
-    bottom: { top: '130%',   left: '50%', transform: 'translateX(-50%)' },
-    left:   { right: '130%', top: '50%',  transform: 'translateY(-50%)' },
-    right:  { left:  '130%', top: '50%',  transform: 'translateY(-50%)' },
-  }[side] || { bottom: '130%', left: '50%', transform: 'translateX(-50%)' }
+  // ── Compute fixed-position coords from the saved DOMRect ──────────────────
+  function computeStyle() {
+    if (!rect) return { top: 0, left: 0, transform: 'none' }
 
-  const arrowStyle = {
-    top:    { top: '100%', left: '50%', transform: 'translateX(-50%)', borderTop: '5px solid var(--elevated, #1C1C1E)', borderLeft: '5px solid transparent', borderRight: '5px solid transparent' },
-    bottom: { bottom: '100%', left: '50%', transform: 'translateX(-50%)', borderBottom: '5px solid var(--elevated, #1C1C1E)', borderLeft: '5px solid transparent', borderRight: '5px solid transparent' },
-    left:   { left: '100%', top: '50%', transform: 'translateY(-50%)', borderLeft: '5px solid var(--elevated, #1C1C1E)', borderTop: '5px solid transparent', borderBottom: '5px solid transparent' },
-    right:  { right: '100%', top: '50%', transform: 'translateY(-50%)', borderRight: '5px solid var(--elevated, #1C1C1E)', borderTop: '5px solid transparent', borderBottom: '5px solid transparent' },
-  }[side] || {}
+    let top, left, transform = 'none'
 
-  const anim = {
-    top:    { initial: { opacity: 0, y: 6,  scale: 0.94 }, animate: { opacity: 1, y: 0,  scale: 1 } },
-    bottom: { initial: { opacity: 0, y: -6, scale: 0.94 }, animate: { opacity: 1, y: 0,  scale: 1 } },
-    left:   { initial: { opacity: 0, x: 8,  scale: 0.94 }, animate: { opacity: 1, x: 0,  scale: 1 } },
-    right:  { initial: { opacity: 0, x: -8, scale: 0.94 }, animate: { opacity: 1, x: 0,  scale: 1 } },
-  }[side] || { initial: { opacity: 0, y: 6, scale: 0.94 }, animate: { opacity: 1, y: 0, scale: 1 } }
+    switch (side) {
+      case 'bottom':
+        top  = rect.bottom + GAP
+        left = rect.left + rect.width / 2 - POPUP_W / 2
+        break
+      case 'left':
+        top  = rect.top + rect.height / 2
+        left = rect.left - POPUP_W - GAP
+        transform = 'translateY(-50%)'
+        break
+      case 'right':
+        top  = rect.top + rect.height / 2
+        left = rect.right + GAP
+        transform = 'translateY(-50%)'
+        break
+      case 'top':
+      default:
+        top  = rect.top - GAP
+        left = rect.left + rect.width / 2 - POPUP_W / 2
+        transform = 'translateY(-100%)'
+        break
+    }
 
-  return (
-    <div ref={ref} style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }} className={className}>
-      <button
-        onClick={e => { e.stopPropagation(); setOpen(v => !v) }}
-        style={{
-          width: size + 4,
-          height: size + 4,
-          borderRadius: '50%',
-          border: '1px solid var(--card-border, rgba(255,255,255,0.08))',
-          background: open ? 'rgba(245,158,11,0.15)' : 'var(--card-bg, rgba(255,255,255,0.04))',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          cursor: 'pointer',
-          flexShrink: 0,
-          transition: 'all 0.15s ease',
-          outline: 'none',
-        }}
-        aria-label="More information"
-      >
-        <Info
-          size={size - 2}
-          style={{ color: open ? 'var(--amber, #F59E0B)' : 'var(--text-muted, #475569)', transition: 'color 0.15s' }}
-        />
-      </button>
+    // Clamp horizontal so popup never overflows viewport
+    left = Math.max(EDGE_PAD, Math.min(left, window.innerWidth - POPUP_W - EDGE_PAD))
 
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            initial={anim.initial}
-            animate={anim.animate}
-            exit={{ opacity: 0, scale: 0.92 }}
-            transition={{ duration: 0.14, ease: 'easeOut' }}
-            style={{
-              position: 'absolute',
-              ...placement,
-              width: '220px',
-              background: 'var(--elevated, #1C1C1E)',
-              border: '1px solid var(--card-border, rgba(255,255,255,0.08))',
-              borderRadius: '12px',
-              padding: '12px 14px',
-              zIndex: 200,
-              boxShadow: '0 12px 40px rgba(0,0,0,0.55)',
-              pointerEvents: 'none',
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Arrow */}
-            <div style={{
-              position: 'absolute',
-              width: 0, height: 0,
-              ...arrowStyle,
-            }} />
+    return { top, left, transform }
+  }
 
-            {title && (
-              <p style={{
-                fontSize: '11px',
-                fontWeight: 700,
-                color: 'var(--amber, #F59E0B)',
-                marginBottom: '5px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.05em',
-              }}>
-                {title}
-              </p>
-            )}
+  // ── Animation variants ────────────────────────────────────────────────────
+  const motionVariants = {
+    top:    { initial: { opacity: 0, y:  6, scale: 0.93 }, animate: { opacity: 1, y: 0, scale: 1 } },
+    bottom: { initial: { opacity: 0, y: -6, scale: 0.93 }, animate: { opacity: 1, y: 0, scale: 1 } },
+    left:   { initial: { opacity: 0, x:  8, scale: 0.93 }, animate: { opacity: 1, x: 0, scale: 1 } },
+    right:  { initial: { opacity: 0, x: -8, scale: 0.93 }, animate: { opacity: 1, x: 0, scale: 1 } },
+  }[side] ?? { initial: { opacity: 0, y: 6, scale: 0.93 }, animate: { opacity: 1, y: 0, scale: 1 } }
+
+  // ── Portal content ────────────────────────────────────────────────────────
+  const { top, left, transform } = computeStyle()
+
+  const popup = (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          key="info-popup"
+          initial={motionVariants.initial}
+          animate={motionVariants.animate}
+          exit={{ opacity: 0, scale: 0.9 }}
+          transition={{ duration: 0.13, ease: 'easeOut' }}
+          style={{
+            position:  'fixed',
+            top,
+            left,
+            transform,
+            width:     POPUP_W,
+            zIndex:    99999,
+            background: '#141B26',
+            border:    '1px solid rgba(255,255,255,0.10)',
+            borderRadius: 12,
+            padding:   '12px 14px',
+            boxShadow: '0 16px 48px rgba(0,0,0,0.70)',
+            pointerEvents: 'none',   // tooltip is read-only
+          }}
+        >
+          {title && (
             <p style={{
-              fontSize: '12px',
-              color: 'var(--text-secondary, #94A3B8)',
-              lineHeight: 1.55,
-              margin: 0,
+              fontSize: 11, fontWeight: 700, color: '#F59E0B',
+              marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em',
             }}>
-              {text}
+              {title}
             </p>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </div>
+          )}
+          <p style={{ fontSize: 12, color: '#94A3B8', lineHeight: 1.55, margin: 0 }}>
+            {text}
+          </p>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <>
+      {/* The trigger button — stays in the normal document flow */}
+      <div
+        ref={btnRef}
+        style={{ position: 'relative', display: 'inline-flex', alignItems: 'center' }}
+        className={className}
+      >
+        <button
+          onClick={openPopup}
+          style={{
+            width:  size + 4,
+            height: size + 4,
+            borderRadius: '50%',
+            border: '1px solid rgba(255,255,255,0.08)',
+            background: open ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            flexShrink: 0,
+            transition: 'all 0.15s ease',
+            outline: 'none',
+          }}
+          aria-label="More information"
+          aria-expanded={open}
+        >
+          <Info
+            size={size - 2}
+            style={{
+              color: open ? '#F59E0B' : '#475569',
+              transition: 'color 0.15s',
+            }}
+          />
+        </button>
+      </div>
+
+      {/* Popup rendered at body level — never clipped by any ancestor */}
+      {typeof document !== 'undefined' && createPortal(popup, document.body)}
+    </>
   )
 }
 
