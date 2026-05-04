@@ -392,6 +392,7 @@ class JobResponse(KaargarBase):
     service_id: Optional[UUID] = None
     category_id: UUID
     job_type: str
+    source: str = "instant"
     status: str
     title: Optional[str] = None
     description: Optional[str] = None
@@ -399,17 +400,39 @@ class JobResponse(KaargarBase):
     location_lon: Decimal
     location_address: str
     location_area: Optional[str] = None
+    location_note: Optional[str] = None
     quoted_price: Optional[Decimal] = None
     final_price: Optional[Decimal] = None
     platform_fee: Optional[Decimal] = None
     worker_payout: Optional[Decimal] = None
     workers_notified: int
     dispatch_rounds: int
+    # Scheduling
+    slot_id: Optional[UUID] = None
+    scheduled_at: Optional[datetime] = None
+    preferred_days: Optional[List[str]] = None
+    window_start: Optional[str] = None
+    window_end: Optional[str] = None
+    # Timestamps
     assigned_at: Optional[datetime] = None
+    en_route_at: Optional[datetime] = None
+    arrived_at: Optional[datetime] = None
     started_at: Optional[datetime] = None
     completed_at: Optional[datetime] = None
     cancelled_at: Optional[datetime] = None
+    cancellation_reason: Optional[str] = None
+    cancelled_by: Optional[str] = None
     created_at: datetime
+
+    # Coerce datetime.time → 'HH:MM' string for window fields
+    @field_validator('window_start', 'window_end', mode='before')
+    @classmethod
+    def _coerce_time(cls, v):
+        if v is None:
+            return None
+        if hasattr(v, 'strftime'):
+            return v.strftime('%H:%M')
+        return str(v)
 
 
 class JobCancel(BaseModel):

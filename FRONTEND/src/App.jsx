@@ -18,6 +18,7 @@ import ChatPage from '@/pages/chat/ChatPage'
 import ProfilePage from '@/pages/profile/ProfilePage'
 import SupportPage from '@/pages/profile/SupportPage'
 import ReviewPage from '@/pages/job/ReviewPage'
+import JobDetailPage from '@/pages/job/JobDetailPage'
 import BookDiscoveryPage from '@/pages/discovery/BookDiscoveryPage'
 import WorkerOnboardPage from '@/pages/onboarding/WorkerOnboardPage'
 
@@ -131,6 +132,7 @@ export default function App() {
           <Route path="profile" element={<ProfilePage />} />
           <Route path="support" element={<SupportPage />} />
           <Route path="job/new" element={<NewJobPage />} />
+          <Route path="job/:jobId" element={<JobDetailPage />} />
           <Route path="job/:jobId/searching" element={<SearchingPage />} />
           <Route path="job/:jobId/active" element={<ActiveJobPage />} />
           <Route path="job/:jobId/review" element={<ReviewPage />} />

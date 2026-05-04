@@ -425,18 +425,7 @@ export default function BookingsPage() {
                   >
                     <JobCard
                       job={job}
-                      onClick={() => {
-                        const activeStatuses = ['searching', 'assigned', 'en_route', 'arrived', 'started']
-                        if (activeStatuses.includes(job.status)) {
-                          navigate(
-                            job.status === 'searching'
-                              ? `/job/${job.id}/searching`
-                              : `/job/${job.id}/active`
-                          )
-                        } else if (job.status === 'completed') {
-                          navigate(`/job/${job.id}/review`)
-                        }
-                      }}
+                      onClick={() => navigate(`/job/${job.id}`)}
                     />
                   </motion.div>
                 ))

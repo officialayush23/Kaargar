@@ -12,7 +12,7 @@ from uuid import UUID
 import uuid
 
 from database import get_db
-from models import User, Job, JobEvent, SOSEvent, ServiceSlot, Service
+from models import User, Job, JobEvent, SOSEvent, ServiceSlot, Service, WorkerCategory, WorkerProfile
 from schemas import JobCreate, JobResponse, JobCancel, SuccessResponse, ScheduledJobCreate, ScheduledJobReschedule, ScheduledJobResponse, SlotBookingCreate
 from dependencies import get_current_user
 
@@ -83,7 +83,13 @@ async def my_jobs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    active_statuses = ["requested", "searching", "assigned", "en_route", "arrived", "started"]
+    active_statuses = [
+        "requested", "searching",
+        "scheduled",            # window-based, pending worker assignment
+        "confirmed",            # direct-worker booking, worker pre-assigned
+        "worker_assigned",      # legacy alias
+        "assigned", "en_route", "arrived", "started",
+    ]
     q = select(Job).where(Job.user_id == user.id)
     if status == "active":
         q = q.where(Job.status.in_(active_statuses))
@@ -326,7 +332,7 @@ async def create_scheduled_job(
       • Used for generic/category-based bookings.
     """
     from datetime import time as _time, date as _date
-    from models import Notification, WorkerProfile, Service
+    from models import Notification
 
     now_utc = datetime.now(timezone.utc)
 
@@ -338,8 +344,17 @@ async def create_scheduled_job(
         if svc:
             category_id = svc.category_id
 
+    # Last-resort: fall back to the pinned worker's primary category (handles services with NULL category_id)
+    if category_id is None and body.preferred_worker_id:
+        wc_r = await db.execute(
+            select(WorkerCategory).where(WorkerCategory.worker_id == body.preferred_worker_id).limit(1)
+        )
+        wc = wc_r.scalar_one_or_none()
+        if wc:
+            category_id = wc.category_id
+
     if category_id is None:
-        raise HTTPException(422, "category_id is required when service_id is not provided")
+        raise HTTPException(422, "category_id is required — please pick a service or pass category_id")
 
     is_direct = body.preferred_worker_id is not None
     initial_status = "confirmed" if is_direct else "scheduled"
