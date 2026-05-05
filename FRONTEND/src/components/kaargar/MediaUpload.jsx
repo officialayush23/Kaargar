@@ -74,7 +74,8 @@ export function WorkerPostUpload({ onSuccess, serviceId }) {
       />
       <button
         onClick={() => inputRef.current?.click()}
-        className="glass-light rounded-2xl flex flex-col items-center justify-center gap-2.5 p-8 w-full border-dashed border border-white/10 hover:border-brand/30 transition-all active:scale-95"
+        className="glass-light rounded-2xl flex flex-col items-center justify-center gap-2.5 p-8 w-full border-dashed border transition-all active:scale-95"
+        style={{ borderColor: 'var(--g-border)' }}
       >
         {uploading ? (
           <Loader2 className="h-8 w-8 animate-spin text-brand" />
