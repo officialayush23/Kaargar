@@ -97,7 +97,7 @@ export default function WorkerProfile() {
       <div className="flex flex-col items-center gap-3">
         <ProfilePhotoUpload currentUrl={user?.avatar_url} onSuccess={handlePhotoSuccess}>
           <div className="relative">
-            <Avatar className="w-24 h-24 border-2 border-white/15">
+            <Avatar className="w-24 h-24 border-2 border-[--g-border]">
               <AvatarImage src={user?.avatar_url} />
               <AvatarFallback className="bg-brand/20 text-brand font-bold text-xl">
                 {getInitials(form.full_name || '')}
@@ -118,7 +118,7 @@ export default function WorkerProfile() {
             value={form.full_name}
             onChange={set('full_name')}
             placeholder="Your name"
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none focus:border-brand/50 transition-all"
+            className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none focus:border-brand/50 transition-all"
           />
         </Field>
 
@@ -128,7 +128,7 @@ export default function WorkerProfile() {
             onChange={set('bio')}
             placeholder="Tell customers about yourself and your experience…"
             rows={3}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none resize-none"
+            className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none resize-none"
           />
         </Field>
 
@@ -136,7 +136,7 @@ export default function WorkerProfile() {
           <select
             value={form.area}
             onChange={set('area')}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-[--text-primary] focus:outline-none appearance-none"
+            className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] focus:outline-none appearance-none"
           >
             <option value="">Select area</option>
             {PUNE_AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
@@ -151,7 +151,7 @@ export default function WorkerProfile() {
               onChange={set('min_rate')}
               placeholder="200"
               min={0}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none"
+              className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none"
             />
           </Field>
           <Field label="Max rate ₹/hr">
@@ -161,7 +161,7 @@ export default function WorkerProfile() {
               onChange={set('max_rate')}
               placeholder="800"
               min={0}
-              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none"
+              className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none"
             />
           </Field>
         </div>
@@ -174,7 +174,7 @@ export default function WorkerProfile() {
             placeholder="e.g. 5"
             min={0}
             max={50}
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none"
+            className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none"
           />
         </Field>
 
@@ -185,7 +185,7 @@ export default function WorkerProfile() {
           </div>
           <button
             onClick={() => setForm((f) => ({ ...f, instant_available: !f.instant_available }))}
-            className={`w-12 h-6 rounded-full transition-colors relative ${form.instant_available ? 'bg-instant' : 'bg-white/10'}`}
+            className={`w-12 h-6 rounded-full transition-colors relative ${form.instant_available ? 'bg-instant' : 'bg-[--card-bg]'}`}
           >
             <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${form.instant_available ? 'translate-x-7' : 'translate-x-1'}`} />
           </button>

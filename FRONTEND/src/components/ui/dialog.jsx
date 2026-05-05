@@ -34,12 +34,18 @@ const DialogContent = forwardRef(({ className, children, onClose, ...props }, re
   <div
     ref={ref}
     className={cn('relative rounded-2xl p-6 w-full max-w-md shadow-2xl', className)}
-    style={{ background: 'rgba(13,17,23,0.98)', border: '1px solid rgba(255,255,255,0.1)' }}
+    style={{
+      background: 'var(--bg-surface, #0D1117)',
+      border: '1px solid var(--g-border)',
+    }}
     {...props}
   >
     {onClose && (
-      <button onClick={onClose} className="absolute top-4 right-4 p-1 rounded-lg hover:bg-white/5 transition-colors">
-        <X size={16} style={{ color: '#475569' }} />
+      <button
+        onClick={onClose}
+        className="absolute top-4 right-4 p-1 rounded-lg transition-colors btn-ghost-token"
+      >
+        <X size={16} />
       </button>
     )}
     {children}
@@ -53,8 +59,12 @@ const DialogHeader = forwardRef(({ className, ...props }, ref) => (
 DialogHeader.displayName = 'DialogHeader'
 
 const DialogTitle = forwardRef(({ className, ...props }, ref) => (
-  <h2 ref={ref} className={cn('text-base font-semibold font-syne', className)}
-    style={{ color: '#F1F5F9' }} {...props} />
+  <h2
+    ref={ref}
+    className={cn('text-base font-semibold font-syne', className)}
+    style={{ color: 'var(--text-primary)' }}
+    {...props}
+  />
 ))
 DialogTitle.displayName = 'DialogTitle'
 

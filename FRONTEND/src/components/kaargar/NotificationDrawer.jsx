@@ -29,7 +29,7 @@ export function NotificationDrawer({ open, onClose }) {
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
             className="fixed right-0 top-0 bottom-0 w-full max-w-sm glass-strong z-50 flex flex-col"
           >
-            <div className="flex items-center justify-between p-5 border-b border-white/5">
+            <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid var(--g-border)' }}>
               <h2 className="font-syne font-bold text-lg">Notifications</h2>
               <div className="flex items-center gap-2">
                 <Button variant="ghost" size="icon" onClick={handleMarkAll}>

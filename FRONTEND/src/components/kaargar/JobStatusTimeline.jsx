@@ -11,7 +11,7 @@ export function JobStatusTimeline({ status }) {
   return (
     <div className="flex flex-col gap-3">
       {TIMELINE_STEPS.map((step, i) => {
-        const isDone = i < currentIdx
+        const isDone    = i < currentIdx
         const isCurrent = i === currentIdx
         const isPending = i > currentIdx
 
@@ -19,11 +19,12 @@ export function JobStatusTimeline({ status }) {
           <div key={step} className="flex items-center gap-3">
             <div className="flex flex-col items-center">
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                  isDone ? 'bg-instant/20 text-instant' :
-                  isCurrent ? 'bg-brand/20 text-brand' :
-                  'bg-white/5 text-[--text-muted]'
-                }`}
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
+                style={
+                  isDone    ? { background: 'rgba(34,197,94,0.2)',  color: 'var(--instant)' } :
+                  isCurrent ? { background: 'rgba(75,123,255,0.2)', color: 'var(--brand)' }   :
+                              { background: 'var(--g-bg)',           color: 'var(--text-muted)' }
+                }
               >
                 {isDone ? (
                   <CheckCircle size={16} />
@@ -34,14 +35,21 @@ export function JobStatusTimeline({ status }) {
                 )}
               </div>
               {i < TIMELINE_STEPS.length - 1 && (
-                <div className={`w-0.5 h-5 mt-1 ${isDone ? 'bg-instant/40' : 'bg-white/5'}`} />
+                <div
+                  className="w-0.5 h-5 mt-1"
+                  style={{ background: isDone ? 'rgba(34,197,94,0.4)' : 'var(--g-border)' }}
+                />
               )}
             </div>
             <div>
-              <p className={`text-sm font-medium ${
-                isCurrent ? 'text-[--text-primary]' :
-                isDone ? 'text-[--text-secondary]' : 'text-[--text-muted]'
-              }`}>
+              <p
+                className="text-sm font-medium"
+                style={{
+                  color: isCurrent ? 'var(--text-primary)' :
+                         isDone    ? 'var(--text-secondary)' :
+                                     'var(--text-muted)'
+                }}
+              >
                 {JOB_STATUS_LABELS[step] || step}
               </p>
             </div>

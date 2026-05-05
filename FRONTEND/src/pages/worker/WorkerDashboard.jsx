@@ -108,7 +108,7 @@ export default function WorkerDashboard() {
             <div className="flex items-center gap-2 mb-0.5">
               <motion.div
                 className="w-2.5 h-2.5 rounded-full"
-                style={{ background: isOnline ? '#4ade80' : 'rgba(255,255,255,0.2)' }}
+                style={{ background: isOnline ? '#4ade80' : 'var(--text-muted)' }}
                 animate={isOnline ? { scale: [1, 1.3, 1] } : {}}
                 transition={{ repeat: Infinity, duration: 2 }}
               />
@@ -130,8 +130,8 @@ export default function WorkerDashboard() {
             whileTap={{ scale: 0.92 }}
             className="relative w-14 h-7 rounded-full transition-all duration-300"
             style={{
-              background: isOnline ? 'rgba(34,197,94,0.8)' : 'rgba(255,255,255,0.15)',
-              border: `1px solid ${isOnline ? 'rgba(34,197,94,0.4)' : 'rgba(255,255,255,0.15)'}`,
+              background: isOnline ? 'rgba(34,197,94,0.8)' : 'var(--g-bg-mid)',
+              border: `1px solid ${isOnline ? 'rgba(34,197,94,0.4)' : 'var(--g-border)'}`,
             }}
           >
             <motion.div

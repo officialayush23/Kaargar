@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils'
 /**
  * LiquidGlassModal — full-screen backdrop blur + frosted glass panel.
  * Supports sizes: sm, md, lg, xl, full.
+ * Uses CSS variables throughout for dark/light mode compatibility.
  */
 export function GlassModal({
   open,
@@ -82,21 +83,25 @@ export function GlassModal({
             {/* Top specular edge */}
             <div
               className="pointer-events-none absolute top-0 left-6 right-6 h-px"
-              style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.28), transparent)' }}
+              style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.18), transparent)' }}
             />
 
             {/* Header */}
             {(title || onClose) && (
-              <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+              <div
+                className="flex items-center justify-between px-6 py-4"
+                style={{ borderBottom: '1px solid var(--g-border)' }}
+              >
                 {title && (
-                  <h2 className="text-lg font-semibold text-white/90 font-syne">
+                  <h2 className="text-lg font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
                     {title}
                   </h2>
                 )}
                 {onClose && (
                   <button
                     onClick={onClose}
-                    className="ml-auto p-1.5 rounded-lg text-white/40 hover:text-white/80 hover:bg-white/10 transition-colors"
+                    className="ml-auto p-1.5 rounded-lg transition-colors"
+                    style={{ color: 'var(--text-muted)' }}
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -111,7 +116,10 @@ export function GlassModal({
 
             {/* Footer */}
             {footer && (
-              <div className="px-6 py-4 border-t border-white/10">
+              <div
+                className="px-6 py-4"
+                style={{ borderTop: '1px solid var(--g-border)' }}
+              >
                 {footer}
               </div>
             )}
@@ -158,12 +166,20 @@ export function GlassBottomSheet({ open, onClose, title, children, className }) 
           >
             {/* Drag handle */}
             <div className="flex justify-center pt-3 pb-1">
-              <div className="w-10 h-1 rounded-full bg-white/20" />
+              <div
+                className="w-10 h-1 rounded-full"
+                style={{ background: 'var(--g-border-mid, var(--text-muted))' }}
+              />
             </div>
 
             {title && (
-              <div className="px-6 pb-3 border-b border-white/10">
-                <h3 className="text-base font-semibold text-white/90 font-syne">{title}</h3>
+              <div
+                className="px-6 pb-3"
+                style={{ borderBottom: '1px solid var(--g-border)' }}
+              >
+                <h3 className="text-base font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
+                  {title}
+                </h3>
               </div>
             )}
 

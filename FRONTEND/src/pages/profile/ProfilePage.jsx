@@ -84,7 +84,7 @@ export default function ProfilePage() {
         <div className="flex items-center gap-4">
           <ProfilePhotoUpload currentUrl={user?.avatar_url} onSuccess={url => updateUser({ avatar_url: url })}>
             <div className="relative cursor-pointer">
-              <Avatar className="w-16 h-16 border-2 border-white/15">
+              <Avatar className="w-16 h-16 border-2" style={{ borderColor: 'var(--g-border)' }}>
                 <AvatarImage src={user?.avatar_url} />
                 <AvatarFallback className="text-lg font-bold">{initials}</AvatarFallback>
               </Avatar>
@@ -127,7 +127,7 @@ export default function ProfilePage() {
         </div>
 
         {typeof isWorker === 'function' && isWorker() && (
-          <div className="mt-4 pt-4 border-t border-white/10">
+          <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--g-border)' }}>
             <GlassButton
               variant="brand"
               size="sm"
@@ -140,7 +140,7 @@ export default function ProfilePage() {
         )}
 
         {typeof isWorker === 'function' && !isWorker() && (
-          <div className="mt-4 pt-4 border-t border-white/10">
+          <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--g-border)' }}>
             <motion.button
               onClick={() => navigate('/onboard/worker')}
               whileHover={{ scale: 1.01 }}
@@ -192,7 +192,7 @@ export default function ProfilePage() {
       </div>
 
               <p className="text-xs uppercase tracking-widest font-medium mb-2 px-1" style={{ color: 'var(--text-muted)' }}>Account</p>
-        <GlassCard className="divide-y divide-white/8 overflow-hidden">
+        <GlassCard className="overflow-hidden divide-y" style={{ '--tw-divide-opacity': 1, borderColor: 'var(--g-border)' }}>
           <MenuItem icon={Briefcase} label="My Bookings" sub="View all service requests" onClick={() => navigate('/bookings')} />
           <MenuItem icon={Bell} label="Notifications" sub="Manage alerts" onClick={() => {}} />
           <MenuItem icon={Shield} label="Privacy & Safety" onClick={() => {}} />
@@ -205,7 +205,7 @@ export default function ProfilePage() {
         <MenuItem icon={LogOut} label="Sign out" danger onClick={handleLogout} />
       </GlassCard>
 
-      <p className="text-center text-xs text-white/20 pb-2">Kaargar v1.0 · Pune, Maharashtra</p>
+      <p className="text-center text-xs pb-2" style={{ color: 'var(--text-muted)' }}>Kaargar v1.0 · Pune, Maharashtra</p>
     </div>
   )
 }

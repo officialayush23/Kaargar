@@ -3,7 +3,8 @@ import { cn } from '@/lib/utils'
 function Skeleton({ className, ...props }) {
   return (
     <div
-      className={cn('rounded-lg shimmer bg-white/5', className)}
+      className={cn('rounded-lg shimmer', className)}
+      style={{ background: 'var(--g-bg-mid)' }}
       {...props}
     />
   )

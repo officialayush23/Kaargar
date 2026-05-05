@@ -134,7 +134,7 @@ function AddressForm({ initial, onSave, onCancel }) {
                   style={{
                     width: '100%', textAlign: 'left', padding: '10px 14px',
                     background: 'none', border: 'none', cursor: 'pointer',
-                    borderBottom: i < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                    borderBottom: i < suggestions.length - 1 ? '1px solid var(--g-border)' : 'none',
                   }}>
                   <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0 }}>{s.main_text}</p>
                   <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>{s.secondary_text}</p>
@@ -151,7 +151,7 @@ function AddressForm({ initial, onSave, onCancel }) {
           onClick={() => setIsDefault(v => !v)}
           style={{
             width: 36, height: 20, borderRadius: 10, position: 'relative',
-            background: isDefault ? 'var(--brand)' : 'rgba(255,255,255,0.1)',
+            background: isDefault ? 'var(--brand)' : 'var(--g-bg-mid)',
             transition: 'background 0.2s', cursor: 'pointer', flexShrink: 0,
           }}>
           <div style={{
@@ -244,7 +244,7 @@ export function AddressBook({ picker = false, onSelect, selected }) {
               {/* Icon */}
               <div style={{
                 width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                background: addr.is_default ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.06)',
+                background: addr.is_default ? 'rgba(245,158,11,0.15)' : 'var(--g-bg-mid)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: addr.is_default ? 'var(--amber, #F59E0B)' : 'var(--text-muted)',
               }}>

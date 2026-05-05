@@ -30,7 +30,7 @@ function Message({ msg, isOwn }) {
         <p className="text-sm leading-relaxed" style={{ color: isOwn ? '#fff' : 'var(--text-primary)' }}>
           {msg.content}
         </p>
-        <p className="text-[10px] mt-1" style={{ color: isOwn ? 'rgba(255,255,255,0.55)' : 'var(--text-muted)' }}>
+        <p className="text-[10px] mt-1" style={{ color: isOwn ? 'rgba(255,255,255,0.6)' : 'var(--text-muted)' }}>
           {formatRelativeTime(msg.created_at)}
         </p>
       </div>
@@ -192,7 +192,7 @@ export default function ChatPage() {
           className="w-10 h-10 rounded-xl bg-gradient-to-br from-azure to-azure-dim flex items-center justify-center shrink-0 disabled:opacity-35 shadow-[0_4px_16px_rgba(59,130,246,0.4)]"
         >
           {sending
-            ? <div className="w-4 h-4 border-2 border-white/50 border-t-white rounded-full animate-spin" />
+            ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
             : <Send className="h-4 w-4 text-white" />
           }
         </motion.button>

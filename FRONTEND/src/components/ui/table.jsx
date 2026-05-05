@@ -9,7 +9,7 @@ const Table = forwardRef(({ className, ...props }, ref) => (
 Table.displayName = 'Table'
 
 const TableHeader = forwardRef(({ className, ...props }, ref) => (
-  <thead ref={ref} className={cn('[&_tr]:border-b [&_tr]:border-white/5', className)} {...props} />
+  <thead ref={ref} className={cn('table-header-token', className)} {...props} />
 ))
 TableHeader.displayName = 'TableHeader'
 
@@ -21,7 +21,7 @@ TableBody.displayName = 'TableBody'
 const TableRow = forwardRef(({ className, ...props }, ref) => (
   <tr
     ref={ref}
-    className={cn('border-b border-white/5 transition-colors hover:bg-white/[0.02] data-[state=selected]:bg-white/5', className)}
+    className={cn('table-row-token transition-colors', className)}
     {...props}
   />
 ))

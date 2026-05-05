@@ -17,7 +17,7 @@ function StatBlock({ icon: Icon, label, value, sub, accent = 'brand' }) {
     brand: 'text-brand bg-brand/10',
     instant: 'text-instant bg-instant/10',
     discovery: 'text-discovery bg-discovery/10',
-    muted: 'text-[--text-muted] bg-white/5',
+    muted: 'text-[--text-muted] bg-[--card-bg]',
   }
   return (
     <motion.div
@@ -43,7 +43,7 @@ function EarningsBar({ label, amount, max }) {
         <span className="text-xs text-[--text-muted]">{label}</span>
         <span className="text-xs font-mono font-medium text-[--text-primary]">{formatCurrency(amount)}</span>
       </div>
-      <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
+      <div className="h-1.5 bg-[--card-bg] rounded-full overflow-hidden">
         <motion.div
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
@@ -149,7 +149,7 @@ export default function WorkerAnalytics() {
                   {(Number(analytics.cancellation_score) * 100).toFixed(0)}%
                 </p>
               </div>
-              <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+              <div className="h-2 bg-[--card-bg] rounded-full overflow-hidden">
                 <motion.div
                   initial={{ width: 0 }}
                   animate={{ width: `${Number(analytics.cancellation_score) * 100}%` }}

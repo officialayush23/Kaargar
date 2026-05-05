@@ -401,6 +401,40 @@ html, body, #root {
 .text-secondary-token { color: var(--text-secondary); }
 .text-muted-token     { color: var(--text-muted); }
 
+/* Theme-aware UI component tokens */
+.badge-outline {
+  border: 1px solid var(--g-border);
+  color: var(--text-secondary);
+}
+.badge-muted {
+  background: var(--g-bg);
+  color: var(--text-muted);
+}
+.btn-outline-token {
+  background: var(--g-bg);
+  border: 1px solid var(--g-border);
+  color: var(--text-secondary);
+}
+.btn-outline-token:hover {
+  background: var(--g-bg-mid);
+  color: var(--text-primary);
+}
+.btn-ghost-token {
+  color: var(--text-secondary);
+  background: transparent;
+}
+.btn-ghost-token:hover {
+  background: var(--g-bg);
+  color: var(--text-primary);
+}
+
+/* Table theme-aware dividers */
+.table-divider-row { border-bottom: 1px solid var(--g-border); }
+.table-row-hover:hover { background: var(--g-bg); }
+.table-header-token tr { border-bottom: 1px solid var(--g-border); }
+.table-row-token { border-bottom: 1px solid var(--g-border); }
+.table-row-token:hover { background: var(--g-bg); }
+
 /* ================================================================
    KEYFRAMES
    ================================================================ */

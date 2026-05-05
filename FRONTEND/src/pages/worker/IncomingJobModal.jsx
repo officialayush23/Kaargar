@@ -81,7 +81,7 @@ export default function IncomingJobModal({ job, onAccept, onDecline, onExpire })
           {/* Countdown */}
           <div className="relative w-16 h-16">
             <svg className="w-full h-full -rotate-90" viewBox="0 0 56 56">
-              <circle cx="28" cy="28" r="24" fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="4" />
+              <circle cx="28" cy="28" r="24" fill="none" stroke="var(--g-border)" strokeWidth="4" />
               <circle
                 cx="28" cy="28" r="24"
                 fill="none"
@@ -133,7 +133,8 @@ export default function IncomingJobModal({ job, onAccept, onDecline, onExpire })
           <button
             onClick={handleDecline}
             disabled={!!loading}
-            className="py-4 rounded-2xl glass-light border border-white/10 text-[--text-secondary] font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-50"
+            className="py-4 rounded-2xl glass-light text-[--text-secondary] font-semibold text-sm flex items-center justify-center gap-2 active:scale-95 transition-transform disabled:opacity-50"
+            style={{ border: '1px solid var(--g-border)' }}
           >
             {loading === 'decline' ? <Loader2 size={16} className="animate-spin" /> : <XCircle size={18} />}
             Decline

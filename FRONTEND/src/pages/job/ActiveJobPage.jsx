@@ -272,7 +272,7 @@ export default function ActiveJobPage() {
       {worker && (
         <GlassCard className="p-5">
           <div className="flex items-center gap-4">
-            <Avatar className="w-14 h-14 border-2 border-white/15 shrink-0">
+            <Avatar className="w-14 h-14 border-2 shrink-0" style={{ borderColor: 'var(--g-border)' }}>
               <AvatarImage src={worker.avatar_url} />
               <AvatarFallback className="font-bold text-base">{getInitials(worker.full_name)}</AvatarFallback>
             </Avatar>

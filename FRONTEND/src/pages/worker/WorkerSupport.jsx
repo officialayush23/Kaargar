@@ -54,16 +54,17 @@ export default function WorkerSupport() {
           <Skeleton className="h-24 w-full" />
         ) : tickets?.length === 0 ? (
           <GlassCard className="p-8 flex flex-col items-center justify-center text-center">
-            <LifeBuoy className="h-10 w-10 text-white/20 mb-3" />
-            <p className="text-sm font-medium text-white/80">No active tickets</p>
-            <p className="text-xs text-white/40 mt-1">Need help with a job or payout? Create a ticket.</p>
+            <LifeBuoy className="h-10 w-10 mb-3" style={{ color: 'var(--text-muted)' }} />
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>No active tickets</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Need help with a job or payout? Create a ticket.</p>
           </GlassCard>
         ) : (
           tickets?.map(t => (
-            <GlassCard key={t.id} className="p-4 cursor-pointer hover:bg-white/5 transition-colors">
+            <GlassCard key={t.id} className="p-4 cursor-pointer transition-colors">
               <div className="flex justify-between items-start mb-2">
                 <p className="text-sm font-semibold text-[--text-primary]">{t.title}</p>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-white/10 text-white/60 capitalize">
+                <span className="text-[10px] px-2 py-0.5 rounded-full capitalize"
+                  style={{ background: 'var(--g-bg)', color: 'var(--text-secondary)', border: '1px solid var(--g-border)' }}>
                   {t.status.replace('_', ' ')}
                 </span>
               </div>

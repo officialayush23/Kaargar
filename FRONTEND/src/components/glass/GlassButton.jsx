@@ -4,7 +4,8 @@ import { Loader2 } from 'lucide-react'
 
 /**
  * LiquidGlassButton — variants: brand (azure), instant (green),
- * discovery (amber), ghost (transparent glass).
+ * discovery (amber), ghost (transparent glass), outline.
+ * Uses CSS variables for theme compatibility (dark + light mode).
  */
 export function GlassButton({
   children,
@@ -23,8 +24,8 @@ export function GlassButton({
     brand:     'btn-brand text-white rounded-xl',
     instant:   'btn-instant text-white rounded-xl',
     discovery: 'btn-discovery text-white rounded-xl',
-    ghost:     'btn-glass text-white/85 rounded-xl',
-    outline:   'border border-white/20 bg-white/5 backdrop-blur-sm text-white/85 hover:bg-white/10 hover:border-white/30 rounded-xl transition-all',
+    ghost:     'btn-glass rounded-xl',
+    outline:   'rounded-xl transition-all border',
     danger:    'bg-gradient-to-br from-red-500 to-red-700 text-white rounded-xl shadow-[0_4px_20px_rgba(239,68,68,0.4)] hover:shadow-[0_8px_32px_rgba(239,68,68,0.55)] transition-all',
   }
 
@@ -39,6 +40,13 @@ export function GlassButton({
 
   const isDisabled = disabled || loading
 
+  // outline variant needs CSS-variable inline styles to be theme-aware
+  const outlineStyle = variant === 'outline' ? {
+    borderColor: 'var(--g-border)',
+    background: 'var(--g-bg)',
+    color: 'var(--text-secondary)',
+  } : undefined
+
   return (
     <motion.button
       type={type}
@@ -47,6 +55,7 @@ export function GlassButton({
       whileHover={isDisabled ? {} : { scale: 1.02, y: -1 }}
       whileTap={isDisabled ? {} : { scale: 0.97 }}
       transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+      style={outlineStyle}
       className={cn(
         'relative inline-flex items-center justify-center gap-2 font-semibold select-none overflow-hidden',
         'disabled:opacity-50 disabled:cursor-not-allowed disabled:pointer-events-none',
@@ -61,7 +70,7 @@ export function GlassButton({
         <motion.div
           className="pointer-events-none absolute inset-0"
           style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.15) 0%, transparent 50%)',
+            background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 50%)',
             opacity: 0,
           }}
           whileHover={{ opacity: 1 }}

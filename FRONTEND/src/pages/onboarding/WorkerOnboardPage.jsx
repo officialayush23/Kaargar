@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, User, Tag, FileText,
   MapPin, Rocket, Upload, X, Check, Loader2,
-  IndianRupee, Clock, AlertCircle, Search,
+  IndianRupee, Clock, AlertCircle, Search, Calendar,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Background } from '@/components/glass/Background'
@@ -32,14 +32,34 @@ const DOC_TYPES = [
   { value: 'passport', label: 'Passport' },
 ]
 
-const STEPS = ['bio', 'categories', 'documents', 'area', 'publish']
+const STEPS = ['bio', 'categories', 'documents', 'area', 'schedule', 'publish']
 const STEP_META = [
   { icon: User,     label: 'Bio',        desc: 'Your story' },
   { icon: Tag,      label: 'Categories', desc: 'Your skills' },
   { icon: FileText, label: 'Documents',  desc: 'Identity' },
   { icon: MapPin,   label: 'Area',       desc: 'Service zone' },
+  { icon: Calendar, label: 'Schedule',   desc: 'Working hours' },
   { icon: Rocket,   label: 'Publish',    desc: 'Go live' },
 ]
+
+// ── Schedule helpers ───────────────────────────────────────
+const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
+const TIME_OPTS = []
+for (let h = 6; h <= 22; h++) for (const m of [0, 30]) {
+  if (h === 22 && m === 30) continue
+  TIME_OPTS.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+}
+function to12h(hhmm) {
+  if (!hhmm) return ''
+  const [h, m] = hhmm.split(':').map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+}
+const DEFAULT_SCHEDULE = DAYS.map((_, i) => ({
+  day_of_week: i,
+  enabled: i < 6,   // Mon–Sat on by default, Sun off
+  start_time: '09:00',
+  end_time:   '18:00',
+}))
 
 // ── Area search popover ────────────────────────────────────
 function AreaPicker({ value, onChange, error }) {
@@ -233,6 +253,16 @@ export default function WorkerOnboardPage() {
   const [selectedArea, setSelectedArea] = useState('')
   const [radius, setRadius] = useState(5)
 
+  // ── Step 5: Schedule ──────────────────────────────────────
+  const [schedule, setSchedule] = useState(DEFAULT_SCHEDULE)
+
+  function toggleDay(i) {
+    setSchedule(prev => prev.map((d, idx) => idx === i ? { ...d, enabled: !d.enabled } : d))
+  }
+  function setDayTime(i, field, val) {
+    setSchedule(prev => prev.map((d, idx) => idx === i ? { ...d, [field]: val } : d))
+  }
+
   // ── Global ────────────────────────────────────────────────
   const [loading, setLoading] = useState(false)
   const [errors, setErrors] = useState({})
@@ -301,6 +331,9 @@ export default function WorkerOnboardPage() {
     if (step === 'area') {
       if (!selectedArea) errs.area = 'Please select your area'
     }
+    if (step === 'schedule') {
+      if (!schedule.some(d => d.enabled)) errs.schedule = 'Enable at least one working day'
+    }
     setErrors(errs)
     return Object.keys(errs).length === 0
   }
@@ -344,6 +377,22 @@ export default function WorkerOnboardPage() {
             max_rate: maxRate ? Number(maxRate) : undefined,
           })
         } catch (_) {}
+      }
+
+      // 4. Save weekly availability schedule
+      const enabledDays = schedule
+        .filter(d => d.enabled)
+        .map(d => ({
+          day_of_week: d.day_of_week,
+          start_time:  d.start_time,
+          end_time:    d.end_time,
+        }))
+      if (enabledDays.length > 0) {
+        try {
+          await api.put('/workers/me/availability', enabledDays)
+        } catch (_) {
+          // Non-fatal — worker can set availability from dashboard later
+        }
       }
 
       toast.success('Profile published! Welcome to Kaargar.')
@@ -815,7 +864,102 @@ export default function WorkerOnboardPage() {
             </motion.div>
           )}
 
-          {/* ── STEP 5: Publish ── */}
+          {/* ── STEP 5: Schedule ── */}
+          {step === 'schedule' && (
+            <motion.div
+              key="schedule"
+              custom={direction}
+              variants={slideVariants}
+              initial="enter" animate="center" exit="exit"
+              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+              className="space-y-4"
+            >
+              <div>
+                <h2 className="text-xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>
+                  When do you work?
+                </h2>
+                <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Set your regular working hours. Customers will only see you as available during these times.
+                  You can update this anytime from your dashboard.
+                </p>
+              </div>
+
+              <GlassCard className="p-4 space-y-2">
+                {schedule.map((day, i) => (
+                  <div key={i} style={{
+                    borderRadius: 12,
+                    padding: '10px 12px',
+                    background: day.enabled ? 'rgba(245,158,11,0.06)' : 'transparent',
+                    border: day.enabled ? '1px solid rgba(245,158,11,0.18)' : '1px solid var(--card-border)',
+                    transition: 'all 0.2s',
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: day.enabled ? 10 : 0 }}>
+                      {/* Toggle */}
+                      <button
+                        onClick={() => toggleDay(i)}
+                        style={{
+                          width: 40, height: 22, borderRadius: 11, flexShrink: 0,
+                          background: day.enabled ? '#F59E0B' : 'var(--g-bg-mid)',
+                          border: `1px solid ${day.enabled ? '#F59E0B' : 'var(--g-border)'}`,
+                          position: 'relative', cursor: 'pointer', transition: 'all 0.2s',
+                        }}>
+                        <div style={{
+                          position: 'absolute', top: 2,
+                          left: day.enabled ? 20 : 2,
+                          width: 16, height: 16, borderRadius: '50%',
+                          background: '#fff', boxShadow: '0 1px 4px rgba(0,0,0,0.2)',
+                          transition: 'left 0.2s',
+                        }} />
+                      </button>
+                      <span style={{
+                        fontSize: 14, fontWeight: 600, minWidth: 36,
+                        color: day.enabled ? 'var(--amber, #F59E0B)' : 'var(--text-muted)',
+                      }}>
+                        {DAYS[i]}
+                      </span>
+                      {!day.enabled && (
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Off</span>
+                      )}
+                    </div>
+
+                    {day.enabled && (
+                      <div style={{ display: 'flex', gap: 8, paddingLeft: 50 }}>
+                        {[['start_time', 'From'], ['end_time', 'To']].map(([field, label]) => (
+                          <div key={field} style={{ flex: 1 }}>
+                            <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3, fontWeight: 500 }}>{label}</p>
+                            <select
+                              value={day[field]}
+                              onChange={e => setDayTime(i, field, e.target.value)}
+                              className="glass-input"
+                              style={{ width: '100%', padding: '6px 8px', borderRadius: 8, fontSize: 12, appearance: 'none' }}
+                            >
+                              {TIME_OPTS.map(t => (
+                                <option key={t} value={t}>{to12h(t)}</option>
+                              ))}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </GlassCard>
+
+              {errors.schedule && (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
+                  style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+                  <AlertCircle size={14} style={{ color: '#f87171', flexShrink: 0 }} />
+                  <p className="text-xs" style={{ color: '#f87171' }}>{errors.schedule}</p>
+                </div>
+              )}
+
+              <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+                💡 At least one day must be enabled to receive bookings
+              </p>
+            </motion.div>
+          )}
+
+          {/* ── STEP 6: Publish ── */}
           {step === 'publish' && (
             <motion.div
               key="publish"
