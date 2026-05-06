@@ -10,6 +10,7 @@ import {
   Settings, LogOut, Menu, X, ShieldCheck,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
+import { supabase } from '@/lib/supabase'
 
 const NAV = [
   { to: '/admin',          label: 'Dashboard',  icon: LayoutDashboard, exact: true },
@@ -80,7 +81,7 @@ export default function AdminLayout() {
           <div className="flex items-center gap-2 ml-auto">
             <span className="text-sm" style={{ color: '#475569' }}>{user?.email}</span>
             <button
-              onClick={() => { logout(); navigate('/admin/login') }}
+              onClick={async () => { await supabase.auth.signOut(); logout(); navigate('/admin/login') }}
               className="p-2 rounded-lg transition-colors"
               style={{ color: '#475569' }}
               title="Sign out"
@@ -140,10 +141,22 @@ function SidebarContent({ onNav }) {
             })}
           >
             <Icon className="h-4 w-4 flex-shrink-0" />
-            {label}
-          </NavLink>
-        ))}
-      </nav>
+              {label}
+            </NavLink>
+          ))}
+        </nav>
+
+        {/* Sign out */}
+        <div className="p-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
+          <button
+            onClick={onNav}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-white/5"
+            style={{ color: '#f87171', background: 'none', border: 'none', cursor: 'pointer' }}
+          >
+            <LogOut className="h-4 w-4 flex-shrink-0" />
+            Sign Out
+          </button>
+        </div>
     </>
   )
 }

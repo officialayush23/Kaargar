@@ -921,147 +921,29 @@ export default function WorkerOnboardPage() {
                         <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>Off</span>
                       )}
                     </div>
-
-                    {day.enabled && (
-                      <div style={{ display: 'flex', gap: 8, paddingLeft: 50 }}>
-                        {[['start_time', 'From'], ['end_time', 'To']].map(([field, label]) => (
-                          <div key={field} style={{ flex: 1 }}>
-                            <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 3, fontWeight: 500 }}>{label}</p>
-                            <select
-                              value={day[field]}
-                              onChange={e => setDayTime(i, field, e.target.value)}
-                              className="glass-input"
-                              style={{ width: '100%', padding: '6px 8px', borderRadius: 8, fontSize: 12, appearance: 'none' }}
-                            >
-                              {TIME_OPTS.map(t => (
-                                <option key={t} value={t}>{to12h(t)}</option>
-                              ))}
-                            </select>
-                          </div>
-                        ))}
-                      </div>
-                    )}
                   </div>
                 ))}
               </GlassCard>
-
-              {errors.schedule && (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-xl"
-                  style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
-                  <AlertCircle size={14} style={{ color: '#f87171', flexShrink: 0 }} />
-                  <p className="text-xs" style={{ color: '#f87171' }}>{errors.schedule}</p>
-                </div>
-              )}
-
-              <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
-                💡 At least one day must be enabled to receive bookings
-              </p>
             </motion.div>
-          )}
-
-          {/* ── STEP 6: Publish ── */}
-          {step === 'publish' && (
-            <motion.div
-              key="publish"
-              custom={direction}
-              variants={slideVariants}
-              initial="enter" animate="center" exit="exit"
-              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
-              className="space-y-4"
-            >
-              <div className="text-center pt-2 pb-4">
-                <div style={{
-                  width: '72px', height: '72px', borderRadius: '20px',
-                  background: 'rgba(245,158,11,0.15)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  margin: '0 auto 16px',
-                  boxShadow: '0 0 32px rgba(245,158,11,0.25)',
-                }}>
-                  <Rocket size={32} style={{ color: 'var(--amber)' }} />
-                </div>
-                <h2 className="text-xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>
-                  Ready to launch!
-                </h2>
-                <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>
-                  Review your profile before going live
-                </p>
-              </div>
-
-              <GlassCard className="p-5 space-y-4">
-                {[
-                  { label: 'Bio', value: bio || 'Not set', colored: !!bio },
-                  { label: 'Experience', value: yearsExp ? `${yearsExp} years` : 'Not specified', colored: !!yearsExp },
-                  { label: 'Rate', value: minRate && maxRate ? `₹${minRate}–₹${maxRate}/hr` : minRate ? `From ₹${minRate}/hr` : 'Not set', colored: !!minRate },
-                  { label: 'Categories', value: selectedCats.length ? selectedCats.map(c => c.name).join(', ') : 'None selected', colored: selectedCats.length > 0 },
-                  { label: 'Documents', value: uploadedDocs.length ? `${uploadedDocs.length} uploaded` : 'Skipped (can add later)', colored: uploadedDocs.length > 0 },
-                  { label: 'Area', value: selectedArea ? `${selectedArea} · ${radius} km radius` : 'Not set', colored: !!selectedArea },
-                ].map(({ label, value, colored }) => (
-                  <div key={label} style={{
-                    display: 'flex', gap: '12px',
-                    paddingBottom: '12px',
-                    borderBottom: '1px solid var(--card-border)',
-                  }}>
-                    <span style={{ minWidth: '90px', fontSize: '12px', color: 'var(--text-muted)', flexShrink: 0 }}>
-                      {label}
-                    </span>
-                    <span style={{
-                      fontSize: '12px',
-                      color: colored ? 'var(--text-primary)' : 'var(--text-muted)',
-                      flex: 1, wordBreak: 'break-word', lineHeight: '1.5',
-                    }}>
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </GlassCard>
-
-              <div className="flex items-start gap-2 p-3 rounded-xl"
-                style={{ background: 'rgba(34,197,94,0.06)', border: '1px solid rgba(34,197,94,0.15)' }}>
-                <Check size={13} style={{ color: 'var(--emerald)', flexShrink: 0, marginTop: '1px' }} />
-                <p className="text-xs" style={{ color: 'var(--emerald)', lineHeight: '1.5' }}>
-                  Your profile will be submitted for review. Once approved, you can go online and start accepting jobs.
-                </p>
-              </div>
-            </motion.div>
-          )}
+            )}
         </AnimatePresence>
 
-        {/* CTA */}
-        <div className="mt-6 space-y-3">
-          {step !== 'publish' ? (
-            <GlassButton
-              variant="brand"
-              size="lg"
-              className="w-full"
-              onClick={handleNext}
-              icon={ChevronRight}
-              iconPosition="right"
-            >
-              {step === 'documents' ? 'Continue (docs optional)' : 'Continue'}
-            </GlassButton>
-          ) : (
-            <GlassButton
-              variant="discovery"
-              size="lg"
-              className="w-full"
-              loading={loading}
-              onClick={publishProfile}
-              icon={Rocket}
-              iconPosition="left"
-            >
-              Publish Profile
+        {/* Navigation */}
+        <div style={{ display: 'flex', gap: 12, padding: '0 20px 32px' }}>
+          {currentStep > 0 && (
+            <GlassButton variant="ghost" size="lg" style={{ flex: 1 }} onClick={() => setCurrentStep(s => s - 1)}>
+              Back
             </GlassButton>
           )}
-
-          {step === 'documents' && uploadedDocs.length === 0 && (
-            <button
-              onClick={nextStep}
-              className="w-full text-center text-sm py-1"
-              style={{ color: 'var(--text-muted)' }}
-            >
-              Skip for now
-            </button>
-          )}
+          <GlassButton
+            variant={currentStep === steps.length - 1 ? 'instant' : 'brand'}
+            size="lg"
+            style={{ flex: 2 }}
+            loading={loading}
+            onClick={currentStep === steps.length - 1 ? handleSubmit : () => setCurrentStep(s => s + 1)}
+          >
+            {currentStep === steps.length - 1 ? 'Complete Setup' : 'Continue'}
+          </GlassButton>
         </div>
       </div>
     </div>

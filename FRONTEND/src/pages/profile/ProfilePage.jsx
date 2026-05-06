@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { supabase } from '@/lib/supabase'
 import { motion } from 'framer-motion'
 import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Pencil, Check, HelpCircle, HardHat, MapPin } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
@@ -65,7 +66,8 @@ export default function ProfilePage() {
     }
   }
 
-  function handleLogout() {
+  async function handleLogout() {
+    await supabase.auth.signOut()
     logout()
     navigate('/login', { replace: true })
   }
@@ -202,10 +204,15 @@ export default function ProfilePage() {
 
       {/* Sign out */}
       <GlassCard className="overflow-hidden">
-        <MenuItem icon={LogOut} label="Sign out" danger onClick={handleLogout} />
+        <button
+          onClick={async () => { await supabase.auth.signOut(); logout(); navigate('/login') }}
+          className="w-full flex items-center gap-3 px-5 py-4 text-left"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#f87171' }}
+        >
+          <LogOut className="h-4 w-4 flex-shrink-0" />
+          <span className="text-sm font-medium">Sign Out</span>
+        </button>
       </GlassCard>
-
-      <p className="text-center text-xs pb-2" style={{ color: 'var(--text-muted)' }}>Kaargar v1.0 · Pune, Maharashtra</p>
     </div>
   )
 }

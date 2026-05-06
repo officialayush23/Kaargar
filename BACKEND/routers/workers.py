@@ -6,7 +6,7 @@ MUST be declared before the dynamic /{worker_id} route, otherwise FastAPI matche
 /{worker_id} first and treats the literal string as a UUID — causing 404/422 errors.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
@@ -35,6 +35,7 @@ from schemas import (
 )
 from dependencies import get_current_user
 from services.storage import get_public_url, BUCKET_DOCUMENTS
+from services.translation import translate_and_store
 
 router = APIRouter()
 
@@ -313,6 +314,7 @@ async def get_my_services(
 @router.post("/me/services", response_model=ServiceResponse)
 async def create_service(
     body: ServiceCreate,
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -341,12 +343,21 @@ async def create_service(
     db.add(svc)
     await db.commit()
     await db.refresh(svc)
+
+    # Translate title + description to hi & mr in background (no latency)
+    fields = {}
+    if svc.name:        fields["title"] = svc.name
+    if svc.description: fields["description"] = svc.description
+    if fields:
+        background.add_task(translate_and_store, db, "service", str(svc.id), fields)
+
     return svc
 
 @router.patch("/me/services/{service_id}", response_model=ServiceResponse)
 async def update_service(
     service_id: uuid.UUID,
     body: ServiceUpdate,
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -362,10 +373,19 @@ async def update_service(
     svc = svc_result.scalar_one_or_none()
     if not svc:
         raise HTTPException(404, "Service not found")
-    for k, v in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_none=True)
+    for k, v in updates.items():
         setattr(svc, k, v)
     await db.commit()
     await db.refresh(svc)
+
+    # Re-translate if title or description changed
+    fields = {}
+    if "name" in updates:        fields["title"] = svc.name
+    if "description" in updates: fields["description"] = svc.description
+    if fields:
+        background.add_task(translate_and_store, db, "service", str(svc.id), fields)
+
     return svc
 
 
@@ -511,6 +531,7 @@ async def get_my_packages(
 @router.post("/me/packages")
 async def create_package(
     body: PackageCreate,
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -550,6 +571,14 @@ async def create_package(
     await db.refresh(pkg, ["items"])
     for item in pkg.items:
         await db.refresh(item, ["service"])
+
+    # Translate title + description in background
+    fields = {}
+    if pkg.title:       fields["title"] = pkg.title
+    if pkg.description: fields["description"] = pkg.description
+    if fields:
+        background.add_task(translate_and_store, db, "package", str(pkg.id), fields)
+
     return _serialize_package(pkg)
 
 
@@ -557,6 +586,7 @@ async def create_package(
 async def update_package(
     package_id: uuid.UUID,
     body: PackageUpdate,
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -599,6 +629,14 @@ async def update_package(
     await db.refresh(pkg, ["items"])
     for item in pkg.items:
         await db.refresh(item, ["service"])
+
+    # Re-translate if title or description changed
+    fields = {}
+    if "title" in updates:       fields["title"] = pkg.title
+    if "description" in updates: fields["description"] = pkg.description
+    if fields:
+        background.add_task(translate_and_store, db, "package", str(pkg.id), fields)
+
     return _serialize_package(pkg)
 
 
@@ -641,6 +679,7 @@ async def get_my_offers(
 @router.post("/me/offers", response_model=OfferResponse)
 async def create_offer(
     body: OfferCreate,
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -676,6 +715,14 @@ async def create_offer(
     db.add(offer)
     await db.commit()
     await db.refresh(offer)
+
+    # Translate title + description in background
+    fields = {}
+    if offer.title:       fields["title"] = offer.title
+    if offer.description: fields["description"] = offer.description
+    if fields:
+        background.add_task(translate_and_store, db, "offer", str(offer.id), fields)
+
     return offer
 
 
@@ -683,6 +730,7 @@ async def create_offer(
 async def update_offer(
     offer_id: uuid.UUID,
     body: OfferUpdate,
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -693,10 +741,19 @@ async def update_offer(
     offer = result.scalar_one_or_none()
     if not offer:
         raise HTTPException(404, "Offer not found")
-    for k, v in body.model_dump(exclude_none=True).items():
+    updates = body.model_dump(exclude_none=True)
+    for k, v in updates.items():
         setattr(offer, k, v)
     await db.commit()
     await db.refresh(offer)
+
+    # Re-translate if title or description changed
+    fields = {}
+    if "title" in updates:       fields["title"] = offer.title
+    if "description" in updates: fields["description"] = offer.description
+    if fields:
+        background.add_task(translate_and_store, db, "offer", str(offer.id), fields)
+
     return offer
 
 

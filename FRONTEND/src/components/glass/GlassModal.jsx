@@ -173,17 +173,18 @@ export function GlassBottomSheet({ open, onClose, title, children, className }) 
             </div>
 
             {title && (
-              <div
-                className="px-6 pb-3"
-                style={{ borderBottom: '1px solid var(--g-border)' }}
-              >
-                <h3 className="text-base font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
-                  {title}
-                </h3>
+              <div className="px-5 pb-3 pt-1 flex items-center justify-between">
+                <h3 className="text-lg font-bold font-syne" style={{ color: 'var(--text-primary)' }}>{title}</h3>
+                <button
+                  onClick={onClose}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: '4px' }}
+                >
+                  <X size={18} />
+                </button>
               </div>
             )}
 
-            <div className="px-6 py-4 max-h-[70vh] overflow-y-auto">
+            <div className={cn('px-5 pb-6', contentClassName)}>
               {children}
             </div>
           </motion.div>

@@ -1,204 +1,158 @@
 """
-Auth router — email OTP send/verify → custom JWT.
+Auth router — Supabase email+password + Supabase JWT.
+
+Flow:
+  SIGNUP:  Frontend calls supabase.auth.signUp()
+           → Supabase sends confirmation email
+           → User clicks link → Supabase marks email_confirmed
+           → Frontend calls POST /auth/provision with Supabase JWT
+           → Backend creates user row in our DB
+
+  LOGIN:   Frontend calls supabase.auth.signInWithPassword()
+           → Gets Supabase JWT (access_token)
+           → Sends JWT to all backend API calls as Bearer token
+           → Backend validates JWT in dependencies.py (_decode_token)
+
+  LOGOUT:  Frontend calls supabase.auth.signOut() — stateless on backend
+
+  ME:      GET /auth/me — returns our DB user record from the Supabase JWT
+
+SWAP NOTE:
+  When moving to Amazon/custom auth, only dependencies.py changes.
+  This router's /provision and /me endpoints stay identical.
 """
 
-import hashlib
-import secrets
-import string
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
+from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from jose import JWTError, jwt as _jwt
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from jose import jwt
+from sqlalchemy import select
 
 from database import get_db
-from models import User, OTPSession, WorkerProfile
-from schemas import OTPSendRequest, OTPVerifyRequest, TokenResponse, UserResponse
+from models import User, WorkerProfile
+from schemas import UserResponse, SuccessResponse
+from dependencies import get_current_user
 from config import get_settings
-from services.notifications import send_otp_email
 
 settings = get_settings()
 router = APIRouter()
 
-OTP_EXPIRE_MINUTES = 10
+# ---------------------------------------------------------------------------
+# Internal: raw JWT payload (before full user DB lookup)
+# Defined first so it can be used as a Depends() in /provision below.
+# Used only by /provision which might be called before user row exists.
+# ---------------------------------------------------------------------------
 
+_bearer = HTTPBearer()
 
-def _hash_otp(otp: str) -> str:
-    return hashlib.sha256(otp.encode()).hexdigest()
-
-
-def _generate_otp(length: int = 6) -> str:
-    return "".join(secrets.choice(string.digits) for _ in range(length))
-
-
-def _create_jwt(user_id: str, role: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
-    return jwt.encode(
-        {"sub": str(user_id), "role": role, "exp": expire},
-        settings.jwt_secret_key,
-        algorithm=settings.jwt_algorithm,
-    )
-
-
-@router.post("/send-otp")
-async def send_otp(
-    body: OTPSendRequest,
-    background: BackgroundTasks,
-    db: AsyncSession = Depends(get_db),
-):
-    identifier = body.email.strip().lower()
-
-    # Rate-limit check via Redis if available
+def _get_raw_payload(
+    credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+) -> dict:
+    """Decode Supabase JWT without requiring user row in DB (for provision)."""
+    secret = settings.supabase_jwt_secret
+    if not secret:
+        raise HTTPException(500, "SUPABASE_JWT_SECRET not configured")
     try:
-        import redis.asyncio as aioredis
-        r = aioredis.from_url(settings.redis_url)
-        key = f"otp_limit:{identifier}"
-        count = await r.get(key)
-        if count and int(count) >= 5:
-            raise HTTPException(429, "Too many OTP requests. Try again in an hour.")
-        await r.incr(key)
-        await r.expire(key, 3600)
-        await r.aclose()
-    except Exception:
-        pass  # Redis optional for dev
-
-    otp = _generate_otp()
-    otp_hash = _hash_otp(otp)
-    expires_at = datetime.now(timezone.utc) + timedelta(minutes=OTP_EXPIRE_MINUTES)
-
-    # Mark previous sessions as used
-    await db.execute(
-        OTPSession.__table__.update()
-        .where(OTPSession.identifier == identifier)
-        .where(OTPSession.is_used == False)
-        .values(is_used=True)
-    )
-
-    session = OTPSession(
-        identifier=identifier,
-        type="email",
-        otp_hash=otp_hash,
-        purpose="login",
-        expires_at=expires_at,
-    )
-    db.add(session)
-    await db.commit()
-
-    background.add_task(send_otp_email, identifier, otp)
-    return {"message": "OTP sent", "expires_in": OTP_EXPIRE_MINUTES * 60}
+        return _jwt.decode(
+            credentials.credentials,
+            secret,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+    except JWTError:
+        raise HTTPException(401, "Invalid token")
 
 
-@router.post("/verify-otp", response_model=TokenResponse)
-async def verify_otp(
-    body: OTPVerifyRequest,
+# ---------------------------------------------------------------------------
+# POST /auth/provision
+# Called once after Supabase signup to create the user record in our DB.
+# The Supabase JWT is validated by _get_raw_payload() above.
+# ---------------------------------------------------------------------------
+
+class ProvisionBody(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    role: Optional[str] = "user"  # 'user' | 'worker' (admin set manually in DB)
+
+
+@router.post("/provision", response_model=UserResponse)
+async def provision_user(
+    body: ProvisionBody,
+    current_user_payload: dict = Depends(_get_raw_payload),
     db: AsyncSession = Depends(get_db),
 ):
-    identifier = body.email.strip().lower()
-    submitted_token = body.token.strip()
-    normalized_token = "".join(ch for ch in submitted_token if ch.isdigit())
-    token_candidates = [submitted_token]
-    if normalized_token and normalized_token not in token_candidates:
-        token_candidates.insert(0, normalized_token)
-    if not token_candidates[0]:
-        raise HTTPException(400, "OTP is required")
+    """
+    Create or update user row after Supabase signup.
+    The Supabase JWT 'sub' is the user's UUID — same as our users.id.
+    This endpoint is idempotent (safe to call multiple times).
+    """
+    user_id: str = current_user_payload.get("sub")
+    email: str = current_user_payload.get("email", "")
 
     now = datetime.now(timezone.utc)
-    result = await db.execute(
-        select(OTPSession)
-        .where(OTPSession.identifier == identifier)
-        .where(OTPSession.is_used == False)
-        .where(OTPSession.expires_at > now)
-        .order_by(OTPSession.created_at.desc())
-        .limit(1)
-    )
-    session = result.scalar_one_or_none()
 
-    if not session:
-        raise HTTPException(400, "OTP expired or not found")
+    # Check if user already exists
+    result = await db.execute(select(User).where(User.id == user_id))
+    user = result.scalar_one_or_none()
 
-    if session.attempts >= session.max_attempts:
-        raise HTTPException(400, "Too many incorrect attempts")
-
-    if not any(session.otp_hash == _hash_otp(candidate) for candidate in token_candidates):
-        session.attempts += 1
-        await db.commit()
-        remaining = session.max_attempts - session.attempts
-        raise HTTPException(400, f"Incorrect OTP. {remaining} attempt(s) left")
-
-    # Mark used
-    session.is_used = True
-    await db.commit()
-
-    # Upsert user
-    user_result = await db.execute(
-        select(User).where(func.lower(User.email) == identifier)
-    )
-    user = user_result.scalar_one_or_none()
-
-    if not user:
-        user = User(email=identifier, email_verified=True, last_seen_at=now)
-        db.add(user)
-    else:
-        user.email_verified = True
+    if user:
+        # Update fields if provided
+        if body.full_name:
+            user.full_name = body.full_name
+        if body.phone:
+            user.phone = body.phone
         user.last_seen_at = now
-
-    await db.flush()
-
-    wp_result = await db.execute(
-        select(WorkerProfile.id).where(WorkerProfile.user_id == user.id)
-    )
-    if wp_result.scalar_one_or_none() and user.role != "admin":
-        user.role = "worker"
+        user.email_verified = True
+    else:
+        # Create new user row
+        allowed_role = body.role if body.role in ("user", "worker") else "user"
+        user = User(
+            id=user_id,
+            email=email.lower().strip(),
+            full_name=body.full_name or "",
+            phone=body.phone,
+            role=allowed_role,
+            email_verified=True,
+            last_seen_at=now,
+        )
+        db.add(user)
 
     await db.commit()
     await db.refresh(user)
-
-    token = _create_jwt(str(user.id), user.role)
-    return TokenResponse(access_token=token, user=UserResponse.model_validate(user))
+    return UserResponse.model_validate(user)
 
 
-# APPEND THIS TO THE BOTTOM OF YOUR EXISTING routers/auth.py
-from schemas import RefreshRequest, SuccessResponse
-from jose import JWTError
-
-@router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(
-    body: RefreshRequest,
-    db: AsyncSession = Depends(get_db)
+@router.get("/me", response_model=UserResponse)
+async def get_me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ):
-    if not body.refresh_token:
-        raise HTTPException(401, "Refresh token missing")
-    try:
-        payload = jwt.decode(body.refresh_token, settings.jwt_secret_key, algorithms=[settings.jwt_algorithm])
-        if payload.get("type") != "refresh":
-            raise HTTPException(401, "Invalid token type")
-        
-        user_id = payload.get("sub")
-        user_result = await db.execute(select(User).where(User.id == user_id))
-        user = user_result.scalar_one_or_none()
-        
-        if not user or not user.is_active:
-            raise HTTPException(401, "User inactive")
+    """Return the current user's DB record. Updates last_seen_at."""
+    user.last_seen_at = datetime.now(timezone.utc)
 
-        # Create new access token, keep old refresh
-        expire = datetime.now(timezone.utc) + timedelta(minutes=settings.jwt_access_token_expire_minutes)
-        new_access = jwt.encode(
-            {"sub": str(user.id), "type": "access", "exp": expire},
-            settings.jwt_secret_key,
-            algorithm=settings.jwt_algorithm,
+    # Sync role if worker profile exists
+    if user.role not in ("admin",):
+        wp_result = await db.execute(
+            select(WorkerProfile.id).where(WorkerProfile.user_id == user.id)
         )
+        if wp_result.scalar_one_or_none() and user.role != "worker":
+            user.role = "worker"
 
-        return {
-            "access_token": new_access,
-            "refresh_token": body.refresh_token,
-            "token_type": "bearer",
-            "user": UserResponse.model_validate(user)
-        }
-    except JWTError:
-        raise HTTPException(401, "Invalid or expired refresh token")
+    await db.commit()
+    await db.refresh(user)
+    return UserResponse.model_validate(user)
+
 
 @router.post("/logout", response_model=SuccessResponse)
 async def logout():
-    # Stateless JWT flow: just confirm to frontend so it can drop tokens
+    """
+    Backend is stateless — actual logout happens on the frontend via
+    supabase.auth.signOut(). This endpoint exists for consistency.
+    """
     return SuccessResponse(message="Logged out successfully")
+
+

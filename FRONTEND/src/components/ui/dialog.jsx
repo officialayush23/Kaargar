@@ -73,4 +73,10 @@ const DialogFooter = forwardRef(({ className, ...props }, ref) => (
 ))
 DialogFooter.displayName = 'DialogFooter'
 
-export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter }
+
+const DialogDescription = forwardRef(({ className, ...props }, ref) => (
+  <p ref={ref} className={cn('text-sm', className)} style={{ color: 'var(--text-muted)' }} {...props} />
+))
+DialogDescription.displayName = 'DialogDescription'
+
+export { Dialog, DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription }

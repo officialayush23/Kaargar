@@ -609,6 +609,7 @@ import { api } from '@/lib/api'
 import { useState } from 'react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { NotificationDrawer } from '@/components/kaargar/NotificationDrawer'
+import { supabase } from '@/lib/supabase'
 
 /* ── Profile Menu Drawer ── */
 function ProfileMenu({ open, onClose, user, unreadCount }) {
@@ -741,7 +742,7 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
 
               <div className="px-4 pb-4">
                 <button
-                  onClick={() => { logout(); navigate('/login'); onClose() }}
+                  onClick={async () => { await supabase.auth.signOut(); logout(); navigate('/login'); onClose() }}
                   className="w-full py-3 rounded-2xl text-sm font-medium transition-colors"
                   style={{ color: '#f87171', border: '1px solid rgba(248,113,113,0.2)' }}
                   onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(248,113,113,0.08)'}

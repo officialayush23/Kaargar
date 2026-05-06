@@ -1,60 +1,66 @@
+/**
+ * Auth store — syncs with Supabase session.
+ *
+ * Token lifecycle:
+ *  - Supabase auto-refreshes the JWT before expiry.
+ *  - App.jsx's SupabaseAuthSync component listens to onAuthStateChange
+ *    and keeps 'kaargar_token' + this store in sync.
+ *  - api.js reads 'kaargar_token' from localStorage on every request.
+ *
+ * Single source of truth for: is the user logged in? who are they?
+ */
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import { api } from '@/lib/api'
 
 export const useAuthStore = create(
   persist(
     (set, get) => ({
       token: null,
-      refreshToken: null,
       user: null,
       isAuthenticated: false,
 
-      // Expects an object containing the payload from /verify-otp
-      setAuth: ({ access_token, refresh_token, user }) => {
-        localStorage.setItem('kaargar_token', access_token)
-        if (refresh_token) localStorage.setItem('kaargar_refresh', refresh_token)
-        set({ token: access_token, refreshToken: refresh_token, user, isAuthenticated: true })
-      },
-
-      setToken: (token) => {
+      /**
+       * Called by SupabaseAuthSync whenever Supabase fires onAuthStateChange.
+       * Keeps localStorage token in sync with Supabase's auto-refreshed JWT.
+       */
+      setSession: (session) => {
+        const token = session?.access_token || null
         if (token) localStorage.setItem('kaargar_token', token)
         else localStorage.removeItem('kaargar_token')
-        set((s) => ({ token, isAuthenticated: !!token || !!s.user }))
+        set({ token, isAuthenticated: !!token })
       },
 
-      setUser: (user) => set((s) => ({ user, isAuthenticated: !!s.token || !!user })),
+      /** Set the DB user record (from /auth/provision or /auth/me). */
+      setUser: (user) => set((s) => ({
+        user,
+        isAuthenticated: !!(s.token || user),
+      })),
 
-      updateUser: (updates) => set((s) => ({ user: { ...s.user, ...updates } })),
+      /** Merge partial updates into the current user record. */
+      updateUser: (updates) => set((s) => ({
+        user: s.user ? { ...s.user, ...updates } : updates,
+      })),
 
-      logout: async () => {
-        try { await api.post('/auth/logout') } catch (e) {} // Tell backend to invalidate
+      /**
+       * Sign out — clears store + localStorage.
+       * Caller must also call supabase.auth.signOut() to invalidate the session.
+       */
+      logout: () => {
         localStorage.removeItem('kaargar_token')
-        localStorage.removeItem('kaargar_refresh')
-        set({ token: null, refreshToken: null, user: null, isAuthenticated: false })
+        set({ token: null, user: null, isAuthenticated: false })
       },
 
-      refresh: async () => {
-        const rt = get().refreshToken || localStorage.getItem('kaargar_refresh')
-        if (!rt) throw new Error("No refresh token available")
-        
-        const { data } = await api.post('/auth/refresh', { refresh_token: rt })
-        localStorage.setItem('kaargar_token', data.access_token)
-        set({ token: data.access_token, user: data.user })
-        return data.access_token
-      },
-
-      isWorker: () => {
-        const user = get().user
-        return user?.role === 'worker' || user?.workerProfile != null
-      },
-
-      isAdmin: () => get().user?.role === 'admin',
-      isUser: () => get().user?.role === 'user',
+      isWorker: () => get().user?.role === 'worker',
+      isAdmin:  () => get().user?.role === 'admin',
+      isUser:   () => get().user?.role === 'user',
     }),
     {
       name: 'kaargar-auth',
-      partialize: (s) => ({ token: s.token, refreshToken: s.refreshToken, user: s.user, isAuthenticated: s.isAuthenticated }),
+      partialize: (s) => ({
+        token: s.token,
+        user: s.user,
+        isAuthenticated: s.isAuthenticated,
+      }),
     }
   )
 )

@@ -231,26 +231,6 @@ function AddAddressForm({ onSave, onCancel }) {
           </button>
         ))}
       </div>
-
-      <GlassInput
-        placeholder="Label (e.g. My Home)"
-        value={label}
-        onChange={e => setLabel(e.target.value)}
-      />
-      <GlassInput
-        placeholder="Address in Pune"
-        value={address}
-        onChange={e => setAddress(e.target.value)}
-      />
-
-      <div className="flex gap-2">
-        <GlassButton variant="brand" size="sm" onClick={handleSave} className="flex-1">
-          Save
-        </GlassButton>
-        <GlassButton variant="ghost" size="sm" onClick={onCancel} className="flex-1">
-          Cancel
-        </GlassButton>
-      </div>
-    </motion.div>
+    </div>
   )
 }

@@ -67,6 +67,9 @@ class Settings(BaseSettings):
     # Google Maps
     google_maps_api_key: str = Field("", alias="GOOGLE_MAPS_API_KEY")
 
+    # Groq (translation)
+    groq_api_key: str = Field("", alias="GROQ_API_KEY")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",
@@ -75,6 +78,6 @@ class Settings(BaseSettings):
     }
 
 
-@lru_cache()
+@lru_cache
 def get_settings() -> Settings:
     return Settings()

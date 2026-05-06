@@ -97,7 +97,7 @@ export function MediaGrid({ items, onDelete }) {
         <div key={item.id} className="relative aspect-square rounded-xl overflow-hidden group">
           {item.type === 'video' ? (
             <div className="w-full h-full bg-bg-elevated flex items-center justify-center">
-              <Play size={24} className="text-white/60" />
+              <Play size={24} style={{ color: 'var(--text-muted)' }} />
             </div>
           ) : (
             <img src={item.url} alt={item.caption || ''} className="w-full h-full object-cover" />
@@ -111,7 +111,8 @@ export function MediaGrid({ items, onDelete }) {
             </button>
           )}
         </div>
-      ))}
-    </div>
+      ))
+    }
+  </div>
   )
 }

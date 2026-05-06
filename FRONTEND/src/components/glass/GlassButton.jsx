@@ -81,13 +81,11 @@ export function GlassButton({
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
-        Icon && iconPosition === 'left' && <Icon className="h-4 w-4 shrink-0" />
-      )}
-
-      {children && <span className="relative">{children}</span>}
-
-      {!loading && Icon && iconPosition === 'right' && (
-        <Icon className="h-4 w-4 shrink-0" />
+        <>
+          {Icon && iconPosition === 'left' && <Icon className="h-4 w-4 flex-shrink-0" />}
+          {children}
+          {Icon && iconPosition === 'right' && <Icon className="h-4 w-4 flex-shrink-0" />}
+        </>
       )}
     </motion.button>
   )

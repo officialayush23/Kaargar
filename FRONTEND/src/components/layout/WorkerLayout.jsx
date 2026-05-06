@@ -5,6 +5,7 @@ import {
   LogOut, Moon, Sun, Bell, ChevronRight,
   LayoutDashboard, Wrench, ImageIcon, TrendingUp, HelpCircle, Package, Tag
 } from 'lucide-react'
+import { useTranslation } from 'react-i18next'
 import { Background } from '@/components/glass/Background'
 import { MobileBottomNav } from '@/components/glass/GlassNavbar'
 import { NotificationDrawer } from '@/components/kaargar/NotificationDrawer'
@@ -12,12 +13,71 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useNotifications } from '@/hooks/useNotifications'
+import { supabase } from '@/lib/supabase'
+import { setWorkerLanguage } from '@/i18n/index.js'
+
+const LANGS = [
+  { code: 'en', label: 'EN' },
+  { code: 'hi', label: 'हि' },
+  { code: 'mr', label: 'म' },
+]
+
+/* ── Language selector pill ─────────────────────────────────────── */
+function LangPill() {
+  const { i18n } = useTranslation()
+  const current = i18n.language || 'en'
+
+  function switchLang(code) {
+    setWorkerLanguage(code)
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        borderRadius: '10px',
+        padding: '2px',
+        background: 'var(--g-bg)',
+        border: '1px solid var(--g-border)',
+        gap: 1,
+      }}
+    >
+      {LANGS.map(({ code, label }) => {
+        const active = current === code
+        return (
+          <motion.button
+            key={code}
+            onClick={() => switchLang(code)}
+            layout
+            style={{
+              padding: '3px 7px',
+              borderRadius: '7px',
+              fontSize: 11,
+              fontWeight: active ? 700 : 500,
+              cursor: 'pointer',
+              border: 'none',
+              background: active ? 'var(--brand, #4B7BFF)' : 'transparent',
+              color: active ? '#fff' : 'var(--text-muted)',
+              transition: 'all 0.15s',
+              lineHeight: 1.4,
+            }}
+            whileTap={{ scale: 0.93 }}
+          >
+            {label}
+          </motion.button>
+        )
+      })}
+    </div>
+  )
+}
 
 /* ── Worker profile menu drawer ─────────────────────────────────── */
 function WorkerMenu({ open, onClose }) {
   const navigate = useNavigate()
   const { user, logout } = useAuthStore()
   const { theme, toggleTheme } = useAppStore()
+  const { t } = useTranslation()
   const isDark = theme === 'dark'
 
   const initials = user?.full_name
@@ -25,14 +85,14 @@ function WorkerMenu({ open, onClose }) {
     : (user?.email?.[0]?.toUpperCase() ?? 'W')
 
   const menuItems = [
-    { label: 'Dashboard',  icon: LayoutDashboard, path: '/worker' },
-    { label: 'Services',   icon: Wrench,          path: '/worker/services' },
-    { label: 'Packages',   icon: Package,         path: '/worker/packages' },
-    { label: 'Offers',     icon: Tag,              path: '/worker/offers' },
-    { label: 'Portfolio',  icon: ImageIcon,        path: '/worker/media' },
-    { label: 'Analytics',  icon: TrendingUp,       path: '/worker/analytics' },
-    { label: 'Profile',    icon: ChevronRight,     path: '/worker/profile' },
-    { label: 'Support',    icon: HelpCircle,       path: '/worker/support' },
+    { label: t('nav.dashboard'),  icon: LayoutDashboard, path: '/worker' },
+    { label: t('nav.services'),   icon: Wrench,          path: '/worker/services' },
+    { label: t('nav.packages'),   icon: Package,         path: '/worker/packages' },
+    { label: t('nav.offers'),     icon: Tag,             path: '/worker/offers' },
+    { label: t('nav.portfolio'),  icon: ImageIcon,       path: '/worker/media' },
+    { label: t('nav.analytics'),  icon: TrendingUp,      path: '/worker/analytics' },
+    { label: t('nav.profile'),    icon: ChevronRight,    path: '/worker/profile' },
+    { label: t('nav.support'),    icon: HelpCircle,      path: '/worker/support' },
   ]
 
   function go(path) {
@@ -100,6 +160,8 @@ function WorkerMenu({ open, onClose }) {
                       ⚡ Worker
                     </span>
                   </div>
+                  {/* Language pill inside menu */}
+                  <LangPill />
                 </div>
               </div>
 
@@ -132,7 +194,7 @@ function WorkerMenu({ open, onClose }) {
                     : <Moon className="h-4 w-4 flex-shrink-0" style={{ color: '#6b7280' }} />
                   }
                   <span className="text-sm font-medium">
-                    {isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                    {isDark ? t('common.lightMode') : t('common.darkMode')}
                   </span>
                 </button>
               </div>
@@ -140,14 +202,14 @@ function WorkerMenu({ open, onClose }) {
               {/* Sign out */}
               <div className="px-4 pb-4">
                 <button
-                  onClick={() => { logout(); navigate('/login'); onClose() }}
+                  onClick={async () => { await supabase.auth.signOut(); logout(); navigate('/login'); onClose() }}
                   className="w-full py-3 rounded-2xl text-sm font-medium transition-colors"
                   style={{ color: '#f87171', border: '1px solid rgba(248,113,113,0.2)' }}
                   onMouseEnter={(e) => e.currentTarget.style.background = 'rgba(248,113,113,0.08)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   <LogOut className="h-4 w-4 inline mr-2" />
-                  Sign Out
+                  {t('auth.signOut')}
                 </button>
               </div>
             </div>
@@ -158,7 +220,7 @@ function WorkerMenu({ open, onClose }) {
   )
 }
 
-/* ── Floating inline page header (NOT a fixed navbar) ──────────── */
+/* ── Floating inline page header ────────────────────────────────── */
 function WorkerPageHeader() {
   const [menuOpen, setMenuOpen]   = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
@@ -171,7 +233,6 @@ function WorkerPageHeader() {
 
   return (
     <>
-      {/* Inline floating header — part of the scrollable page content */}
       <div className="px-4 pt-5 pb-3">
         <div
           style={{
@@ -202,8 +263,11 @@ function WorkerPageHeader() {
             Kaargar
           </span>
 
-          {/* Right: bell + avatar */}
+          {/* Right: lang + bell + avatar */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            {/* Language selector */}
+            <LangPill />
+
             {/* Notification bell */}
             <button
               onClick={() => setNotifOpen(true)}
@@ -249,12 +313,7 @@ function WorkerPageHeader() {
             {/* Avatar → open menu */}
             <button
               onClick={() => setMenuOpen(true)}
-              style={{
-                background: 'none',
-                border: 'none',
-                padding: 0,
-                cursor: 'pointer',
-              }}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
             >
               <Avatar
                 className="h-9 w-9"
@@ -273,7 +332,6 @@ function WorkerPageHeader() {
         </div>
       </div>
 
-      {/* Drawers */}
       <WorkerMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
       <NotificationDrawer open={notifOpen} onClose={() => setNotifOpen(false)} />
     </>
@@ -292,10 +350,8 @@ export function WorkerLayout() {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.22 }}
       >
-        {/* Floating header is the first element in the scroll flow */}
         <WorkerPageHeader />
 
-        {/* Page content with horizontal padding */}
         <div className="px-4">
           <Outlet />
         </div>

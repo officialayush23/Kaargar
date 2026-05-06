@@ -44,14 +44,13 @@ export function JobStatusTimeline({ status }) {
             <div>
               <p
                 className="text-sm font-medium"
-                style={{
-                  color: isCurrent ? 'var(--text-primary)' :
-                         isDone    ? 'var(--text-secondary)' :
-                                     'var(--text-muted)'
-                }}
+                style={{ color: isDone ? 'var(--text-primary)' : 'var(--text-muted)' }}
               >
-                {JOB_STATUS_LABELS[step] || step}
+                {step.label}
               </p>
+              {step.time && (
+                <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{step.time}</p>
+              )}
             </div>
           </div>
         )

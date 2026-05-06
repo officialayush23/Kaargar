@@ -1,6 +1,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/auth'
+import { supabase } from '@/lib/supabase'
+import { api } from '@/lib/api'
 
 import { AppLayout } from '@/components/layout/AppLayout'
 import { WorkerLayout } from '@/components/layout/WorkerLayout'
@@ -82,20 +84,82 @@ function GuestOnly({ children }) {
   return !isAuthenticated ? children : <Navigate to={getDefaultRoute(user)} replace />
 }
 
-// Listens for the custom unauthorized event fired by api.js and does
-// a soft React Router navigation — NO full page reload.
+// Soft React Router navigation on 401 — no full page reload.
 function UnauthorizedListener() {
   const navigate = useNavigate()
   const { user } = useAuthStore()
 
   useEffect(() => {
-    const handler = () => {
-      const target = user?.role === 'admin' ? '/admin/login' : '/login'
+    const handler = (e) => {
+      const target = (e.detail?.adminPath || user?.role === 'admin') ? '/admin/login' : '/login'
       navigate(target, { replace: true })
     }
     window.addEventListener('kaargar:unauthorized', handler)
     return () => window.removeEventListener('kaargar:unauthorized', handler)
   }, [navigate, user])
+
+  return null
+}
+
+/**
+ * Supabase session bridge.
+ *
+ * Listens to supabase.auth.onAuthStateChange and:
+ *  - Writes the current JWT to localStorage (api.js reads it)
+ *  - Calls /auth/provision to create/sync the DB user row
+ *  - Sets user in auth store so the rest of the app knows who is logged in
+ *
+ * Handles both normal sign-in and email confirmation redirects.
+ */
+function SupabaseAuthSync() {
+  const { setSession, setUser, logout } = useAuthStore()
+  const navigate = useNavigate()
+
+  useEffect(() => {
+    // On mount: restore session from Supabase's own localStorage persistence
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (session) {
+        setSession(session)
+        try {
+          const { data } = await api.post('/auth/provision', {})
+          setUser(data)
+        } catch {
+          logout()
+        }
+      }
+    })
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        setSession(session)
+
+        if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
+          try {
+            const { data } = await api.post('/auth/provision', {})
+            setUser(data)
+
+            if (event === 'SIGNED_IN') {
+              const role = data?.role
+              const currentPath = window.location.pathname
+              // Only auto-navigate from login/root (e.g. email confirmation redirect)
+              if (currentPath === '/login' || currentPath === '/') {
+                if (role === 'admin') navigate('/admin', { replace: true })
+                else if (role === 'worker') navigate('/worker', { replace: true })
+                else navigate('/', { replace: true })
+              }
+            }
+          } catch {
+            // provision failed — stay on current page
+          }
+        } else if (event === 'SIGNED_OUT') {
+          logout()
+          navigate('/login', { replace: true })
+        }
+      }
+    )
+
+    return () => subscription.unsubscribe()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   return null
 }
@@ -110,16 +174,14 @@ export default function App() {
 
   return (
     <>
+      <SupabaseAuthSync />
       <UnauthorizedListener />
       <Routes>
         <Route path="/login" element={<GuestOnly><LoginPage /></GuestOnly>} />
         <Route path="/onboard/worker" element={<RequireAuth><WorkerOnboardPage /></RequireAuth>} />
 
         {/* Public worker profiles — MUST come before the worker portal so React
-            Router resolves /worker/:workerId here, not in the portal tree.
-            RequireAuth only: any logged-in role (user, worker, admin) can view
-            another worker's public profile. These pages have their own layout
-            (back button + sticky CTA) and do not use AppLayout or WorkerLayout. */}
+            Router resolves /worker/:workerId here, not in the portal tree. */}
         <Route path="/worker/:workerId" element={<RequireAuth><WorkerProfilePage /></RequireAuth>} />
         <Route path="/worker/:workerId/book" element={<RequireAuth><BookDiscoveryPage /></RequireAuth>} />
 

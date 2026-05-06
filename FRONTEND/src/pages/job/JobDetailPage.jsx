@@ -348,465 +348,184 @@ function RescheduleModal({ open, onClose, currentDays, currentStart, currentEnd,
                       padding: '8px 4px', borderRadius: 10, cursor: 'pointer',
                       border: active ? '1.5px solid var(--amber, #F59E0B)' : '1px solid var(--card-border)',
                       background: active ? 'rgba(245,158,11,0.12)' : 'var(--card-bg)',
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
-                    }}>
-                    <span style={{ fontSize: 9, color: active ? '#F59E0B' : 'var(--text-muted)' }}>
-                      {dt.toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'UTC' })}
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 12, textAlign: 'center',
+                    flexDirection: 'column',
+                    color: active ? '#F59E0B' : 'var(--text-secondary)',
+                  }}>
+                    <span style={{ fontWeight: 700, fontSize: 14 }}>
+                      {dt.getDate()}
                     </span>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: active ? '#F59E0B' : 'var(--text-primary)', lineHeight: 1 }}>
-                      {dt.getUTCDate()}
-                    </span>
-                    <span style={{ fontSize: 9, color: active ? '#F59E0B' : 'var(--text-muted)' }}>
-                      {dt.toLocaleDateString('en-IN', { month: 'short', timeZone: 'UTC' })}
+                    <span style={{ fontSize: 10, opacity: 0.8 }}>
+                      {dt.toLocaleDateString('en', { weekday: 'short' })}
                     </span>
                   </button>
                 )
               })}
             </div>
-
-            {/* Time window */}
-            <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
-              letterSpacing: '0.06em', marginBottom: 8 }}>Arrival window (min 1 hour)</p>
-            <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
-              {[['From', timeOpts, windowStart, setWindowStart], ['To', endOpts, windowEnd, setWindowEnd]].map(([label, opts, val, setter]) => (
-                <div key={label} style={{ flex: 1 }}>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>{label}</p>
-                  <select value={val} onChange={e => setter(e.target.value)}
-                    style={{
-                      width: '100%', padding: '10px 10px', borderRadius: 10,
-                      border: val ? '1.5px solid var(--amber, #F59E0B)' : '1px solid var(--card-border)',
-                      background: 'var(--card-bg)', color: val ? 'var(--text-primary)' : 'var(--text-muted)',
-                      fontSize: 13, outline: 'none', appearance: 'none',
-                    }}>
-                    <option value="">Select</option>
-                    {opts.map(t => <option key={t} value={t}>{to12h(t)}</option>)}
-                  </select>
-                </div>
-              ))}
-            </div>
-
-            <div style={{ display: 'flex', gap: 10 }}>
-              <GlassButton variant="ghost" size="md" className="flex-1" onClick={onClose}>Cancel</GlassButton>
-              <button onClick={() => valid && onConfirm({ days, windowStart, windowEnd })}
-                disabled={!valid || loading}
-                style={{
-                  flex: 1, padding: '12px 16px', borderRadius: 12, fontSize: 14, fontWeight: 600,
-                  background: valid ? '#F59E0B' : 'rgba(245,158,11,0.3)',
-                  color: '#000', border: 'none', cursor: valid ? 'pointer' : 'not-allowed',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                }}>
-                {loading ? <Loader2 size={16} className="animate-spin" /> : null}
-                Confirm
-              </button>
-            </div>
           </motion.div>
         </>
-      )}
+        )}
     </AnimatePresence>
   )
 }
 
-// ─── Main page ─────────────────────────────────────────────────────────────────
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function JobDetailPage() {
-  const { jobId }   = useParams()
-  const navigate    = useNavigate()
-  const qc          = useQueryClient()
-  const [showCancel,    setShowCancel]    = useState(false)
-  const [showReschedule, setShowReschedule] = useState(false)
+  const { jobId } = useParams()
+  const navigate  = useNavigate()
+  const queryClient = useQueryClient()
 
-  // Fetch job
   const { data: job, isLoading, error } = useQuery({
     queryKey: ['job', jobId],
-    queryFn: async () => {
-      const { data } = await api.get(`/jobs/${jobId}`)
-      return data
-    },
-    refetchInterval: (data) => {
-      // Poll while job is in a live state
-      const live = ['searching', 'assigned', 'en_route', 'arrived', 'started']
-      return live.includes(data?.status) ? 10_000 : false
-    },
+    queryFn: () => api.get(`/jobs/${jobId}`).then(r => r.data),
+    refetchInterval: 15_000,
   })
 
-  // Fetch worker details if assigned
-  const { data: worker } = useQuery({
-    queryKey: ['worker-detail', job?.worker_id],
-    queryFn: async () => {
-      const { data } = await api.get(`/workers/${job.worker_id}`)
-      return data
-    },
-    enabled: !!job?.worker_id,
-  })
-
-  // Reschedule mutation
-  const rescheduleMut = useMutation({
-    mutationFn: async ({ days, windowStart, windowEnd }) => {
-      await api.patch(`/jobs/${jobId}/reschedule`, {
-        preferred_days: days,
-        window_start: windowStart,
-        window_end: windowEnd,
-      })
-    },
+  const cancelMut = useMutation({
+    mutationFn: (reason) => api.post(`/jobs/${jobId}/cancel`, { reason }),
     onSuccess: () => {
-      toast.success('Booking rescheduled!')
-      qc.invalidateQueries({ queryKey: ['job', jobId] })
-      setShowReschedule(false)
+      toast.success('Job cancelled')
+      queryClient.invalidateQueries(['job', jobId])
+    },
+    onError: (e) => toast.error(errMsg(e, 'Cancel failed')),
+  })
+
+  const rescheduleMut = useMutation({
+    mutationFn: ({ days, windowStart, windowEnd }) =>
+      api.patch(`/jobs/${jobId}`, { preferred_days: days, arrival_window_start: windowStart, arrival_window_end: windowEnd }),
+    onSuccess: () => {
+      toast.success('Reschedule request sent')
+      queryClient.invalidateQueries(['job', jobId])
     },
     onError: (e) => toast.error(errMsg(e, 'Reschedule failed')),
   })
 
-  // Cancel mutation
-  const cancelMut = useMutation({
-    mutationFn: async (reason) => {
-      await api.post(`/jobs/${jobId}/cancel`, { reason })
-    },
-    onSuccess: () => {
-      toast.success('Booking cancelled')
-      qc.invalidateQueries({ queryKey: ['job', jobId] })
-      qc.invalidateQueries({ queryKey: ['jobs'] })
-      setShowCancel(false)
-    },
-    onError: (e) => toast.error(errMsg(e, 'Cancellation failed')),
-  })
+  const [showCancel,     setShowCancel]     = useState(false)
+  const [showReschedule, setShowReschedule] = useState(false)
 
-  if (isLoading) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'var(--page-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Loader2 size={32} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
-      </div>
-    )
-  }
+  if (isLoading) return (
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <div className="w-8 h-8 border-2 border-brand border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
 
-  if (error || !job) {
-    return (
-      <div style={{ minHeight: '100vh', background: 'var(--page-bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12 }}>
-        <AlertTriangle size={36} style={{ color: '#F87171' }} />
-        <p style={{ color: 'var(--text-secondary)' }}>Booking not found</p>
-        <GlassButton variant="ghost" onClick={() => navigate('/bookings')}>Back to bookings</GlassButton>
-      </div>
-    )
-  }
+  if (error || !job) return (
+    <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
+      <p style={{ color: 'var(--text-muted)' }}>Could not load job details.</p>
+      <GlassButton variant="ghost" onClick={() => navigate(-1)}>Go Back</GlassButton>
+    </div>
+  )
 
-  const cfg = STATUS[job.status] || STATUS.requested
-  const StatusIcon = cfg.icon
-  const isLive = ['searching', 'assigned', 'en_route', 'arrived', 'started'].includes(job.status)
-  const isScheduledPending = ['scheduled', 'requested', 'searching'].includes(job.status)
-  const isConfirmedOrAssigned = ['confirmed', 'worker_assigned', 'assigned'].includes(job.status)
-  const isDone = ['completed', 'cancelled', 'failed'].includes(job.status)
-  const canCancel = !isDone && !['en_route', 'arrived', 'started'].includes(job.status)
-  const hasSlot = !!job.slot_id && !!job.scheduled_at
-  const hasWindow = !!(job.preferred_days?.length && job.window_start && job.window_end)
+  const worker = job.worker || {}
+  const isActive = ['searching', 'assigned', 'arrived', 'in_progress'].includes(job.status)
+  const isDone   = job.status === 'completed'
+  const isCancellable = ['searching', 'assigned'].includes(job.status)
+  const isScheduled = job.job_type === 'scheduled' || job.preferred_days?.length > 0
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--page-bg)', position: 'relative' }}>
-      <Background />
-      <div style={{ maxWidth: 428, margin: '0 auto', padding: '0 16px 120px' }}>
+    <div className="px-0 pb-4 max-w-3xl mx-auto">
+      {/* Back header */}
+      <div className="px-4 pt-5 pb-3 flex items-center gap-3">
+        <button onClick={() => navigate(-1)}
+          style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)', borderRadius: 10,
+            padding: '6px 10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
+            color: 'var(--text-secondary)', fontSize: 13 }}>
+          ← Back
+        </button>
+        <h1 style={{ fontWeight: 700, fontSize: 17, color: 'var(--text-primary)', margin: 0 }}>
+          Job Details
+        </h1>
+      </div>
 
-        {/* ── Header ── */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '20px 0 16px' }}>
-          <button onClick={() => navigate(-1)}
-            style={{ width: 38, height: 38, borderRadius: 10, background: 'var(--card-bg)',
-              border: '1px solid var(--card-border)', display: 'flex', alignItems: 'center',
-              justifyContent: 'center', cursor: 'pointer', flexShrink: 0 }}>
-            <ChevronLeft size={18} style={{ color: 'var(--text-secondary)' }} />
-          </button>
-          <div>
-            <h1 style={{ fontSize: 17, fontWeight: 700, color: 'var(--text-primary)', fontFamily: 'Syne, sans-serif' }}>
-              Booking Details
-            </h1>
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
-              #{job.id.slice(0, 8).toUpperCase()}
-            </p>
+      <div className="px-4 space-y-4">
+        {/* Status card */}
+        <div style={{ borderRadius: 20, padding: '16px 20px', background: 'var(--card-bg)',
+          border: '1px solid var(--card-border)' }}>
+          <StatusTimeline job={job} />
+        </div>
+
+        {/* Worker card (if assigned) */}
+        {worker.id && (
+          <div style={{ borderRadius: 20, padding: '16px 20px', background: 'var(--card-bg)',
+            border: '1px solid var(--card-border)' }}>
+            <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
+              letterSpacing: '0.06em', marginBottom: 12 }}>Assigned Worker</p>
+            <button onClick={() => navigate(`/worker/${worker.id}`)}
+              style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer',
+                display: 'flex', gap: 12, alignItems: 'center', padding: 0 }}>
+              {worker.avatar_url
+                ? <img src={worker.avatar_url} alt={worker.full_name}
+                    style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover',
+                      border: '2px solid var(--card-border)', flexShrink: 0 }} />
+                : <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(75,123,255,0.15)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                    fontSize: 20, color: 'var(--brand)' }}>
+                    {worker.full_name?.[0]?.toUpperCase() || 'W'}
+                  </div>
+              }
+              <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+                <p style={{ fontWeight: 700, color: 'var(--text-primary)', margin: 0 }}>{worker.full_name}</p>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{job.category_name || 'Service'}</p>
+                {worker.rating && (
+                  <p style={{ fontSize: 12, color: '#f59e0b', margin: '2px 0 0' }}>★ {worker.rating.toFixed(1)}</p>
+                )}
+              </div>
+              <span style={{ color: 'var(--brand)', fontSize: 13 }}>View →</span>
+            </button>
+          </div>
+        )}
+
+        {/* Job info */}
+        <div style={{ borderRadius: 20, padding: '16px 20px', background: 'var(--card-bg)',
+          border: '1px solid var(--card-border)' }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
+            letterSpacing: '0.06em', marginBottom: 12 }}>Details</p>
+          <div className="space-y-3">
+            <InfoRow icon={MapPin} label="Location" value={job.location_address || 'Not set'} />
+            <InfoRow icon={Clock} label="Type" value={job.job_type === 'instant' ? 'Instant' : 'Scheduled'} />
+            {job.created_at && <InfoRow icon={Calendar} label="Booked" value={fmtDate(job.created_at)} />}
+            {job.started_at && <InfoRow icon={Clock} label="Started" value={fmt(job.started_at)} />}
+            {job.completed_at && <InfoRow icon={CheckCircle} label="Completed" value={fmt(job.completed_at)} />}
           </div>
         </div>
 
-        {/* ── Status banner ── */}
-        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-          style={{ padding: '16px 18px', borderRadius: 16, background: cfg.bg,
-            border: `1px solid ${cfg.color}30`, marginBottom: 16,
-            display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div style={{ width: 44, height: 44, borderRadius: 12, background: `${cfg.color}20`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-            <StatusIcon size={22} style={{ color: cfg.color }} />
-          </div>
-          <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: 16, fontWeight: 700, color: cfg.color }}>{cfg.label}</p>
-            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-              {job.title || SOURCE_LABELS[job.source] || 'Booking'}
-              {' · '}
-              <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>
-                {fmt(job.created_at)}
-              </span>
-            </p>
-          </div>
-          {isLive && (
-            <div style={{ width: 10, height: 10, borderRadius: '50%', background: cfg.color,
-              boxShadow: `0 0 8px ${cfg.color}` }} className="animate-pulse" />
-          )}
-        </motion.div>
-
-        {/* ── Progress timeline ── */}
-        <GlassCard className="p-5" style={{ marginBottom: 12 }}>
-          <SectionTitle>Progress</SectionTitle>
-          <StatusTimeline job={job} />
-        </GlassCard>
-
-        {/* ── Scheduling info ── */}
-        {(hasSlot || hasWindow) && (
-          <GlassCard className="p-5" style={{ marginBottom: 12 }}>
-            <SectionTitle>Schedule</SectionTitle>
-            {hasSlot ? (
-              <>
-                <InfoRow icon={Calendar} label="Date" accent
-                  value={fmtDate(new Date(job.scheduled_at).toISOString().split('T')[0])} />
-                <InfoRow icon={Clock} label="Time" accent
-                  value={`${new Date(job.scheduled_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })}`} />
-                <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(52,211,153,0.07)',
-                  border: '1px solid rgba(52,211,153,0.15)' }}>
-                  <p style={{ fontSize: 11, color: '#34D399' }}>
-                    ✓ Specific slot reserved — worker arrives exactly at this time
-                  </p>
-                </div>
-              </>
-            ) : (
-              <>
-                <div style={{ marginBottom: 12 }}>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>Preferred days</p>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {job.preferred_days?.map((d, i) => (
-                      <span key={d} style={{
-                        padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                        background: i === 0 ? 'rgba(167,139,250,0.15)' : 'var(--card-bg)',
-                        color: i === 0 ? '#A78BFA' : 'var(--text-secondary)',
-                        border: `1px solid ${i === 0 ? 'rgba(167,139,250,0.3)' : 'var(--card-border)'}`,
-                      }}>
-                        {i === 0 ? '1st · ' : i === 1 ? '2nd · ' : '3rd · '}
-                        {fmtDate(d)}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <InfoRow icon={Clock} label="Arrival window" accent
-                  value={`${fmtTime(job.window_start)} – ${fmtTime(job.window_end)}`} />
-              </>
-            )}
-          </GlassCard>
-        )}
-
-        {/* ── Worker info ── */}
-        {worker ? (
-          <GlassCard className="p-5" style={{ marginBottom: 12 }}>
-            <SectionTitle>Your Worker</SectionTitle>
-            {/* Tappable row → worker public profile */}
-            <button
-              onClick={() => navigate(`/worker/${job.worker_id}`)}
-              style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer',
-                display: 'flex', gap: 12, alignItems: 'center', padding: 0 }}>
-              {worker.avatar_url ? (
-                <img src={worker.avatar_url} alt={worker.full_name}
-                  style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover',
-                    border: '2px solid var(--card-border)', flexShrink: 0 }} />
-              ) : (
-                <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(75,123,255,0.15)',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <User size={22} style={{ color: '#4B7BFF' }} />
-                </div>
-              )}
-              <div style={{ flex: 1, textAlign: 'left' }}>
-                <p style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-primary)' }}>
-                  {worker.full_name || 'Your Worker'}
-                </p>
-                {worker.avg_rating > 0 && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
-                    <Star size={12} style={{ color: '#F59E0B', fill: '#F59E0B' }} />
-                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 600 }}>
-                      {Number(worker.avg_rating).toFixed(1)}
-                    </span>
-                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                      ({worker.rating_count || 0} reviews)
-                    </span>
-                  </div>
-                )}
-                {worker.bio && (
-                  <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.4 }}>{worker.bio}</p>
-                )}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 4, padding: '4px 10px',
-                  borderRadius: 20, background: 'rgba(75,123,255,0.10)', border: '1px solid rgba(75,123,255,0.20)' }}>
-                  <PhoneOff size={10} style={{ color: '#4B7BFF' }} />
-                  <span style={{ fontSize: 10, color: '#4B7BFF', fontWeight: 600 }}>Phone hidden</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
-                  <span style={{ fontSize: 11, color: 'var(--brand)' }}>View profile</span>
-                  <ChevronRight size={12} style={{ color: 'var(--brand)' }} />
-                </div>
-              </div>
-            </button>
-          </GlassCard>
-        ) : isScheduledPending ? (
-          <GlassCard className="p-4" style={{ marginBottom: 12 }}>
-            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-              <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(245,158,11,0.10)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <User size={18} style={{ color: '#F59E0B' }} />
-              </div>
-              <div>
-                <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Worker not yet assigned</p>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 1 }}>
-                  {job.status === 'searching'
-                    ? 'Matching in progress — usually takes under a minute.'
-                    : 'We\'ll assign the best available worker and notify you before your window.'}
-                </p>
-              </div>
-            </div>
-          </GlassCard>
-        ) : null}
-
-        {/* ── Location ── */}
-        <GlassCard className="p-5" style={{ marginBottom: 12 }}>
-          <SectionTitle>Location</SectionTitle>
-          <InfoRow icon={MapPin} label="Address" value={job.location_address} accent />
-          {job.location_area && <InfoRow icon={MapPin} label="Area" value={job.location_area} />}
-          {job.location_note && <InfoRow icon={MapPin} label="Landmark" value={job.location_note} />}
-        </GlassCard>
-
-        {/* ── Price breakdown ── */}
-        {(job.quoted_price || job.final_price) && (
-          <GlassCard className="p-5" style={{ marginBottom: 12 }}>
-            <SectionTitle>Payment</SectionTitle>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-              {job.quoted_price && (
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>Estimated</span>
-                  <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-secondary)',
-                    fontFamily: 'JetBrains Mono, monospace' }}>
-                    ₹{Number(job.quoted_price).toFixed(0)}
-                  </span>
-                </div>
-              )}
-              {job.final_price && (
-                <>
-                  <div style={{ height: 1, background: 'var(--card-border)' }} />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>Total Paid</span>
-                    <span style={{ fontSize: 18, fontWeight: 700, color: '#34D399',
-                      fontFamily: 'JetBrains Mono, monospace' }}>
-                      ₹{Number(job.final_price).toFixed(0)}
-                    </span>
-                  </div>
-                  {job.platform_fee && (
-                    <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>Platform fee</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace' }}>
-                        ₹{Number(job.platform_fee).toFixed(0)}
-                      </span>
-                    </div>
-                  )}
-                </>
-              )}
-              {!job.final_price && (
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4 }}>
-                  Payment collected after work is completed via Kaargar
-                </p>
-              )}
-            </div>
-          </GlassCard>
-        )}
-
-        {/* ── Actions ── */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-
-          {/* Chat — available once a worker is assigned and job is active */}
-          {(isConfirmedOrAssigned || isLive) && !isDone && (
-            <GlassButton variant="brand" size="lg" className="w-full"
-              icon={MessageCircle} iconPosition="left"
-              onClick={() => navigate(`/chat/${jobId}`)}>
-              Message Worker
+        {/* Actions */}
+        <div className="flex gap-3">
+          {isActive && job.chat_id && (
+            <GlassButton variant="brand" className="flex-1" onClick={() => navigate(`/chat/${jobId}`)}>
+              Open Chat
             </GlassButton>
           )}
-
-          {/* Live job — go to tracking */}
-          {['en_route', 'arrived', 'started'].includes(job.status) && (
-            <GlassButton variant="instant" size="lg" className="w-full"
-              icon={Navigation} iconPosition="left"
-              onClick={() => navigate(`/job/${jobId}/active`)}>
-              Track Live
+          {isCancellable && (
+            <GlassButton variant="danger" className="flex-1" onClick={() => setShowCancel(true)}>
+              Cancel Job
             </GlassButton>
           )}
-
-          {/* Reschedule — only window-based jobs not yet assigned */}
-          {isScheduledPending && hasWindow && (
-            <GlassButton variant="discovery" size="lg" className="w-full"
-              icon={RotateCcw} iconPosition="left"
-              onClick={() => setShowReschedule(true)}>
+          {isScheduled && isActive && (
+            <GlassButton variant="outline" className="flex-1" onClick={() => setShowReschedule(true)}>
               Reschedule
             </GlassButton>
           )}
-
-          {/* Completed — review */}
-          {job.status === 'completed' && (
-            <GlassButton variant="instant" size="lg" className="w-full"
-              icon={Star} iconPosition="left"
-              onClick={() => navigate(`/job/${jobId}/review`)}>
-              Leave a Review
-            </GlassButton>
-          )}
-
-          {/* Cancel */}
-          {canCancel && (
-            <button onClick={() => setShowCancel(true)}
-              style={{
-                width: '100%', padding: '13px 16px', borderRadius: 12, fontSize: 14,
-                fontWeight: 600, color: '#F87171', cursor: 'pointer',
-                background: 'rgba(248,113,113,0.07)',
-                border: '1px solid rgba(248,113,113,0.20)',
-              }}>
-              Cancel Booking
-            </button>
-          )}
-
-          {/* Book again */}
-          {isDone && (
-            <GlassButton variant="ghost" size="lg" className="w-full"
-              onClick={() => navigate('/')}>
-              Book Again
-            </GlassButton>
-          )}
-
-          {/* Support — always visible */}
-          <button
-            onClick={() => navigate(`/support?job_id=${jobId}`)}
-            style={{
-              width: '100%', padding: '12px 16px', borderRadius: 12, fontSize: 14,
-              fontWeight: 500, color: 'var(--text-secondary)', cursor: 'pointer',
-              background: 'transparent', border: '1px solid var(--card-border)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-            }}>
-            <HeadphonesIcon size={15} />
-            Get Help / Report Issue
-          </button>
         </div>
-
       </div>
 
       <CancelModal
         open={showCancel}
         onClose={() => setShowCancel(false)}
-        onConfirm={(reason) => cancelMut.mutate(reason)}
         loading={cancelMut.isPending}
+        onConfirm={(reason) => cancelMut.mutate(reason)}
       />
 
       <RescheduleModal
         open={showReschedule}
         onClose={() => setShowReschedule(false)}
         currentDays={job.preferred_days || []}
-        currentStart={job.window_start ? job.window_start.slice(0, 5) : ''}
-        currentEnd={job.window_end   ? job.window_end.slice(0, 5)   : ''}
-        onConfirm={({ days, windowStart, windowEnd }) =>
-          rescheduleMut.mutate({ days, windowStart, windowEnd })}
+        currentStart={job.arrival_window_start || '09:00'}
+        currentEnd={job.arrival_window_end || '12:00'}
         loading={rescheduleMut.isPending}
+        onConfirm={(vals) => rescheduleMut.mutate(vals)}
       />
     </div>
   )

@@ -291,7 +291,7 @@ function MapFallback({ onSelect, height, className }) {
     onSelect?.({ lat: area.lat, lon: area.lon, address: `${area.name}, Pune` })
   }
   return (
-    <div className={`rounded-2xl overflow-hidden border border-white/10 ${className}`}
+    <div className={`rounded-2xl overflow-hidden ${className}`}
       style={{ height, background: 'var(--bg-elevated)', padding: 16, boxSizing: 'border-box', overflowY: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
         <Navigation size={14} color="#F59E0B" />
@@ -313,5 +313,3 @@ function MapFallback({ onSelect, height, className }) {
     </div>
   )
 }
-
-export default PuneMap

@@ -27,7 +27,6 @@ export function AppLayout() {
 
       {!hideNav && <MobileBottomNav />}
 
-      {/* First-time onboarding walkthrough — shown once per user */}
       <AnimatePresence>
         {showOnboarding && (
           <OnboardingWalkthrough onDone={dismissOnboarding} />
