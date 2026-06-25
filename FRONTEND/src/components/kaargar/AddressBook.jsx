@@ -78,7 +78,7 @@ function AddressForm({ initial, onSave, onCancel }) {
               style={{
                 padding: '5px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
                 border: label === p ? '1.5px solid var(--brand)' : '1px solid var(--card-border)',
-                background: label === p ? 'rgba(75,123,255,0.12)' : 'var(--card-bg)',
+                background: label === p ? 'rgba(245,158,11,0.12)' : 'var(--card-bg)',
                 color: label === p ? 'var(--brand)' : 'var(--text-secondary)',
                 fontWeight: label === p ? 600 : 400,
               }}>
@@ -235,7 +235,7 @@ export function AddressBook({ picker = false, onSelect, selected }) {
                   ? '1.5px solid var(--brand)'
                   : '1px solid var(--card-border)',
                 background: isSelected
-                  ? 'rgba(75,123,255,0.08)'
+                  ? 'rgba(245,158,11,0.08)'
                   : 'var(--card-bg)',
                 cursor: picker ? 'pointer' : 'default',
                 display: 'flex', alignItems: 'flex-start', gap: 10,
@@ -346,8 +346,8 @@ export function AddressBook({ picker = false, onSelect, selected }) {
                 onClick={() => { setShowForm(true); setEditing(null) }}
                 style={{
                   width: '100%', padding: '11px', borderRadius: 14,
-                  border: '1.5px dashed rgba(75,123,255,0.3)',
-                  background: 'rgba(75,123,255,0.05)',
+                  border: '1.5px dashed rgba(245,158,11,0.3)',
+                  background: 'rgba(245,158,11,0.05)',
                   color: 'var(--brand)', fontSize: 13, fontWeight: 600,
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 }}>
@@ -364,8 +364,8 @@ export function AddressBook({ picker = false, onSelect, selected }) {
           onClick={() => setShowForm(v => !v)}
           style={{
             width: '100%', marginTop: 8, padding: '10px',
-            borderRadius: 12, border: '1px dashed rgba(75,123,255,0.3)',
-            background: 'rgba(75,123,255,0.05)', color: 'var(--brand)',
+            borderRadius: 12, border: '1px dashed rgba(245,158,11,0.3)',
+            background: 'rgba(245,158,11,0.05)', color: 'var(--brand)',
             fontSize: 13, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>

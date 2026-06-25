@@ -1136,7 +1136,7 @@ export default function WorkerOnboardPage() {
               <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
                 <div style={{
                   width: '64px', height: '64px', borderRadius: '20px', margin: '0 auto 16px',
-                  background: 'rgba(75,123,255,0.12)',
+                  background: 'rgba(245,158,11,0.12)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   <Rocket size={30} style={{ color: 'var(--brand)' }} />
@@ -1184,7 +1184,7 @@ export default function WorkerOnboardPage() {
               </GlassCard>
 
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '12px 14px', borderRadius: '12px',
-                background: 'rgba(75,123,255,0.06)', border: '1px solid rgba(75,123,255,0.15)' }}>
+                background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}>
                 <AlertCircle size={13} style={{ color: 'var(--brand)', flexShrink: 0, marginTop: '1px' }} />
                 <p className="text-xs" style={{ color: 'var(--brand)', lineHeight: '1.6' }}>
                   Your profile will be submitted for review. You can start receiving jobs once approved (usually within 24 hours).

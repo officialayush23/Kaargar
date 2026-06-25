@@ -8,17 +8,20 @@ import { motion } from 'framer-motion'
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare,
   Settings, LogOut, Menu, X, ShieldCheck, Layers,
+  Wallet, UserCog,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabase'
 
 const NAV = [
-  { to: '/admin',          label: 'Dashboard',  icon: LayoutDashboard, exact: true },
-  { to: '/admin/workers',  label: 'Workers',    icon: Users },
-  { to: '/admin/jobs',     label: 'Jobs',       icon: Briefcase },
-  { to: '/admin/support',  label: 'Support',    icon: MessageSquare },
+  { to: '/admin',            label: 'Dashboard',  icon: LayoutDashboard, exact: true },
+  { to: '/admin/workers',    label: 'Workers',    icon: Users },
+  { to: '/admin/users',      label: 'Users',      icon: UserCog },
+  { to: '/admin/jobs',       label: 'Jobs',       icon: Briefcase },
+  { to: '/admin/payouts',    label: 'Payouts',    icon: Wallet },
+  { to: '/admin/support',    label: 'Support',    icon: MessageSquare },
   { to: '/admin/categories', label: 'Professions', icon: Layers },
-  { to: '/admin/config',   label: 'Config',     icon: Settings },
+  { to: '/admin/config',     label: 'Config',     icon: Settings },
 ]
 
 export default function AdminLayout() {

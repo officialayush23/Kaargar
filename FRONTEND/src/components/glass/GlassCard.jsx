@@ -16,11 +16,12 @@ export function GlassCard({
   as: Tag = 'div',
   ...props
 }) {
+  // glows disabled — no hue glow anywhere
   const glowMap = {
-    azure:  'shadow-[0_0_32px_rgba(59,130,246,0.25)]',
-    green:  'shadow-[0_0_32px_rgba(16,185,129,0.25)]',
-    amber:  'shadow-[0_0_32px_rgba(245,158,11,0.55)]',
-    violet: 'shadow-[0_0_32px_rgba(124,58,237,0.25)]',
+    azure:  '',
+    green:  '',
+    amber:  '',
+    violet: '',
   }
 
   const base = blue ? 'glass-amber' : 'glass-card'
@@ -37,22 +38,7 @@ export function GlassCard({
       )}
       {...props}
     >
-      {/* Top-left specular corner highlight */}
-      <div
-        className="pointer-events-none absolute inset-0 rounded-2xl"
-        style={{
-          background: 'radial-gradient(ellipse 50% 40% at 15% 10%, rgba(255,255,255,0.09) 0%, transparent 70%)',
-          zIndex: 0,
-        }}
-      />
-      {/* Top edge shine line */}
-      <div
-        className="pointer-events-none absolute top-0 left-4 right-4 h-px"
-        style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)', zIndex: 1 }}
-      />
-      <div className="relative" style={{ zIndex: 2 }}>
-        {children}
-      </div>
+      {children}
     </Tag>
   )
 
@@ -66,15 +52,7 @@ export function GlassCard({
       onClick={onClick}
       className={cn(base, 'rounded-2xl cursor-pointer select-none', glow && glowMap[glowColor], className)}
     >
-      <div
-        className="pointer-events-none absolute inset-0 rounded-2xl"
-        style={{ background: 'radial-gradient(ellipse 50% 40% at 15% 10%, rgba(255,255,255,0.09) 0%, transparent 70%)', zIndex: 0 }}
-      />
-      <div
-        className="pointer-events-none absolute top-0 left-4 right-4 h-px"
-        style={{ background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.22), transparent)', zIndex: 1 }}
-      />
-      <div className="relative" style={{ zIndex: 2 }}>{children}</div>
+      {children}
     </motion.div>
   )
 }

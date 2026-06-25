@@ -25,13 +25,13 @@ function TicketCard({ ticket, onResolve, resolving }) {
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-                style={{ background: 'rgba(75,123,255,0.12)', color: '#4B7BFF' }}>
+                style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--text-secondary)' }}>
                 {TYPE_LABELS[ticket.type] || 'General'}
               </span>
               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full`}
                 style={{
-                  background: isOpen ? '#251606' : 'rgba(34,197,94,0.12)',
-                  color: isOpen ? '#f59e0b' : '#22c55e',
+                  background: isOpen ? '#251606' : 'rgba(255,255,255,0.06)',
+                  color: isOpen ? '#f59e0b' : 'var(--text-secondary)',
                 }}>
                 {isOpen ? 'Open' : 'Resolved'}
               </span>

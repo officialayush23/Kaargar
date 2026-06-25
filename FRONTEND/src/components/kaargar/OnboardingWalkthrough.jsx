@@ -20,8 +20,6 @@ import { useAuthStore } from '@/stores/auth'
 const SLIDES = [
   {
     emoji: '⚡',
-    color: '#22C55E',
-    glow: 'rgba(34,197,94,0.2)',
     title: 'Instant Help',
     subtitle: 'Need someone right now?',
     body: 'Switch to Instant mode on the home screen and pick a category — electrician, plumber, cleaner and more. We find the best available worker near you in minutes.',
@@ -29,8 +27,6 @@ const SLIDES = [
   },
   {
     emoji: '🔍',
-    color: '#F59E0B',
-    glow: 'rgba(245,158,11,0.55)',
     title: 'Discover & Schedule',
     subtitle: 'Plan ahead, your way.',
     body: 'Browse the Discover tab to find top-rated workers and services. Pick up to 3 preferred days and a time window — we\'ll confirm the best worker and notify you before they arrive.',
@@ -38,8 +34,6 @@ const SLIDES = [
   },
   {
     emoji: '📋',
-    color: '#3B82F6',
-    glow: 'rgba(59,130,246,0.2)',
     title: 'Your Bookings',
     subtitle: 'Everything in one place.',
     body: 'The Bookings tab shows all your active jobs, past services, and any packages you\'ve purchased. Track status in real-time — from worker assigned to job completed.',
@@ -47,8 +41,6 @@ const SLIDES = [
   },
   {
     emoji: '💬',
-    color: '#A855F7',
-    glow: 'rgba(168,85,247,0.2)',
     title: 'Private Chat',
     subtitle: 'Talk without sharing contacts.',
     body: 'Once a worker is assigned, a private chat opens automatically. No phone numbers are ever shared — all communication stays inside Kaargar.',
@@ -56,8 +48,6 @@ const SLIDES = [
   },
   {
     emoji: '🔒',
-    color: '#F59E0B',
-    glow: 'rgba(245,158,11,0.55)',
     title: 'Safe & Verified',
     subtitle: 'Trust, built in.',
     body: 'Every worker is verified by our team before they can accept jobs. A one-time OTP confirms the job start — your money stays in escrow until the work is done and you approve.',
@@ -156,22 +146,8 @@ export function OnboardingWalkthrough({ onDone }) {
               border: '1px solid rgba(255,255,255,0.08)',
               borderRadius: '24px',
               padding: '32px 28px 28px',
-              boxShadow: `0 0 60px ${slide.glow}, 0 24px 64px rgba(0,0,0,0.5)`,
-              position: 'relative',
-              overflow: 'hidden',
             }}
           >
-            {/* Background glow */}
-            <div style={{
-              position: 'absolute',
-              top: '-40px', left: '50%', transform: 'translateX(-50%)',
-              width: '200px', height: '200px',
-              borderRadius: '50%',
-              background: slide.glow,
-              filter: 'blur(60px)',
-              pointerEvents: 'none',
-            }} />
-
             {/* Emoji */}
             <motion.div
               key={`emoji-${idx}`}
@@ -181,12 +157,11 @@ export function OnboardingWalkthrough({ onDone }) {
               style={{
                 width: 72, height: 72,
                 borderRadius: '20px',
-                background: `${slide.glow}`,
-                border: `1.5px solid ${slide.color}33`,
+                background: 'rgba(255,255,255,0.06)',
+                border: '1px solid rgba(255,255,255,0.08)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: '36px',
                 marginBottom: '20px',
-                boxShadow: `0 0 24px ${slide.glow}`,
               }}
             >
               {slide.emoji}
@@ -196,7 +171,7 @@ export function OnboardingWalkthrough({ onDone }) {
             <p style={{
               fontSize: '11px',
               fontWeight: 600,
-              color: slide.color,
+              color: '#F59E0B',
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
               marginBottom: '6px',
@@ -211,7 +186,7 @@ export function OnboardingWalkthrough({ onDone }) {
               color: 'var(--text-primary, #F1F5F9)',
               marginBottom: '12px',
               lineHeight: 1.2,
-              fontFamily: 'Syne, sans-serif',
+              fontFamily: 'Poppins, Arial, sans-serif',
             }}>
               {slide.title}
             </h2>
@@ -249,7 +224,7 @@ export function OnboardingWalkthrough({ onDone }) {
                     onClick={() => { setDir(i > idx ? 1 : -1); setIdx(i) }}
                     animate={{
                       width: i === idx ? 20 : 6,
-                      background: i === idx ? slide.color : 'rgba(255,255,255,0.15)',
+                      background: i === idx ? '#F59E0B' : 'rgba(255,255,255,0.15)',
                     }}
                     transition={{ duration: 0.2 }}
                     style={{
@@ -289,12 +264,11 @@ export function OnboardingWalkthrough({ onDone }) {
                     padding: '10px 20px',
                     borderRadius: '12px',
                     border: 'none',
-                    background: slide.color,
+                    background: '#F59E0B',
                     color: '#000',
                     fontSize: '14px',
                     fontWeight: 700,
                     cursor: 'pointer',
-                    boxShadow: `0 4px 20px ${slide.glow}`,
                   }}
                 >
                   {isLast ? "Let's go" : 'Next'}

@@ -149,7 +149,7 @@ function PayNowButton({ jobId, amount, userEmail, userName, onPaymentSuccess }) 
         whileTap={busy ? {} : { scale: 0.98 }}
         className="w-full flex items-center justify-center gap-2.5 py-3.5 rounded-xl font-semibold text-sm transition-opacity"
         style={{
-          background: busy ? 'rgba(34,197,94,0.3)' : 'linear-gradient(135deg, #22C55E, #16A34A)',
+          background: busy ? 'rgba(34,197,94,0.3)' : '#22C55E',
           color: '#fff',
           opacity: busy ? 0.7 : 1,
           cursor: busy ? 'not-allowed' : 'pointer',

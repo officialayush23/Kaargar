@@ -21,12 +21,12 @@ export function GlassButton({
   ...props
 }) {
   const variants = {
-    brand:     'btn-brand text-white rounded-xl',
-    instant:   'btn-instant text-white rounded-xl',
-    discovery: 'btn-discovery text-white rounded-xl',
+    brand:     'btn-brand rounded-xl',
+    instant:   'btn-brand rounded-xl',
+    discovery: 'btn-brand rounded-xl',
     ghost:     'btn-glass rounded-xl',
     outline:   'rounded-xl transition-all border',
-    danger:    'bg-gradient-to-br from-red-500 to-red-700 text-white rounded-xl shadow-[0_4px_20px_rgba(239,68,68,0.4)] hover:shadow-[0_8px_32px_rgba(239,68,68,0.55)] transition-all',
+    danger:    'bg-red-600 text-white rounded-xl transition-all',
   }
 
   const sizes = {
@@ -65,18 +65,6 @@ export function GlassButton({
       )}
       {...props}
     >
-      {/* Glare sweep on hover */}
-      {!isDisabled && (
-        <motion.div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 50%)',
-            opacity: 0,
-          }}
-          whileHover={{ opacity: 1 }}
-          transition={{ duration: 0.2 }}
-        />
-      )}
 
       {loading ? (
         <Loader2 className="h-4 w-4 animate-spin" />

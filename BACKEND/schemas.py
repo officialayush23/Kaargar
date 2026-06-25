@@ -61,6 +61,8 @@ class CategoryResponse(KaargarBase):
     slug: str
     description: Optional[str] = None
     icon_name: Optional[str] = None
+    icon_emoji: Optional[str] = None
+    icon_url: Optional[str] = None   # custom PNG/SVG/Lottie from Supabase Storage
     color_hex: Optional[str] = None
     mode: str
     is_active: bool
@@ -76,6 +78,7 @@ class CategoryCreate(BaseModel):
     description: Optional[str] = None
     icon_name: Optional[str] = None
     icon_emoji: Optional[str] = None
+    icon_url: Optional[str] = None
     color_hex: Optional[str] = '#6B7280'
     mode: str = 'instant'          # instant | discovery | both
     is_featured: bool = False
@@ -89,6 +92,7 @@ class CategoryUpdate(BaseModel):
     description: Optional[str] = None
     icon_name: Optional[str] = None
     icon_emoji: Optional[str] = None
+    icon_url: Optional[str] = None
     color_hex: Optional[str] = None
     mode: Optional[str] = None
     is_active: Optional[bool] = None

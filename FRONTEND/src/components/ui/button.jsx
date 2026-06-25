@@ -7,9 +7,9 @@ const buttonVariants = cva(
   {
     variants: {
       variant: {
-        default:     'btn-brand text-white font-semibold',
-        instant:     'btn-instant text-white font-semibold',
-        discovery:   'btn-discovery text-white font-semibold',
+        default:     'btn-brand font-semibold',
+        instant:     'btn-brand font-semibold',
+        discovery:   'btn-brand font-semibold',
         // outline + ghost use CSS-variable utility classes defined in globals.css:
         outline:     'btn-outline-token',
         ghost:       'btn-ghost-token',

@@ -42,28 +42,24 @@ const PLATFORM_FEATURES = [
   {
     icon: BadgeCheck,
     color: '#4ade80',
-    bg: 'rgba(74,222,128,0.1)',
     title: 'Verified Workers',
     desc: 'Every worker is background-checked, document-verified, and rated by real customers.',
   },
   {
     icon: Clock,
     color: '#60a5fa',
-    bg: 'rgba(96,165,250,0.1)',
     title: 'Instant Matching',
     desc: 'Get a worker at your door in under 30 minutes with our real-time dispatch system.',
   },
   {
     icon: Wallet,
     color: '#fbbf24',
-    bg: 'rgba(251,191,36,0.1)',
     title: 'Secure Payments',
     desc: 'Pay only after the job is done. Money held in escrow until you approve.',
   },
   {
     icon: Shield,
     color: '#f472b6',
-    bg: 'rgba(244,114,182,0.1)',
     title: 'Work Guarantee',
     desc: 'Not satisfied? We rebook the job or refund — no questions asked.',
   },
@@ -124,7 +120,7 @@ function PackageCard({ pkg, onClick, index }) {
     >
       <div className="flex items-start justify-between">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: '#251606' }}>
+          style={{ background: 'rgba(255,255,255,0.06)' }}>
           <Package className="h-5 w-5 text-amber-400" />
         </div>
         {discount > 0 && (
@@ -224,11 +220,11 @@ function SectionHeader({ icon: Icon, title, subtitle, accent = '#f59e0b', onSeeA
     <div className="flex items-start justify-between mb-4">
       <div className="flex items-start gap-3">
         <div className="w-8 h-8 rounded-xl flex items-center justify-center mt-0.5"
-          style={{ background: accent + '18' }}>
+          style={{ background: 'rgba(255,255,255,0.06)' }}>
           <Icon className="h-4 w-4" style={{ color: accent }} />
         </div>
         <div>
-          <h3 className="text-base font-bold" style={{ color: 'var(--text-primary)', fontFamily: 'Syne, sans-serif' }}>
+          <h3 className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>
             {title}
           </h3>
           {subtitle && (
@@ -448,7 +444,7 @@ function DiscoveryHome({ onSearch, navigate }) {
           accent="#f472b6"
         />
         <div className="grid grid-cols-2 gap-3">
-          {PLATFORM_FEATURES.map(({ icon: Icon, color, bg, title, desc }, i) => (
+          {PLATFORM_FEATURES.map(({ icon: Icon, color, title, desc }, i) => (
             <motion.div
               key={title}
               initial={{ opacity: 0, scale: 0.95 }}
@@ -458,7 +454,7 @@ function DiscoveryHome({ onSearch, navigate }) {
               style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
             >
               <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: bg }}>
+                style={{ background: 'rgba(255,255,255,0.06)' }}>
                 <Icon className="h-4.5 w-4.5" style={{ color, width: 18, height: 18 }} />
               </div>
               <div>
@@ -481,11 +477,11 @@ function DiscoveryHome({ onSearch, navigate }) {
         transition={{ delay: 0.35 }}
         className="rounded-2xl p-5"
         style={{
-          background: 'linear-gradient(135deg, #1A1004 0%, #0D1A2E 100%)',
-          border: '1px solid #7C4A12',
+          background: 'var(--bg-elevated)',
+          border: '1px solid var(--border)',
         }}
       >
-        <h3 className="text-base font-bold mb-4" style={{ color: 'var(--text-primary)', fontFamily: 'Syne, sans-serif' }}>
+        <h3 className="text-base font-semibold mb-4" style={{ color: 'var(--text-primary)' }}>
           How Discovery works
         </h3>
         <div className="space-y-3">
@@ -553,18 +549,13 @@ export default function DiscoveryPage() {
 
       {/* ── Hero search header ────────────────────────────────── */}
       <div className="pt-2 pb-5">
-        {/* Ambient glow */}
-        <div className="pointer-events-none absolute left-0 right-0 h-40 -top-4 overflow-hidden -z-10">
-          <div className="absolute inset-0"
-            style={{ background: 'radial-gradient(ellipse 70% 60% at 50% 0%, rgba(245,158,11,0.45) 0%, transparent 70%)' }} />
-        </div>
 
         <div className="flex items-center gap-2 mb-1">
           <Compass className="h-3.5 w-3.5 text-amber-400" />
           <span className="text-[11px] font-bold text-amber-400 uppercase tracking-widest">Discovery</span>
         </div>
-        <h1 className="text-2xl font-black mb-0.5"
-          style={{ color: 'var(--text-primary)', fontFamily: 'Syne, sans-serif', letterSpacing: '-0.02em' }}>
+        <h1 className="text-xl font-semibold mb-0.5"
+          style={{ color: 'var(--text-primary)' }}>
           Find the best pros
         </h1>
         <p className="text-sm" style={{ color: 'var(--text-muted)' }}>

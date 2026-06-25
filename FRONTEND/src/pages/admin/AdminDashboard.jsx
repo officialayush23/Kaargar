@@ -22,7 +22,7 @@ function StatCard({ label, value, sub, icon: Icon, color, delay = 0 }) {
         <p style={{ color: '#475569', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
           {label}
         </p>
-        <div style={{ width: 32, height: 32, borderRadius: 10, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
           <Icon size={15} style={{ color }} />
         </div>
       </div>
@@ -44,7 +44,7 @@ function QuickLink({ label, to, count, color }) {
     >
       <div className="flex items-center gap-3">
         {count != null && (
-          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 100, background: `${color}18`, color }}>{count}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 100, background: 'rgba(255,255,255,0.08)', color }}>{count}</span>
         )}
         <span style={{ color: '#94A3B8', fontSize: 13 }}>{label}</span>
       </div>
@@ -70,7 +70,7 @@ export default function AdminDashboard() {
 
   const stats = [
     { label: 'Active Jobs',      value: data?.active_jobs ?? 0,      sub: 'currently in progress',    icon: Zap,          color: '#22c55e' },
-    { label: 'Online Workers',   value: data?.online_workers ?? 0,    sub: 'accepting jobs now',       icon: Users,        color: '#4B7BFF' },
+    { label: 'Online Workers',   value: data?.online_workers ?? 0,    sub: 'accepting jobs now',       icon: Users,        color: '#F59E0B' },
     { label: "Today's Revenue",  value: `₹${(data?.today_revenue ?? 0).toLocaleString('en-IN')}`, sub: 'platform fees', icon: IndianRupee, color: '#f59e0b' },
     { label: 'Searching',        value: data?.searching_jobs ?? 0,    sub: 'finding a worker',         icon: Activity,     color: '#a78bfa' },
     { label: 'Fill Rate',        value: data?.fill_rate != null ? `${Number(data.fill_rate).toFixed(1)}%` : '—', sub: 'jobs matched', icon: TrendingUp, color: '#34d399' },
@@ -80,7 +80,7 @@ export default function AdminDashboard() {
   return (
     <div>
       <div className="mb-7">
-        <h1 className="text-2xl font-bold font-syne" style={{ color: '#F1F5F9' }}>Live Dashboard</h1>
+        <h1 className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>Live Dashboard</h1>
         <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>Real-time platform metrics · auto-refreshes every 15s</p>
       </div>
 
@@ -102,7 +102,7 @@ export default function AdminDashboard() {
         <div className="space-y-2">
           <QuickLink label="Pending worker verifications" to="/admin/workers" count={data?.pending_verifications} color="#f59e0b" />
           <QuickLink label="Open support tickets" to="/admin/support" count={data?.open_tickets} color="#f87171" />
-          <QuickLink label="Recent jobs" to="/admin/jobs" color="#4B7BFF" />
+          <QuickLink label="Recent jobs" to="/admin/jobs" color="#94A3B8" />
           <QuickLink label="Platform configuration" to="/admin/config" color="#94A3B8" />
         </div>
       </div>

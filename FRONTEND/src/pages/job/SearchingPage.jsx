@@ -53,7 +53,7 @@ function UserPin() {
           style={{
             position: 'absolute',
             borderRadius: '50%',
-            border: '1.5px solid rgba(245,158,11,0.55)',
+            border: '1.5px solid rgba(245,158,11,0.3)',
             pointerEvents: 'none',
           }}
           initial={{ width: 0, height: 0, opacity: 0.85 }}
@@ -62,14 +62,6 @@ function UserPin() {
         />
       ))}
 
-      {/* Soft glow */}
-      <div style={{
-        position: 'absolute',
-        width: 56, height: 56,
-        borderRadius: '50%',
-        background: 'rgba(245,158,11,0.18)',
-        filter: 'blur(6px)',
-      }} />
 
       {/* Pin body */}
       <div style={{
@@ -77,7 +69,7 @@ function UserPin() {
         borderRadius: '50%',
         background: '#F59E0B',
         border: '3px solid #fff',
-        boxShadow: '0 0 0 4px rgba(245,158,11,0.3), 0 3px 10px rgba(245,158,11,0.6)',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
         position: 'relative',
         zIndex: 2,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -106,15 +98,13 @@ function WorkerPin({ delay, highlight }) {
         <div style={{
           width: 36, height: 36,
           borderRadius: '50%',
-          background: highlight ? 'rgba(245,158,11,0.25)' : 'rgba(255,255,255,0.12)',
+          background: highlight ? '#F59E0B' : 'rgba(255,255,255,0.12)',
           backdropFilter: 'blur(10px)',
           WebkitBackdropFilter: 'blur(10px)',
-          border: `1.5px solid ${highlight ? 'rgba(245,158,11,0.75)' : 'rgba(255,255,255,0.22)'}`,
+          border: `1.5px solid ${highlight ? '#F59E0B' : 'rgba(255,255,255,0.22)'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 15,
-          boxShadow: highlight
-            ? '0 0 20px rgba(245,158,11,0.5)'
-            : '0 2px 10px rgba(0,0,0,0.4)',
+          boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
           transition: 'all 0.35s ease',
           cursor: 'default',
         }}>
@@ -266,9 +256,9 @@ function WorkerFoundCard({ worker, jobId, onChat }) {
             onClick={onChat}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-medium"
             style={{
-              background: 'rgba(245,158,11,0.11)',
-              color: '#F59E0B',
-              border: '1px solid rgba(245,158,11,0.24)',
+              background: 'var(--card)',
+              color: 'var(--text-secondary)',
+              border: '1px solid var(--card-border)',
             }}
           >
             <MessageCircle size={13} />
@@ -281,9 +271,8 @@ function WorkerFoundCard({ worker, jobId, onChat }) {
         onClick={() => navigate(`/job/${jobId}/active`)}
         className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-semibold text-base transition-all active:scale-95"
         style={{
-          background: 'linear-gradient(135deg, #F59E0B 0%, #D97706 100%)',
+          background: '#F59E0B',
           color: '#000',
-          boxShadow: '0 4px 20px rgba(245,158,11,0.38)',
         }}
       >
         Track job live
@@ -523,7 +512,7 @@ export default function SearchingPage() {
               onClick={() => navigate('/')}
               className="px-6 py-3 rounded-2xl font-semibold text-sm"
               style={{
-                background: 'linear-gradient(135deg,#F59E0B,#D97706)',
+                background: '#F59E0B',
                 color: '#000',
               }}
             >

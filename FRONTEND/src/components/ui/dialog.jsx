@@ -61,7 +61,7 @@ DialogHeader.displayName = 'DialogHeader'
 const DialogTitle = forwardRef(({ className, ...props }, ref) => (
   <h2
     ref={ref}
-    className={cn('text-base font-semibold font-syne', className)}
+    className={cn('text-base font-semibold', className)}
     style={{ color: 'var(--text-primary)' }}
     {...props}
   />

@@ -113,7 +113,7 @@ function TagInput({ selectedTags, onChange }) {
       >
         {selectedTags.map(tag => (
           <span key={tag.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-            style={{ background: tag.isNew ? '#2D1A06' : 'rgba(75,123,255,0.15)', color: tag.isNew ? '#F59E0B' : 'var(--brand)', border: `1px solid ${tag.isNew ? '#92400E' : 'rgba(75,123,255,0.3)'}` }}>
+            style={{ background: '#2D1A06', color: '#F59E0B', border: `1px solid #92400E` }}>
             {tag.name}
             <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(tag.id) }} className="opacity-60 hover:opacity-100">
               <X size={10} />
@@ -201,7 +201,7 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
 
   return (
     <form onSubmit={handleSubmit} className="rounded-2xl p-4 space-y-3"
-      style={{ background: 'var(--g-bg-mid)', border: '1px solid rgba(75,123,255,0.2)' }}>
+      style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--border)' }}>
       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
         {initial ? 'Edit service' : 'Add service'}
       </p>
@@ -294,7 +294,7 @@ function ServiceCard({ svc, onEdit, onDelete, deleting }) {
             <div className="flex flex-wrap gap-1 mt-2">
               {tags.map(tag => (
                 <span key={tag.id} className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(75,123,255,0.10)', color: 'var(--brand)', border: '1px solid rgba(75,123,255,0.2)' }}>
+                  style={{ background: 'rgba(245,158,11,0.10)', color: 'var(--brand)', border: '1px solid rgba(245,158,11,0.25)' }}>
                   {tag.name}
                 </span>
               ))}

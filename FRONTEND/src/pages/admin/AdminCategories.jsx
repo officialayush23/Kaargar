@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Plus, Pencil, Trash2, Power, PowerOff, Zap, Search, ChevronUp, ChevronDown } from 'lucide-react'
+import { Plus, Pencil, Trash2, Power, PowerOff, Zap, Search, ChevronUp, ChevronDown, Upload, Loader2, ImageIcon } from 'lucide-react'
 import { api } from '@/lib/api'
 import { toast } from 'sonner'
 import {
@@ -30,9 +30,53 @@ const ICON_OPTIONS = [
 ]
 
 const EMPTY_FORM = {
-  name: '', slug: '', description: '', icon_name: 'Wrench',
-  color_hex: '#6B7280', mode: 'instant', is_featured: false,
+  name: '', slug: '', description: '', icon_name: 'Wrench', icon_emoji: '',
+  icon_url: '', color_hex: '#6B7280', mode: 'instant', is_featured: false,
   sort_order: 99, min_price: 150,
+}
+
+/* ── Icon Upload Button ── */
+function IconUploadButton({ categoryId, currentUrl, onUploaded }) {
+  const [uploading, setUploading] = useState(false)
+  const inputRef = useRef()
+
+  const handleFile = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    const formData = new FormData()
+    formData.append('file', file)
+    setUploading(true)
+    try {
+      const { data } = await api.post(`/admin/categories/${categoryId}/upload-icon`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      })
+      onUploaded(data.icon_url)
+      toast.success('Icon uploaded')
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
+  return (
+    <div className="flex items-center gap-2">
+      {currentUrl && (
+        <img src={currentUrl} alt="icon" style={{ width: 28, height: 28, objectFit: 'contain', borderRadius: 6 }} />
+      )}
+      <input ref={inputRef} type="file" accept="image/png,image/webp,image/svg+xml,application/json,image/gif" className="hidden" onChange={handleFile} />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors"
+        style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-secondary)' }}
+      >
+        {uploading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Upload className="h-3 w-3" />}
+        {currentUrl ? 'Replace' : 'Upload PNG/Lottie'}
+      </button>
+    </div>
+  )
 }
 
 function slugify(str) {
@@ -136,6 +180,24 @@ function CategoryForm({ initial, onSubmit, onCancel, loading }) {
         </div>
       </div>
 
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-1">
+          <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+            Emoji (optional)
+          </label>
+          <Input value={form.icon_emoji || ''} onChange={e => set('icon_emoji', e.target.value)}
+            placeholder="e.g. ⚡" className="text-xl" maxLength={4} />
+        </div>
+        <div className="space-y-1">
+          <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+            Custom Icon URL (PNG/SVG/Lottie)
+          </label>
+          <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            Save the category first, then upload via the icon button in the table.
+          </p>
+        </div>
+      </div>
+
       <div className="flex items-center gap-2">
         <input type="checkbox" id="featured" checked={!!form.is_featured}
           onChange={e => set('is_featured', e.target.checked)}
@@ -229,7 +291,7 @@ export default function AdminCategories() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'Syne, sans-serif', color: 'var(--text-primary)' }}>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
             Professions
           </h1>
           <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -332,18 +394,22 @@ export default function AdminCategories() {
                   {/* Name + icon */}
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0"
-                        style={{ background: (cat.color_hex || '#6B7280') + '22' }}>
-                        <span style={{ color: cat.color_hex || '#6B7280', fontSize: 14 }}>
-                          {cat.icon_emoji || '⚙'}
-                        </span>
+                      <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden"
+                        style={{ background: (cat.color_hex || '#6B7280') + '22', flexShrink: 0 }}>
+                        {cat.icon_url ? (
+                          <img src={cat.icon_url} alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
+                        ) : (
+                          <span style={{ color: cat.color_hex || '#6B7280', fontSize: 14 }}>
+                            {cat.icon_emoji || '⚙'}
+                          </span>
+                        )}
                       </div>
                       <div>
                         <div className="font-medium" style={{ color: 'var(--text-primary)' }}>
                           {cat.name}
                           {cat.is_featured && (
                             <span className="ml-2 text-xs px-1.5 py-0.5 rounded"
-                              style={{ background: '#2D1A06', color: '#fbbf24' }}>
+                              style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--amber)' }}>
                               Featured
                             </span>
                           )}
@@ -379,7 +445,12 @@ export default function AdminCategories() {
 
                   {/* Actions */}
                   <td className="px-4 py-3">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1 flex-wrap">
+                      <IconUploadButton
+                        categoryId={cat.id}
+                        currentUrl={cat.icon_url}
+                        onUploaded={() => qc.invalidateQueries({ queryKey: ['admin-categories'] })}
+                      />
                       <button onClick={() => setEditing(cat)} title="Edit"
                         className="p-1.5 rounded-lg hover:bg-white/10 transition-colors"
                         style={{ color: 'var(--text-secondary)', background: 'none', border: 'none', cursor: 'pointer' }}>

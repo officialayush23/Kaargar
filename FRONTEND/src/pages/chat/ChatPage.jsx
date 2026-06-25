@@ -22,15 +22,14 @@ function Message({ msg, isOwn }) {
       <div
         className={cn(
           'max-w-[78%] px-4 py-2.5 rounded-2xl',
-          isOwn
-            ? 'bg-gradient-to-br from-azure to-azure-dim rounded-br-sm shadow-[0_4px_16px_rgba(59,130,246,0.3)]'
-            : 'glass rounded-bl-sm'
+          isOwn ? 'rounded-br-sm' : 'glass rounded-bl-sm'
         )}
+        style={isOwn ? { background: '#F59E0B' } : undefined}
       >
-        <p className="text-sm leading-relaxed" style={{ color: isOwn ? '#fff' : 'var(--text-primary)' }}>
+        <p className="text-sm leading-relaxed" style={{ color: isOwn ? '#000' : 'var(--text-primary)' }}>
           {msg.content}
         </p>
-        <p className="text-[10px] mt-1" style={{ color: isOwn ? 'rgba(255,255,255,0.6)' : 'var(--text-muted)' }}>
+        <p className="text-[10px] mt-1" style={{ color: isOwn ? 'rgba(0,0,0,0.5)' : 'var(--text-muted)' }}>
           {formatRelativeTime(msg.created_at)}
         </p>
       </div>
@@ -189,7 +188,8 @@ export default function ChatPage() {
           disabled={!text.trim() || sending}
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.92 }}
-          className="w-10 h-10 rounded-xl bg-gradient-to-br from-azure to-azure-dim flex items-center justify-center shrink-0 disabled:opacity-35 shadow-[0_4px_16px_rgba(59,130,246,0.4)]"
+          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 disabled:opacity-35"
+          style={{ background: '#F59E0B' }}
         >
           {sending
             ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

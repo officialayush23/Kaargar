@@ -1,17 +1,17 @@
 """
-Admin router — dashboard, worker approvals, config.
+Admin router — dashboard, worker approvals, config, payouts, users.
 """
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from decimal import Decimal
 
 from database import get_db
-from models import Job, WorkerProfile, Payment, WorkerDocument, PlatformConfig, User, Category
+from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category
 from schemas import AdminDashboard, AdminWorkerAction, AdminConfigUpdate, SuccessResponse, CategoryCreate, CategoryUpdate, CategoryResponse
 from dependencies import require_admin
-from services.storage import get_public_url, delete_worker_verification_files, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
+from services.storage import get_public_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
 
 router = APIRouter()
 
@@ -626,3 +626,224 @@ async def admin_delete_category(
         await db.delete(cat)
         await db.commit()
         return SuccessResponse(message="Category deleted")
+
+
+@router.post("/categories/{category_id}/upload-icon", response_model=CategoryResponse)
+async def admin_upload_category_icon(
+    category_id: str,
+    file: UploadFile = File(...),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: upload a PNG/SVG/Lottie icon for a category. Stored in Supabase Storage."""
+    import uuid as _uuid
+    result = await db.execute(
+        select(Category).where(Category.id == _uuid.UUID(category_id))
+    )
+    cat = result.scalar_one_or_none()
+    if not cat:
+        raise HTTPException(404, "Category not found")
+
+    allowed_types = {"image/png", "image/webp", "image/svg+xml", "application/json", "image/gif"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(400, "Only PNG, WebP, SVG, GIF, or JSON (Lottie) allowed")
+
+    data = await file.read()
+    if len(data) > 5 * 1024 * 1024:
+        raise HTTPException(400, "File too large (max 5MB)")
+
+    # Store in profile_photos bucket under category_icons/ prefix
+    ct = file.content_type or "image/png"
+    if ct == "application/json":
+        ext = "json"
+    elif ct == "image/svg+xml":
+        ext = "svg"
+    elif ct == "image/gif":
+        ext = "gif"
+    elif ct == "image/webp":
+        ext = "webp"
+    else:
+        ext = "png"
+
+    path = f"category_icons/{category_id}.{ext}"
+    url = upload_file(BUCKET_PROFILE, path, data, ct)
+
+    cat.icon_url = url
+    await db.commit()
+    await db.refresh(cat)
+    return cat
+
+
+# ── PAYOUTS ─────────────────────────────────────────────────────
+
+@router.get("/payouts")
+async def list_payouts(
+    page: int = 1,
+    limit: int = 20,
+    status: str = None,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: paginated payout list with worker name and job info."""
+    q = (
+        select(Payout, WorkerProfile, User, Job)
+        .join(WorkerProfile, WorkerProfile.id == Payout.worker_id)
+        .join(User, User.id == WorkerProfile.user_id)
+        .join(Job, Job.id == Payout.job_id)
+    )
+    if status:
+        q = q.where(Payout.status == status)
+
+    count_q = select(func.count()).select_from(q.subquery())
+    total = await db.scalar(count_q)
+    rows = (
+        await db.execute(
+            q.order_by(Payout.created_at.desc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+        )
+    ).fetchall()
+
+    pages = max(1, -(-total // limit))
+    return {
+        "items": [
+            {
+                "id": str(p.id),
+                "worker_name": u.full_name or u.email,
+                "worker_id": str(wp.id),
+                "job_id": str(p.job_id),
+                "job_title": j.title,
+                "gross_amount": float(p.gross_amount),
+                "platform_fee": float(p.platform_fee),
+                "gst_on_fee": float(p.gst_on_fee),
+                "tds_deducted": float(p.tds_deducted),
+                "net_amount": float(p.net_amount),
+                "status": p.status,
+                "razorpay_transfer_id": p.razorpay_transfer_id,
+                "processed_at": p.processed_at.isoformat() if p.processed_at else None,
+                "failure_reason": p.failure_reason,
+                "created_at": p.created_at.isoformat(),
+            }
+            for p, wp, u, j in rows
+        ],
+        "total": total,
+        "page": page,
+        "pages": pages,
+    }
+
+
+@router.get("/payouts/summary")
+async def payouts_summary(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: payout totals by status."""
+    from datetime import date
+    stats = {}
+    for status in ("pending", "processing", "paid", "failed"):
+        total_amount = await db.scalar(
+            select(func.sum(Payout.net_amount)).where(Payout.status == status)
+        )
+        count = await db.scalar(
+            select(func.count(Payout.id)).where(Payout.status == status)
+        )
+        stats[status] = {"count": count or 0, "total": float(total_amount or 0)}
+
+    today_paid = await db.scalar(
+        select(func.sum(Payout.net_amount))
+        .where(Payout.status == "paid")
+        .where(func.date(Payout.processed_at) == date.today())
+    )
+    stats["today_paid"] = float(today_paid or 0)
+    return stats
+
+
+# ── USERS ────────────────────────────────────────────────────────
+
+@router.get("/users")
+async def list_users(
+    page: int = 1,
+    limit: int = 20,
+    role: str = None,
+    search: str = None,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: paginated user list."""
+    q = select(User)
+    if role:
+        q = q.where(User.role == role)
+    if search:
+        like = f"%{search}%"
+        from sqlalchemy import or_
+        q = q.where(or_(User.email.ilike(like), User.full_name.ilike(like)))
+
+    total = await db.scalar(select(func.count()).select_from(q.subquery()))
+    users = (
+        await db.execute(
+            q.order_by(User.created_at.desc())
+            .offset((page - 1) * limit)
+            .limit(limit)
+        )
+    ).scalars().all()
+
+    pages = max(1, -(-total // limit))
+    return {
+        "items": [
+            {
+                "id": str(u.id),
+                "email": u.email,
+                "full_name": u.full_name,
+                "phone": u.phone,
+                "role": u.role,
+                "is_active": u.is_active,
+                "is_banned": u.is_banned,
+                "ban_reason": u.ban_reason,
+                "created_at": u.created_at.isoformat(),
+                "last_seen_at": u.last_seen_at.isoformat() if u.last_seen_at else None,
+            }
+            for u in users
+        ],
+        "total": total,
+        "page": page,
+        "pages": pages,
+    }
+
+
+@router.patch("/users/{user_id}/ban", response_model=SuccessResponse)
+async def ban_user(
+    user_id: str,
+    body: AdminWorkerAction,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: ban a user account."""
+    import uuid as _uuid
+    result = await db.execute(select(User).where(User.id == _uuid.UUID(user_id)))
+    u = result.scalar_one_or_none()
+    if not u:
+        raise HTTPException(404, "User not found")
+    u.is_banned = True
+    u.is_active = False
+    u.ban_reason = body.reason or "Banned by admin"
+    await db.commit()
+    return SuccessResponse(message="User banned")
+
+
+@router.patch("/users/{user_id}/unban", response_model=SuccessResponse)
+async def unban_user(
+    user_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: unban a user account."""
+    import uuid as _uuid
+    result = await db.execute(select(User).where(User.id == _uuid.UUID(user_id)))
+    u = result.scalar_one_or_none()
+    if not u:
+        raise HTTPException(404, "User not found")
+    u.is_banned = False
+    u.is_active = True
+    u.ban_reason = None
+    await db.commit()
+    return SuccessResponse(message="User unbanned")

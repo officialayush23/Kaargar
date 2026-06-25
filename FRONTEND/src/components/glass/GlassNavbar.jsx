@@ -86,21 +86,14 @@ export function MobileBottomNav() {
                   <motion.div
                     layoutId="bottom-nav-active"
                     className="absolute inset-0"
-                    style={{
-                      borderRadius: '9999px',
-                      background: '#2D1A06',
-                      border: '1px solid #B45309',
-                      boxShadow: '0 0 12px rgba(245,158,11,0.55)',
-                    }}
+                    style={{ borderRadius: '9999px', background: 'var(--surface)' }}
                     transition={{ type: 'spring', stiffness: 400, damping: 28 }}
                   />
                 )}
                 <span className="text-base relative leading-none">{link.emoji}</span>
                 <span
-                  className={cn(
-                    'text-[10px] font-medium relative leading-none',
-                    active ? 'text-amber-400' : 'text-[var(--text-muted)]'
-                  )}
+                  className="text-[10px] font-medium relative leading-none"
+                  style={{ color: active ? '#F59E0B' : 'var(--text-muted)' }}
                 >
                   {link.label}
                 </span>

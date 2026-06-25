@@ -62,7 +62,7 @@ function WorkerRow({ worker, onView }) {
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
             <AvatarImage src={worker.avatar_url || worker.user?.avatar_url} />
-            <AvatarFallback className="text-xs font-bold" style={{ background: 'rgba(75,123,255,0.15)', color: '#4B7BFF' }}>
+            <AvatarFallback className="text-xs font-bold" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--text-secondary)' }}>
               {initials}
             </AvatarFallback>
           </Avatar>
@@ -137,7 +137,7 @@ function DocCard({ doc }) {
         </a>
       ) : (
         <a href={doc.url} target="_blank" rel="noreferrer"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80px', gap: '8px', textDecoration: 'none', color: '#4B7BFF' }}>
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80px', gap: '8px', textDecoration: 'none', color: '#94A3B8' }}>
           <FileText size={24} />
           <span style={{ fontSize: 13 }}>View file</span>
           <ExternalLink size={12} />
@@ -146,7 +146,7 @@ function DocCard({ doc }) {
       <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         <span style={{ fontSize: '12px', color: '#94A3B8', fontWeight: 500 }}>{label}</span>
         <a href={doc.url} target="_blank" rel="noreferrer"
-          style={{ fontSize: '11px', color: '#4B7BFF', display: 'flex', alignItems: 'center', gap: '3px', textDecoration: 'none', flexShrink: 0 }}>
+          style={{ fontSize: '11px', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '3px', textDecoration: 'none', flexShrink: 0 }}>
           Open <ExternalLink size={10} />
         </a>
       </div>
@@ -216,7 +216,7 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
             <X size={15} style={{ color: '#94A3B8' }} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#F1F5F9', fontFamily: 'Syne, sans-serif' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#F1F5F9' }}>
               Worker Details
             </h2>
             <p style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
@@ -241,12 +241,12 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <Avatar className="h-16 w-16">
                   <AvatarImage src={detail.avatar_url} />
-                  <AvatarFallback className="text-xl font-bold" style={{ background: 'rgba(75,123,255,0.15)', color: '#4B7BFF' }}>
+                  <AvatarFallback className="text-xl font-bold" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--text-secondary)' }}>
                     {initials}
                   </AvatarFallback>
                 </Avatar>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#F1F5F9', fontFamily: 'Syne, sans-serif' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#F1F5F9' }}>
                     {detail.full_name}
                   </h3>
                   <p style={{ fontSize: '13px', color: '#475569', marginTop: '3px' }}>{detail.email}</p>

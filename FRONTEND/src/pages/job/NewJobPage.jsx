@@ -15,6 +15,7 @@ import { useCategories } from '@/hooks/useCategories'
 import { useGeoLocation } from '@/hooks/useGeoLocation'
 import { useAddressAutocomplete, reverseGeocode } from '@/hooks/useGeocoding'
 import { GlassCard } from '@/components/glass/GlassCard'
+import { CategoryGrid } from '@/components/kaargar/CategoryGrid'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput, GlassTextarea } from '@/components/glass/GlassInput'
 import { PuneMap } from '@/components/kaargar/PuneMap'
@@ -111,42 +112,13 @@ function CategoryStep({ mode, onSelect }) {
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Pick a service category</p>
       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-3 gap-3">
-          {Array.from({ length: 9 }).map((_, i) => (
-            <div key={i} className="aspect-[4/3] rounded-2xl animate-pulse" style={{ background: 'var(--g-bg)' }} />
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-3 gap-3">
-          {categories.map((cat, i) => (
-            <motion.button
-              key={cat.id}
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.04 }}
-              whileHover={{ scale: 1.04, y: -2 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => onSelect(cat)}
-              className="rounded-2xl p-4 flex flex-col items-center gap-2 text-center"
-              style={{
-                background: 'var(--card-bg)',
-                border: '1px solid var(--card-border)',
-              }}
-              onMouseEnter={e => e.currentTarget.style.background = 'var(--card-hover)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--card-bg)'}
-            >
-              <span className="text-2xl">{getCatIcon(cat.slug)}</span>
-              <span className="text-xs font-medium leading-tight" style={{ color: 'var(--text-secondary)' }}>
-                {cat.name}
-              </span>
-              {cat.min_price && (
-                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>from {formatCurrency(cat.min_price)}</span>
-              )}
-            </motion.button>
-          ))}
-        </div>
-      )}
+      <CategoryGrid
+        categories={categories}
+        isLoading={isLoading}
+        mode={mode}
+        onSelect={onSelect}
+        showAll
+      />
     </motion.div>
   )
 }
@@ -168,7 +140,7 @@ function SavedAddressPicker({ onSelect }) {
             style={{
               flexShrink: 0, padding: '7px 13px', borderRadius: 20,
               border: addr.is_default ? '1.5px solid var(--brand)' : '1px solid var(--card-border)',
-              background: addr.is_default ? 'rgba(75,123,255,0.10)' : 'var(--card-bg)',
+              background: addr.is_default ? 'rgba(245,158,11,0.10)' : 'var(--card-bg)',
               color: addr.is_default ? 'var(--brand)' : 'var(--text-secondary)',
               fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
             }}>
@@ -230,9 +202,9 @@ function LocationStep({ location, onLocationSelect, category }) {
       style={{ display: 'flex', flexDirection: 'column', gap: 0 }}
     >
       {/* ── HERO MAP — with floating search bar on top ─────── */}
-      <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', marginBottom: 16 }}>
+      <div style={{ position: 'relative', borderRadius: 20, overflow: 'hidden', marginBottom: 12 }}>
 
-        {/* Map fills container */}
+        {/* Map — compact height so all controls fit in one screen */}
         <PuneMap
           onLocationSelect={(loc) => {
             onLocationSelect({ ...loc })
@@ -242,7 +214,7 @@ function LocationStep({ location, onLocationSelect, category }) {
           initialLon={location?.lon}
           centerLat={location?.lat}
           centerLon={location?.lon}
-          height="420px"
+          height="260px"
         />
 
         {/* Search bar floats over top of map */}
@@ -254,7 +226,7 @@ function LocationStep({ location, onLocationSelect, category }) {
               size={16}
               style={{
                 position: 'absolute', left: 12, top: '50%',
-                transform: 'translateY(-50%)', color: '#4B7BFF', pointerEvents: 'none', zIndex: 1,
+                transform: 'translateY(-50%)', color: '#F59E0B', pointerEvents: 'none', zIndex: 1,
               }}
             />
             <input
@@ -275,7 +247,7 @@ function LocationStep({ location, onLocationSelect, category }) {
             />
             {acLoading && (
               <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}>
-                <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid #4B7BFF33', borderTopColor: '#4B7BFF', animation: 'spin 0.8s linear infinite' }} />
+                <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(245,158,11,0.3)', borderTopColor: '#F59E0B', animation: 'spin 0.8s linear infinite' }} />
               </div>
             )}
 
@@ -305,7 +277,7 @@ function LocationStep({ location, onLocationSelect, category }) {
                       onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      <MapPin size={14} color="#4B7BFF" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <MapPin size={14} color="#F59E0B" style={{ flexShrink: 0, marginTop: 2 }} />
                       <div style={{ minWidth: 0 }}>
                         <p style={{ fontSize: 13, fontWeight: 500, color: '#1E293B', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {s.main_text || s.description}
@@ -324,7 +296,22 @@ function LocationStep({ location, onLocationSelect, category }) {
       </div>
 
       {/* ── BELOW MAP CONTROLS ───────────────────────────────── */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+
+        {/* GPS button */}
+        <button
+          onClick={handleGPS}
+          disabled={geoLoading}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 14px', borderRadius: 12,
+            background: 'var(--card)', border: '1px solid var(--card-border)',
+            color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500, cursor: 'pointer',
+          }}
+        >
+          <Navigation size={15} color="#22C55E" />
+          {geoLoading ? 'Detecting…' : 'Use current location'}
+        </button>
 
         {/* Saved addresses pill strip */}
         <SavedAddressPicker onSelect={(addr) => {
@@ -371,7 +358,7 @@ function EstimateStep({ category, mode }) {
       {/* Big price card */}
       <GlassCard blue glow glowColor="azure" className="p-6 text-center">
         <p className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Estimated range</p>
-        <p className="text-4xl font-bold font-syne gradient-text-azure">
+        <p className="text-4xl font-bold" style={{ color: 'var(--text-primary)' }}>
           {formatCurrency(low)} – {formatCurrency(high)}
         </p>
         <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>{category?.name} · {mode} mode</p>
@@ -453,14 +440,14 @@ function ConfirmStep({ category, location, mode, description, loading, onSubmit 
             <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{category?.name}</p>
             <div className="flex items-center gap-2 mt-0.5">
               {mode === 'instant' ? (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15">
-                  <Zap className="h-2.5 w-2.5 text-emerald-400" />
-                  <span className="text-[10px] text-emerald-400 font-medium">Instant</span>
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: '#22C55E' }}>
+                  <Zap className="h-2.5 w-2.5" style={{ color: '#000' }} />
+                  <span className="text-[10px] font-semibold" style={{ color: '#000' }}>Instant</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/15">
-                  <Compass className="h-2.5 w-2.5 text-amber-400" />
-                  <span className="text-[10px] text-amber-400 font-medium">Discovery</span>
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: '#F59E0B' }}>
+                  <Compass className="h-2.5 w-2.5" style={{ color: '#000' }} />
+                  <span className="text-[10px] font-semibold" style={{ color: '#000' }}>Discovery</span>
                 </div>
               )}
             </div>
@@ -474,7 +461,7 @@ function ConfirmStep({ category, location, mode, description, loading, onSubmit 
       </GlassCard>
 
       {mode === 'instant' && (
-        <GlassCard className="p-4" style={{ border: '1px solid rgba(52,211,153,0.2)', background: 'rgba(52,211,153,0.05)' }}>
+        <GlassCard className="p-4" style={{ border: '1px solid var(--card-border)', background: 'var(--card)' }}>
           <div className="flex items-center gap-3">
             <Zap className="h-5 w-5 text-emerald-400 shrink-0" />
             <div>
@@ -493,12 +480,13 @@ function ConfirmStep({ category, location, mode, description, loading, onSubmit 
         whileHover={{ scale: loading ? 1 : 1.02, y: loading ? 0 : -2 }}
         whileTap={{ scale: 0.97 }}
         className={cn(
-          'w-full py-4 rounded-2xl font-bold text-base text-white flex items-center justify-center gap-2 relative overflow-hidden',
-          mode === 'instant'
-            ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-[0_8px_32px_rgba(16,185,129,0.4)]'
-            : 'bg-gradient-to-r from-azure to-azure-dim shadow-[0_8px_32px_rgba(59,130,246,0.4)]',
+          'w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 relative overflow-hidden',
           loading && 'opacity-70'
         )}
+        style={{
+          background: mode === 'instant' ? '#22C55E' : '#F59E0B',
+          color: '#000',
+        }}
       >
         {/* Glare sweep */}
         <motion.div

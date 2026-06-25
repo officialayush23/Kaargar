@@ -61,7 +61,7 @@
 //               <div className="px-6 pt-6 pb-4" style={{ borderBottom: '1px solid var(--g-border)' }}>
 //                 <div className="flex items-center gap-4">
 //                   <Avatar className="h-16 w-16"
-//                     style={{ border: '2px solid #B45309', boxShadow: '0 0 20px rgba(245,158,11,0.55)' }}>
+//                     style={{ border: '2px solid rgba(245,158,11,0.3)' }}>
 //                     <AvatarImage src={user?.avatar_url} />
 //                     <AvatarFallback
 //                       className="text-xl font-bold"
@@ -645,24 +645,21 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
             <div
               className="mx-4 mt-4 rounded-3xl overflow-hidden"
               style={{
-                background: isDark
-                  ? 'linear-gradient(160deg, rgba(255,255,255,0.12) 0%, rgba(15,15,15,0.96) 100%)'
-                  : 'linear-gradient(160deg, rgba(255,255,255,0.98) 0%, rgba(240,242,248,0.98) 100%)',
-                backdropFilter: 'blur(40px) saturate(200%)',
-                WebkitBackdropFilter: 'blur(40px) saturate(200%)',
-                border: '1.5px solid var(--g-border)',
-                boxShadow: '0 24px 64px rgba(0,0,0,0.55)',
+                background: isDark ? 'rgba(15,15,15,0.97)' : 'rgba(255,255,255,0.97)',
+                backdropFilter: 'blur(40px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+                border: '1px solid var(--g-border)',
               }}
             >
               {/* Profile header */}
               <div className="px-6 pt-6 pb-4" style={{ borderBottom: '1px solid var(--g-border)' }}>
                 <div className="flex items-center gap-4">
                   <Avatar className="h-16 w-16"
-                    style={{ border: '2px solid #B45309', boxShadow: '0 0 20px rgba(245,158,11,0.55)' }}>
+                    style={{ border: '2px solid rgba(245,158,11,0.3)' }}>
                     <AvatarImage src={user?.avatar_url} />
                     <AvatarFallback
                       className="text-xl font-bold"
-                      style={{ background: '#3D2508', color: '#fbbf24' }}
+                      style={{ background: 'var(--surface)', color: 'var(--text-primary)' }}
                     >{initials}</AvatarFallback>
                   </Avatar>
                   <div>
@@ -679,10 +676,10 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
 
               {/* Notifications preview */}
               {unreadCount > 0 && (
-                <div className="px-6 py-3" style={{ borderBottom: '1px solid var(--g-border)', background: '#1A1004' }}>
+                <div className="px-6 py-3" style={{ borderBottom: '1px solid var(--g-border)', background: 'var(--surface)' }}>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#f59e0b' }} />
-                    <span className="text-sm font-medium" style={{ color: '#f59e0b' }}>
+                    <div className="w-2 h-2 rounded-full" style={{ background: '#F59E0B' }} />
+                    <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                       {unreadCount} new notification{unreadCount > 1 ? 's' : ''}
                     </span>
                   </div>
@@ -729,9 +726,8 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
                     onClick={() => { navigate('/worker'); onClose() }}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors text-left"
                     style={{
-                      background: '#251606',
-                      border: '1px solid #7C4A12',
-                      color: '#f59e0b',
+                      background: '#F59E0B',
+                      color: '#000',
                     }}
                   >
                     <span className="text-xl">⚡</span>
@@ -763,47 +759,38 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
 function InlineModeToggle() {
   const { mode, setMode } = useAppStore()
   const modes = [
-    { id: 'instant',   label: 'Instant',  emoji: '⚡', activeColor: 'rgba(34,197,94,0.25)', activeBorder: 'rgba(34,197,94,0.5)', activeText: '#4ade80' },
-    { id: 'discovery', label: 'Discover', emoji: '🧭', activeColor: '#3D2508', activeBorder: '#B45309', activeText: '#fbbf24' },
+    { id: 'instant',   label: 'Instant',  emoji: '⚡', activeBg: '#F59E0B', activeBorder: '#F59E0B', activeText: '#000' },
+    { id: 'discovery', label: 'Discover', emoji: '🧭', activeBg: '#92400E', activeBorder: '#92400E', activeText: '#FDE68A' },
   ]
 
   return (
     <div
       style={{
         display: 'inline-flex',
-        padding: '4px',
-        gap: '4px',
+        padding: '3px',
+        gap: '3px',
         borderRadius: '9999px',
-        background: 'var(--g-bg-hi)',
-        border: '1.5px solid var(--g-border)',
-        boxShadow: '0 4px 20px rgba(0,0,0,0.18), inset 0 1px 0 var(--g-shine)',
+        background: 'var(--card)',
+        border: '1px solid var(--card-border)',
       }}
     >
-      {modes.map(({ id, label, emoji, activeColor, activeBorder, activeText }) => {
+      {modes.map(({ id, label, emoji, activeBg, activeBorder, activeText }) => {
         const active = mode === id
         return (
           <button
             key={id}
             onClick={() => setMode(id)}
-            className="relative flex items-center gap-2 px-5 py-2.5 transition-all duration-200 select-none"
-            style={{ borderRadius: '9999px', WebkitTapHighlightColor: 'transparent' }}
+            className="relative flex items-center gap-2 px-5 py-2 transition-all duration-200 select-none"
+            style={{
+              borderRadius: '9999px',
+              WebkitTapHighlightColor: 'transparent',
+              background: active ? activeBg : 'transparent',
+              border: active ? `1px solid ${activeBorder}` : '1px solid transparent',
+            }}
           >
-            {active && (
-              <motion.div
-                layoutId="inline-mode-pill"
-                className="absolute inset-0"
-                style={{
-                  borderRadius: '9999px',
-                  background: activeColor,
-                  border: `1px solid ${activeBorder}`,
-                  boxShadow: `0 0 16px ${activeColor}`,
-                }}
-                transition={{ type: 'spring', stiffness: 380, damping: 26 }}
-              />
-            )}
-            <span className="relative text-base leading-none">{emoji}</span>
+            <span className="text-sm leading-none">{emoji}</span>
             <span
-              className="relative text-sm font-semibold"
+              className="text-sm font-semibold font-clean"
               style={{ color: active ? activeText : 'var(--text-muted)' }}
             >
               {label}
@@ -960,25 +947,6 @@ export default function HomePage() {
 
   return (
     <div className="relative min-h-screen px-4">
-      {/* ── Mode ambient glow ── */}
-      <div className="fixed inset-0 pointer-events-none overflow-hidden -z-10">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={mode}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.8 }}
-            className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[320px] rounded-full"
-            style={{
-              filter: 'blur(100px)',
-              background: mode === 'instant'
-                ? 'radial-gradient(ellipse, rgba(34,197,94,0.14) 0%, transparent 70%)'
-                : 'radial-gradient(ellipse, rgba(245,158,11,0.45) 0%, transparent 70%)',
-            }}
-          />
-        </AnimatePresence>
-      </div>
 
       {/* ═══════════════════════════════════════
           HERO SECTION — Blinkit/Zomato style
@@ -1050,9 +1018,8 @@ export default function HomePage() {
               style={{
                 borderRadius: '9999px',
                 padding: '2px',
-                background: 'var(--g-bg)',
-                border: '1.5px solid #B45309',
-                boxShadow: '0 0 12px rgba(245,158,11,0.50)',
+                background: 'var(--card)',
+                border: '1px solid var(--card-border)',
                 cursor: 'pointer',
               }}
             >
@@ -1060,7 +1027,7 @@ export default function HomePage() {
                 <AvatarImage src={user?.avatar_url} />
                 <AvatarFallback
                   className="text-sm font-bold"
-                  style={{ background: '#2D1A06', color: '#fbbf24' }}
+                  style={{ background: 'var(--surface)', color: 'var(--text-secondary)' }}
                 >{initials}</AvatarFallback>
               </Avatar>
             </motion.button>
@@ -1073,19 +1040,21 @@ export default function HomePage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
         >
-          {/* FIX: Replaced "background" with "backgroundImage" to fix React shorthand warning */}
-          <h1 className="text-5xl font-black font-syne tracking-tight" style={{
-            backgroundImage: theme === 'dark'
-              ? 'linear-gradient(135deg, #FFFFFF 0%, #E2E8F0 40%, #F59E0B 100%)'
-              : 'linear-gradient(135deg, #1a1a1a 0%, #374151 40%, #d97706 100%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
-          }}>
-            Kaargar
-          </h1>
-          <p className="text-sm mt-1 font-medium" style={{ color: 'var(--text-muted)' }}>
-            Get help in <span className="text-amber-400 font-semibold">~30 min</span> &bull; Kaam Ho Jayega
+          <div className="flex items-baseline gap-2">
+            <span
+              style={{ fontFamily: '"Playwrite NO", cursive', fontSize: '22px', fontWeight: 400, color: 'var(--text-primary)', lineHeight: 1.4 }}
+            >
+              Kaargar
+            </span>
+            <span
+              className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+              style={{ background: '#F59E0B', color: '#000' }}
+            >
+              Pune
+            </span>
+          </div>
+          <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+            Find the best pros · <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Kaam Ho Jayega</span>
           </p>
         </motion.div>
 
@@ -1121,13 +1090,9 @@ export default function HomePage() {
               <button
                 onClick={handleSearch}
                 className="px-3 py-1 rounded-xl text-xs font-semibold"
-                style={{
-                  background: '#2D1A06',
-                  color: '#f59e0b',
-                  border: '1px solid #92400E',
-                }}
+                style={{ background: '#F59E0B', color: '#000' }}
               >
-                Search
+                Go
               </button>
             )}
           </div>

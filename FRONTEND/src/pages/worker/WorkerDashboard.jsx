@@ -214,8 +214,8 @@ export default function WorkerDashboard() {
             whileTap={{ scale: 0.92 }}
             className="relative w-14 h-7 rounded-full transition-all duration-300"
             style={{
-              background: isOnline ? 'rgba(34,197,94,0.8)' : 'var(--g-bg-mid)',
-              border: `1px solid ${isOnline ? 'rgba(34,197,94,0.4)' : 'var(--g-border)'}`,
+              background: isOnline ? '#22C55E' : 'var(--card)',
+              border: `1px solid ${isOnline ? '#22C55E' : 'var(--card-border)'}`,
             }}
           >
             <motion.div
@@ -287,7 +287,7 @@ export default function WorkerDashboard() {
               value={formatCurrency(analytics?.month_earnings || 0)}
               sub={`${analytics?.month_jobs || 0} total jobs`}
               icon={TrendingUp}
-              accentColor="#4B7BFF"
+              accentColor="#F59E0B"
             />
             <StatCard
               label="Rating"
@@ -328,8 +328,8 @@ export default function WorkerDashboard() {
       >
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(75,123,255,0.1)' }}>
-            <HelpCircle className="h-5 w-5" style={{ color: '#4B7BFF' }} />
+            style={{ background: 'rgba(255,255,255,0.06)' }}>
+            <HelpCircle className="h-5 w-5" style={{ color: '#F59E0B' }} />
           </div>
           <div>
             <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Help & Support</p>
@@ -349,7 +349,7 @@ export default function WorkerDashboard() {
           <button
             onClick={() => navigate('/worker/analytics')}
             className="text-xs transition-colors"
-            style={{ color: '#4B7BFF' }}
+            style={{ color: '#F59E0B' }}
           >
             See all
           </button>

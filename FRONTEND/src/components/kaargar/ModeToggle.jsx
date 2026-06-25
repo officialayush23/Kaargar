@@ -7,21 +7,19 @@ const MODES = [
     id: 'instant',
     label: 'Instant',
     icon: Zap,
-    activeBg: '#0C2E12',
-    activeBorder: '#166534',
-    activeGlow: '0 0 20px rgba(34,197,94,0.55)',
-    activeColor: '#4ade80',
-    dotColor: '#22c55e',
+    activeBg: '#F59E0B',
+    activeBorder: '#F59E0B',
+    activeColor: '#000',
+    dotColor: '#000',
   },
   {
     id: 'discovery',
     label: 'Discover',
     icon: Compass,
-    activeBg: '#2D1A06',
+    activeBg: '#92400E',
     activeBorder: '#92400E',
-    activeGlow: '0 0 20px rgba(245,158,11,0.55)',
-    activeColor: '#fbbf24',
-    dotColor: '#f59e0b',
+    activeColor: '#FDE68A',
+    dotColor: '#FDE68A',
   },
 ]
 
@@ -36,21 +34,19 @@ export function ModeToggle() {
       transition={{ delay: 0.35, type: 'spring', stiffness: 300, damping: 26 }}
       style={{ pointerEvents: 'none' }}
     >
-      {/* Pill container — solid background, no backdrop-filter to avoid blob artifacts */}
       <div
         style={{
           display: 'inline-flex',
           alignItems: 'center',
           gap: '3px',
-          padding: '5px',
+          padding: '4px',
           borderRadius: '9999px',
-          background: 'var(--g-bg-hi)',
-          border: '1.5px solid var(--g-border)',
-          boxShadow: '0 4px 24px rgba(0,0,0,0.28), inset 0 1px 0 var(--g-shine)',
+          background: 'var(--card)',
+          border: '1px solid var(--card-border)',
           pointerEvents: 'auto',
         }}
       >
-        {MODES.map(({ id, label, icon: Icon, activeBg, activeBorder, activeGlow, activeColor, dotColor }) => {
+        {MODES.map(({ id, label, icon: Icon, activeBg, activeBorder, activeColor, dotColor }) => {
           const active = mode === id
 
           return (
@@ -64,54 +60,21 @@ export function ModeToggle() {
                 gap: '7px',
                 padding: '9px 18px',
                 borderRadius: '9999px',
-                border: 'none',
-                background: 'none',
+                border: active ? `1px solid ${activeBorder}` : '1px solid transparent',
+                background: active ? activeBg : 'transparent',
                 cursor: 'pointer',
                 outline: 'none',
                 userSelect: 'none',
                 WebkitTapHighlightColor: 'transparent',
-                transition: 'color 0.2s ease',
+                transition: 'background 0.2s ease, color 0.2s ease',
                 color: active ? activeColor : 'var(--text-muted)',
                 fontWeight: active ? 600 : 400,
                 fontSize: '13px',
+                fontFamily: "'Poppins', 'DM Sans', sans-serif",
               }}
             >
-              {/* Active pill background */}
-              {active && (
-                <motion.div
-                  layoutId="mode-active-pill"
-                  style={{
-                    position: 'absolute',
-                    inset: 0,
-                    borderRadius: '9999px',
-                    background: activeBg,
-                    border: `1.5px solid ${activeBorder}`,
-                    boxShadow: activeGlow,
-                  }}
-                  transition={{ type: 'spring', stiffness: 420, damping: 30 }}
-                />
-              )}
-
-              {/* Content */}
-              <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                {active && (
-                  <motion.span
-                    initial={{ scale: 0, opacity: 0 }}
-                    animate={{ scale: 1, opacity: 1 }}
-                    exit={{ scale: 0, opacity: 0 }}
-                    style={{
-                      width: '6px',
-                      height: '6px',
-                      borderRadius: '50%',
-                      background: dotColor,
-                      boxShadow: `0 0 6px ${dotColor}`,
-                      flexShrink: 0,
-                    }}
-                  />
-                )}
-                <Icon size={14} />
-                {label}
-              </span>
+              <Icon size={14} />
+              {label}
             </button>
           )
         })}

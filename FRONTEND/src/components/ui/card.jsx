@@ -12,7 +12,7 @@ const CardHeader = forwardRef(({ className, ...props }, ref) => (
 CardHeader.displayName = 'CardHeader'
 
 const CardTitle = forwardRef(({ className, ...props }, ref) => (
-  <h3 ref={ref} className={cn('font-syne font-semibold text-lg text-[--text-primary]', className)} {...props} />
+  <h3 ref={ref} className={cn('font-semibold text-lg text-[--text-primary]', className)} {...props} />
 ))
 CardTitle.displayName = 'CardTitle'
 

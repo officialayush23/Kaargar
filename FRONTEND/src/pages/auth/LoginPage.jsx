@@ -56,7 +56,7 @@ export default function LoginPage() {
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
 
-  const accentColor = intent === 'worker' ? '#f59e0b' : '#4B7BFF'
+  const accentColor = '#F59E0B'
 
   function go(nextStep, dir = 1) {
     setDirection(dir)
@@ -88,9 +88,21 @@ export default function LoginPage() {
         }
 
       } else {
-        // sign up — Supabase sends a confirmation email
         const { error } = await supabase.auth.signUp({ email, password })
-        if (error) { toast.error(error.message); return }
+        if (error) {
+          // Account already exists — silently switch to sign-in
+          if (
+            error.status === 422 ||
+            error.message?.toLowerCase().includes('already') ||
+            error.message?.toLowerCase().includes('registered')
+          ) {
+            setMode('signin')
+            toast.info('Account already exists — please sign in.')
+          } else {
+            toast.error(error.message)
+          }
+          return
+        }
         go('check-email')
       }
     } finally {
@@ -148,11 +160,11 @@ export default function LoginPage() {
                   <button
                     onClick={() => { setIntent('user'); go('email') }}
                     className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
-                    style={{ background: 'var(--g-bg)', border: '1.5px solid rgba(75,123,255,0.3)' }}
+                    style={{ background: 'var(--g-bg)', border: '1.5px solid rgba(245,158,11,0.3)' }}
                   >
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'rgba(75,123,255,0.15)' }}>
-                      <Search size={18} style={{ color: '#4B7BFF' }} />
+                      style={{ background: 'rgba(245,158,11,0.12)' }}>
+                      <Search size={18} style={{ color: '#F59E0B' }} />
                     </div>
                     <div>
                       <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>I need services</p>
@@ -197,8 +209,8 @@ export default function LoginPage() {
                   {/* Intent badge */}
                   <div className="mb-1">
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{
-                      background: intent === 'worker' ? '#2D1A06' : 'rgba(75,123,255,0.12)',
-                      color: intent === 'worker' ? '#f59e0b' : '#4B7BFF',
+                      background: '#2D1A06',
+                      color: '#f59e0b',
                     }}>
                       {intent === 'worker' ? '⚡ Worker' : '🔍 Customer'}
                     </span>

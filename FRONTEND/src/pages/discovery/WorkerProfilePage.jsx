@@ -99,7 +99,7 @@ function MediaCarousel({ items = [] }) {
             <button key={i} onClick={() => setIdx(i)}
               style={{
                 width: 52, height: 52, borderRadius: 10, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
-                border: i === idx ? '2px solid #4B7BFF' : '1.5px solid var(--g-border)',
+                border: i === idx ? '2px solid #F59E0B' : '1.5px solid var(--g-border)',
                 background: 'var(--g-bg)', padding: 0,
               }}>
               {(item.thumbnail_url || item.cloudinary_url || item.url) && (
@@ -271,7 +271,7 @@ export default function WorkerProfilePage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-lg font-bold font-syne" style={{ color: 'var(--text-primary)' }}>{name}</h1>
-                {isVerified && <BadgeCheck size={18} style={{ color: '#4B7BFF' }} />}
+                {isVerified && <BadgeCheck size={18} style={{ color: '#F59E0B' }} />}
               </div>
               <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
                 {worker.bio || worker.primary_category || 'Professional service provider'}
@@ -315,7 +315,7 @@ export default function WorkerProfilePage() {
                 )}
                 {isVerified && (
                   <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full"
-                    style={{ background: 'rgba(75,123,255,0.08)', color: '#4B7BFF', border: '1px solid rgba(75,123,255,0.2)' }}>
+                    style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.1)' }}>
                     Verified pro
                   </span>
                 )}

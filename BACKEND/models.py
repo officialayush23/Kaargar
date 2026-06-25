@@ -86,6 +86,7 @@ class Category(Base):
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
     parent_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("categories.id"))
     min_price: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=50)
+    icon_url: Mapped[str | None] = mapped_column(Text)   # custom PNG/SVG/Lottie icon URL (Supabase Storage)
     created_at: Mapped[datetime] = now()
     updated_at: Mapped[datetime] = now()
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))

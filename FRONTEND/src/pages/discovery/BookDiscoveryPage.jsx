@@ -85,7 +85,7 @@ function SavedAddressPicker({ onSelect }) {
             style={{
               flexShrink: 0, padding: '6px 13px', borderRadius: 20,
               border: addr.is_default ? '1.5px solid var(--brand)' : '1px solid var(--card-border)',
-              background: addr.is_default ? 'rgba(75,123,255,0.10)' : 'var(--card-bg)',
+              background: addr.is_default ? 'rgba(245,158,11,0.10)' : 'var(--card-bg)',
               color: addr.is_default ? 'var(--brand)' : 'var(--text-secondary)',
               fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
             }}>

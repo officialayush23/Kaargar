@@ -57,8 +57,8 @@ function LangPill() {
               fontWeight: active ? 700 : 500,
               cursor: 'pointer',
               border: 'none',
-              background: active ? 'var(--brand, #4B7BFF)' : 'transparent',
-              color: active ? '#fff' : 'var(--text-muted)',
+              background: active ? '#F59E0B' : 'transparent',
+              color: active ? '#000' : 'var(--text-muted)',
               transition: 'all 0.15s',
               lineHeight: 1.4,
             }}
@@ -122,13 +122,10 @@ function WorkerMenu({ open, onClose }) {
             <div
               className="mx-4 mt-4 rounded-3xl overflow-hidden"
               style={{
-                background: isDark
-                  ? 'linear-gradient(160deg, rgba(255,255,255,0.12) 0%, rgba(15,15,15,0.96) 100%)'
-                  : 'linear-gradient(160deg, rgba(255,255,255,0.98) 0%, rgba(240,242,248,0.98) 100%)',
-                backdropFilter: 'blur(40px) saturate(200%)',
-                WebkitBackdropFilter: 'blur(40px) saturate(200%)',
-                border: '1.5px solid var(--g-border)',
-                boxShadow: '0 24px 64px rgba(0,0,0,0.45)',
+                background: isDark ? 'rgba(15,15,15,0.97)' : 'rgba(255,255,255,0.97)',
+                backdropFilter: 'blur(40px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(40px) saturate(180%)',
+                border: '1px solid var(--g-border)',
               }}
             >
               {/* Profile header */}
@@ -136,7 +133,7 @@ function WorkerMenu({ open, onClose }) {
                 <div className="flex items-center gap-3">
                   <Avatar
                     className="h-14 w-14"
-                    style={{ border: '2px solid #B45309', boxShadow: '0 0 18px rgba(245,158,11,0.55)' }}
+                    style={{ border: '1px solid var(--card-border)' }}
                   >
                     <AvatarImage src={user?.avatar_url} />
                     <AvatarFallback
@@ -317,7 +314,7 @@ function WorkerPageHeader() {
             >
               <Avatar
                 className="h-9 w-9"
-                style={{ border: '2px solid #B45309', boxShadow: '0 0 12px rgba(245,158,11,0.50)' }}
+                style={{ border: '1px solid var(--card-border)' }}
               >
                 <AvatarImage src={user?.avatar_url} />
                 <AvatarFallback

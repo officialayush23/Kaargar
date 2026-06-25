@@ -459,7 +459,7 @@ export default function JobDetailPage() {
                 ? <img src={worker.avatar_url} alt={worker.full_name}
                     style={{ width: 52, height: 52, borderRadius: '50%', objectFit: 'cover',
                       border: '2px solid var(--card-border)', flexShrink: 0 }} />
-                : <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(75,123,255,0.15)',
+                : <div style={{ width: 52, height: 52, borderRadius: '50%', background: 'rgba(255,255,255,0.07)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                     fontSize: 20, color: 'var(--brand)' }}>
                     {worker.full_name?.[0]?.toUpperCase() || 'W'}
