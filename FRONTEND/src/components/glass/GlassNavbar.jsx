@@ -88,9 +88,9 @@ export function MobileBottomNav() {
                     className="absolute inset-0"
                     style={{
                       borderRadius: '9999px',
-                      background: 'rgba(245,158,11,0.18)',
-                      border: '1px solid rgba(245,158,11,0.35)',
-                      boxShadow: '0 0 12px rgba(245,158,11,0.2)',
+                      background: '#2D1A06',
+                      border: '1px solid #B45309',
+                      boxShadow: '0 0 12px rgba(245,158,11,0.55)',
                     }}
                     transition={{ type: 'spring', stiffness: 400, damping: 28 }}
                   />

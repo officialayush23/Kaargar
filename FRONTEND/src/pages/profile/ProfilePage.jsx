@@ -151,20 +151,20 @@ export default function ProfilePage() {
               style={{
                 padding: '12px 14px',
                 borderRadius: '14px',
-                background: 'rgba(245,158,11,0.06)',
-                border: '1px solid rgba(245,158,11,0.18)',
+                background: '#1A1004',
+                border: '1px solid #36220A',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
                 transition: 'all 0.15s ease',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = 'rgba(245,158,11,0.10)'}
-              onMouseLeave={e => e.currentTarget.style.background = 'rgba(245,158,11,0.06)'}
+              onMouseEnter={e => e.currentTarget.style.background = '#251606'}
+              onMouseLeave={e => e.currentTarget.style.background = '#1A1004'}
             >
               <div style={{
                 width: '36px', height: '36px', borderRadius: '10px',
-                background: 'rgba(245,158,11,0.15)',
+                background: '#2D1A06',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}>
                 <HardHat size={18} style={{ color: 'var(--amber)' }} />

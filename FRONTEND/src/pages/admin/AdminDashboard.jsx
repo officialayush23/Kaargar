@@ -39,7 +39,7 @@ function QuickLink({ label, to, count, color }) {
       onClick={() => navigate(to)}
       className="flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all text-left"
       style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
-      onMouseEnter={e => e.currentTarget.style.borderColor = 'rgba(245,158,11,0.3)'}
+      onMouseEnter={e => e.currentTarget.style.borderColor = '#92400E'}
       onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
     >
       <div className="flex items-center gap-3">

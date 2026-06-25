@@ -8,10 +8,10 @@ from sqlalchemy import select, func
 from decimal import Decimal
 
 from database import get_db
-from models import Job, WorkerProfile, Payment, WorkerDocument, PlatformConfig, User
-from schemas import AdminDashboard, AdminWorkerAction, AdminConfigUpdate, SuccessResponse
+from models import Job, WorkerProfile, Payment, WorkerDocument, PlatformConfig, User, Category
+from schemas import AdminDashboard, AdminWorkerAction, AdminConfigUpdate, SuccessResponse, CategoryCreate, CategoryUpdate, CategoryResponse
 from dependencies import require_admin
-from services.storage import get_public_url, BUCKET_DOCUMENTS
+from services.storage import get_public_url, delete_worker_verification_files, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
 
 router = APIRouter()
 
@@ -130,12 +130,21 @@ async def approve_worker(
     docs_result = await db.execute(
         select(WorkerDocument).where(WorkerDocument.worker_id == wp.id)
     )
-    for doc in docs_result.scalars().all():
+    docs = docs_result.scalars().all()
+    doc_paths, video_path = [], None
+    for doc in docs:
         doc.status = "approved"
         doc.rejection_reason = None
         doc.reviewed_by = admin.id
         doc.reviewed_at = now
+        if doc.type == "verification_video":
+            video_path = doc.cloudinary_id
+        elif doc.cloudinary_id:
+            doc_paths.append(doc.cloudinary_id)
     await db.commit()
+
+    # Delete identity docs + verification video from Storage (trust model fulfilled)
+    delete_worker_verification_files(str(wp.user_id), doc_paths, video_path)
 
     # Notify worker
     from services.notifications import create_notification
@@ -172,12 +181,21 @@ async def reject_worker(
     docs_result = await db.execute(
         select(WorkerDocument).where(WorkerDocument.worker_id == wp.id)
     )
-    for doc in docs_result.scalars().all():
+    docs = docs_result.scalars().all()
+    doc_paths, video_path = [], None
+    for doc in docs:
         doc.status = "rejected"
         doc.rejection_reason = body.reason
         doc.reviewed_by = admin.id
         doc.reviewed_at = now
+        if doc.type == "verification_video":
+            video_path = doc.cloudinary_id
+        elif doc.cloudinary_id:
+            doc_paths.append(doc.cloudinary_id)
     await db.commit()
+
+    # Delete identity docs + verification video from Storage (no reason to keep after rejection)
+    delete_worker_verification_files(str(wp.user_id), doc_paths, video_path)
 
     from services.notifications import create_notification
     await create_notification(
@@ -189,6 +207,178 @@ async def reject_worker(
         data={},
     )
     return SuccessResponse(message="Worker rejected")
+
+
+@router.post("/workers/{worker_id}/suspend", response_model=SuccessResponse)
+async def suspend_worker(
+    worker_id: str,
+    body: AdminWorkerAction,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    import uuid as _uuid
+    result = await db.execute(
+        select(WorkerProfile).where(WorkerProfile.id == _uuid.UUID(worker_id))
+    )
+    wp = result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404)
+
+    # Fetch user for is_active flag
+    user_result = await db.execute(select(User).where(User.id == wp.user_id))
+    u = user_result.scalar_one_or_none()
+    if u:
+        u.is_active = False
+        if body.reason:
+            u.ban_reason = body.reason
+
+    wp.status = "offline"
+    wp.verification_status = "rejected"  # treated as suspended — same gate for going online
+    wp.rejection_reason = body.reason or "Account suspended by admin"
+    await db.commit()
+
+    from services.notifications import create_notification
+    await create_notification(
+        db=db,
+        user_id=wp.user_id,
+        type="worker_suspended",
+        title="Account Suspended",
+        body=body.reason or "Your account has been suspended. Contact support for details.",
+        data={},
+    )
+    return SuccessResponse(message="Worker suspended")
+
+
+@router.post("/workers/{worker_id}/request-reupload", response_model=SuccessResponse)
+async def request_reupload(
+    worker_id: str,
+    body: AdminWorkerAction,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Ask a pending worker to re-upload specific documents."""
+    import uuid as _uuid
+    result = await db.execute(
+        select(WorkerProfile).where(WorkerProfile.id == _uuid.UUID(worker_id))
+    )
+    wp = result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404)
+
+    # Mark documents as needing reupload
+    doc_type = body.doc_type  # optional — if None, flag all pending docs
+    docs_result = await db.execute(
+        select(WorkerDocument).where(WorkerDocument.worker_id == wp.id)
+    )
+    for doc in docs_result.scalars().all():
+        if doc_type is None or doc.type == doc_type:
+            doc.status = "reupload_requested"
+            doc.rejection_reason = body.reason or "Please re-upload this document"
+            doc.reviewed_by = admin.id
+    await db.commit()
+
+    from services.notifications import create_notification
+    await create_notification(
+        db=db,
+        user_id=wp.user_id,
+        type="reupload_requested",
+        title="Document Re-upload Required",
+        body=body.reason or "Please re-upload your documents to complete verification.",
+        data={"doc_type": doc_type},
+    )
+    return SuccessResponse(message="Re-upload request sent")
+
+
+@router.get("/workers/{worker_id}/detail")
+async def get_worker_detail(
+    worker_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full worker detail for admin verification page."""
+    import uuid as _uuid
+    from models import WorkerCategory, Service, Tag, ServiceTag
+    from sqlalchemy import select as sel
+
+    result = await db.execute(
+        select(WorkerProfile, User)
+        .join(User, User.id == WorkerProfile.user_id)
+        .where(WorkerProfile.id == _uuid.UUID(worker_id))
+    )
+    row = result.first()
+    if not row:
+        raise HTTPException(404, "Worker not found")
+    wp, u = row
+
+    # Documents (including verification video)
+    docs_result = await db.execute(
+        select(WorkerDocument).where(WorkerDocument.worker_id == wp.id)
+        .order_by(WorkerDocument.created_at.desc())
+    )
+    documents = []
+    for doc in docs_result.scalars().all():
+        doc_path = (doc.cloudinary_id or "").lstrip("/")
+        bucket = BUCKET_VERIFICATION_VIDEO if doc.type == "verification_video" else BUCKET_DOCUMENTS
+        doc_url = get_public_url(bucket, doc_path) if doc_path else doc.cloudinary_url
+        documents.append({
+            "id": str(doc.id),
+            "type": doc.type,
+            "url": doc_url,
+            "status": doc.status,
+            "rejection_reason": doc.rejection_reason,
+            "created_at": doc.created_at.isoformat(),
+        })
+
+    # Categories
+    from models import Category as CatModel
+    cats_result = await db.execute(
+        select(CatModel)
+        .join(WorkerCategory, WorkerCategory.category_id == CatModel.id)
+        .where(WorkerCategory.worker_id == wp.id)
+    )
+    categories = [
+        {"id": str(c.id), "name": c.name, "mode": c.mode, "icon_emoji": c.icon_emoji}
+        for c in cats_result.scalars().all()
+    ]
+
+    # Services summary
+    svcs_result = await db.execute(
+        select(Service).where(Service.worker_id == wp.id, Service.is_active == True)
+    )
+    services = [
+        {
+            "id": str(s.id),
+            "title": s.title,
+            "price": float(s.price),
+            "service_mode": s.service_mode,
+        }
+        for s in svcs_result.scalars().all()
+    ]
+
+    return {
+        "id": str(wp.id),
+        "user_id": str(wp.user_id),
+        "full_name": u.full_name,
+        "email": u.email,
+        "phone": u.phone,
+        "avatar_url": u.avatar_url,
+        "verification_status": wp.verification_status,
+        "rejection_reason": wp.rejection_reason,
+        "status": wp.status,
+        "is_active": u.is_active,
+        "bio": wp.bio,
+        "experience_years": wp.experience_years,
+        "pune_area": wp.pune_area,
+        "is_instant_available": wp.is_instant_available,
+        "is_discovery_available": wp.is_discovery_available,
+        "service_radius_km": wp.service_radius_km,
+        "avg_rating": float(wp.avg_rating),
+        "total_jobs_completed": wp.total_jobs_completed,
+        "created_at": wp.created_at.isoformat(),
+        "documents": documents,
+        "categories": categories,
+        "services": services,
+    }
 
 
 @router.get("/config")
@@ -241,28 +431,66 @@ async def list_jobs(
 async def list_workers(
     page: int = 1,
     limit: int = 20,
+    status: str = None,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin: paginated list of all workers."""
-    total = await db.scalar(select(func.count(WorkerProfile.id)))
-    result = await db.execute(
+    """Admin: paginated list of workers, optionally filtered by verification_status."""
+    q = (
         select(WorkerProfile, User)
         .join(User, User.id == WorkerProfile.user_id)
-        .order_by(WorkerProfile.created_at.desc())
-        .offset((page - 1) * limit).limit(limit)
     )
-    rows = result.fetchall()
+    if status and status in ("pending", "approved", "rejected"):
+        q = q.where(WorkerProfile.verification_status == status)
+
+    total = await db.scalar(select(func.count()).select_from(q.subquery()))
+    rows = (await db.execute(
+        q.order_by(WorkerProfile.created_at.desc())
+        .offset((page - 1) * limit).limit(limit)
+    )).fetchall()
+
+    # Collect worker IDs so we can attach documents for pending workers
+    worker_ids = [wp.id for wp, _ in rows]
+    docs_by_worker: dict = {}
+    if worker_ids and status == "pending":
+        from services.storage import get_public_url, BUCKET_DOCUMENTS
+        docs_result = await db.execute(
+            select(WorkerDocument)
+            .where(WorkerDocument.worker_id.in_(worker_ids))
+            .order_by(WorkerDocument.created_at.desc())
+        )
+        for doc in docs_result.scalars().all():
+            doc_path = (doc.cloudinary_id or "").lstrip("/")
+            doc_url = get_public_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
+            docs_by_worker.setdefault(str(doc.worker_id), []).append({
+                "id": str(doc.id),
+                "type": doc.type,
+                "cloudinary_url": doc_url,
+                "cloudinary_id": doc_path,
+                "status": doc.status,
+                "created_at": doc.created_at.isoformat(),
+            })
+
     pages = max(1, -(-total // limit))
     return {
         "items": [
             {
                 "id": str(wp.id),
+                "user_id": str(wp.user_id),
                 "full_name": u.full_name,
                 "email": u.email,
+                "phone": u.phone,
+                "avatar_url": u.avatar_url,
                 "status": wp.status,
                 "verification_status": wp.verification_status,
+                "rejection_reason": wp.rejection_reason,
                 "pune_area": wp.pune_area,
+                "experience_years": wp.experience_years,
+                "bio": wp.bio,
+                "avg_rating": float(wp.avg_rating) if wp.avg_rating else 0,
+                "total_jobs_completed": wp.total_jobs_completed or 0,
+                "created_at": wp.created_at.isoformat(),
+                "documents": docs_by_worker.get(str(wp.id), []),
             }
             for wp, u in rows
         ],
@@ -290,3 +518,111 @@ async def update_config(
     config.updated_by = admin.id
     await db.commit()
     return SuccessResponse(message="Config updated")
+
+
+# ── PROFESSION / CATEGORY MANAGEMENT ────────────────────────────
+
+@router.get("/categories", response_model=list[CategoryResponse])
+async def admin_list_categories(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: list all categories (including inactive)."""
+    result = await db.execute(
+        select(Category).order_by(Category.mode, Category.sort_order)
+    )
+    return result.scalars().all()
+
+
+@router.post("/categories", response_model=CategoryResponse)
+async def admin_create_category(
+    body: CategoryCreate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: create a new profession/category."""
+    existing = await db.scalar(
+        select(Category).where(Category.slug == body.slug)
+    )
+    if existing:
+        raise HTTPException(400, f"Slug '{body.slug}' already exists")
+
+    cat = Category(
+        name=body.name,
+        slug=body.slug,
+        description=body.description,
+        icon_name=body.icon_name,
+        icon_emoji=body.icon_emoji,
+        color_hex=body.color_hex,
+        mode=body.mode,
+        is_featured=body.is_featured,
+        sort_order=body.sort_order,
+        min_price=body.min_price,
+        created_by=admin.id,
+    )
+    db.add(cat)
+    await db.commit()
+    await db.refresh(cat)
+    return cat
+
+
+@router.patch("/categories/{category_id}", response_model=CategoryResponse)
+async def admin_update_category(
+    category_id: str,
+    body: CategoryUpdate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: update a profession/category."""
+    import uuid as _uuid
+    result = await db.execute(
+        select(Category).where(Category.id == _uuid.UUID(category_id))
+    )
+    cat = result.scalar_one_or_none()
+    if not cat:
+        raise HTTPException(404, "Category not found")
+
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(cat, field, value)
+
+    if body.slug and body.slug != str(cat.slug):
+        dupe = await db.scalar(
+            select(Category).where(Category.slug == body.slug, Category.id != cat.id)
+        )
+        if dupe:
+            raise HTTPException(400, f"Slug '{body.slug}' already exists")
+
+    await db.commit()
+    await db.refresh(cat)
+    return cat
+
+
+@router.delete("/categories/{category_id}", response_model=SuccessResponse)
+async def admin_delete_category(
+    category_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: soft-delete (deactivate) a category. Hard-delete only if no workers use it."""
+    import uuid as _uuid
+    from models import WorkerCategory
+    result = await db.execute(
+        select(Category).where(Category.id == _uuid.UUID(category_id))
+    )
+    cat = result.scalar_one_or_none()
+    if not cat:
+        raise HTTPException(404, "Category not found")
+
+    worker_count = await db.scalar(
+        select(func.count(WorkerCategory.worker_id))
+        .where(WorkerCategory.category_id == cat.id)
+    )
+
+    if worker_count and worker_count > 0:
+        cat.is_active = False
+        await db.commit()
+        return SuccessResponse(message=f"Category deactivated ({worker_count} workers still use it)")
+    else:
+        await db.delete(cat)
+        await db.commit()
+        return SuccessResponse(message="Category deleted")

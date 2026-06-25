@@ -31,7 +31,7 @@ export function Background() {
       {/* Top-center vignette */}
       <div
         className="absolute inset-x-0 top-0 h-[35vh]"
-        style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(245,158,11,0.05) 0%, transparent 100%)' }}
+        style={{ background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(245,158,11,0.35) 0%, transparent 100%)' }}
       />
 
       {/* Bottom fade */}

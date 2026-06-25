@@ -44,7 +44,7 @@ function JobCard({ job, onClick }) {
 
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-            {job.category?.name || 'Service'}
+            {job.category_name || job.category?.name || job.title || 'Service'}
           </p>
           <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
             {job.location_address}
@@ -108,7 +108,7 @@ function PackageOrderCard({ order }) {
           {/* Icon */}
           <div
             className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
-            style={{ background: 'rgba(245,158,11,0.12)' }}
+            style={{ background: '#251606' }}
           >
             <Package className="h-5 w-5" style={{ color: '#f59e0b' }} />
           </div>
@@ -158,9 +158,9 @@ function PackageOrderCard({ order }) {
                 <span
                   className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
                   style={{
-                    background: daysLeft <= 3 ? 'rgba(245,158,11,0.12)' : 'var(--g-bg)',
+                    background: daysLeft <= 3 ? '#251606' : 'var(--g-bg)',
                     color: daysLeft <= 3 ? '#f59e0b' : 'var(--text-muted)',
-                    border: `1px solid ${daysLeft <= 3 ? 'rgba(245,158,11,0.3)' : 'var(--g-border)'}`,
+                    border: `1px solid ${daysLeft <= 3 ? '#92400E' : 'var(--g-border)'}`,
                   }}
                 >
                   {daysLeft <= 3 && <AlertCircle className="h-2.5 w-2.5" />}
@@ -280,7 +280,7 @@ function PackagesTab() {
       >
         <div
           className="w-16 h-16 rounded-2xl flex items-center justify-center"
-          style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.15)' }}
+          style={{ background: '#1A1004', border: '1px solid #7C4A12' }}
         >
           <Package className="h-8 w-8" style={{ color: '#f59e0b' }} />
         </div>

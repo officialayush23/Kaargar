@@ -39,9 +39,9 @@ const TabsTrigger = forwardRef(({ className, value, children, ...props }, ref) =
         className
       )}
       style={{
-        background: isActive ? 'rgba(245,158,11,0.15)' : 'transparent',
+        background: isActive ? '#2D1A06' : 'transparent',
         color: isActive ? '#f59e0b' : '#94A3B8',
-        border: isActive ? '1px solid rgba(245,158,11,0.25)' : '1px solid transparent',
+        border: isActive ? '1px solid #7C4A12' : '1px solid transparent',
       }}
       {...props}
     >

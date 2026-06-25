@@ -7,9 +7,9 @@ const MODES = [
     id: 'instant',
     label: 'Instant',
     icon: Zap,
-    activeBg: 'rgba(34,197,94,0.18)',
-    activeBorder: 'rgba(34,197,94,0.45)',
-    activeGlow: '0 0 20px rgba(34,197,94,0.35)',
+    activeBg: '#0C2E12',
+    activeBorder: '#166534',
+    activeGlow: '0 0 20px rgba(34,197,94,0.55)',
     activeColor: '#4ade80',
     dotColor: '#22c55e',
   },
@@ -17,9 +17,9 @@ const MODES = [
     id: 'discovery',
     label: 'Discover',
     icon: Compass,
-    activeBg: 'rgba(245,158,11,0.18)',
-    activeBorder: 'rgba(245,158,11,0.45)',
-    activeGlow: '0 0 20px rgba(245,158,11,0.35)',
+    activeBg: '#2D1A06',
+    activeBorder: '#92400E',
+    activeGlow: '0 0 20px rgba(245,158,11,0.55)',
     activeColor: '#fbbf24',
     dotColor: '#f59e0b',
   },
@@ -30,7 +30,7 @@ export function ModeToggle() {
 
   return (
     <motion.div
-      className="fixed bottom-20 inset-x-0 z-40 flex justify-center"
+      className="fixed bottom-24 inset-x-0 z-40 flex justify-center"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.35, type: 'spring', stiffness: 300, damping: 26 }}

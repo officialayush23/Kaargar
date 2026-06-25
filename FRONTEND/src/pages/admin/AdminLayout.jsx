@@ -7,7 +7,7 @@ import { Outlet, NavLink, useNavigate, Navigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare,
-  Settings, LogOut, Menu, X, ShieldCheck,
+  Settings, LogOut, Menu, X, ShieldCheck, Layers,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabase'
@@ -17,6 +17,7 @@ const NAV = [
   { to: '/admin/workers',  label: 'Workers',    icon: Users },
   { to: '/admin/jobs',     label: 'Jobs',       icon: Briefcase },
   { to: '/admin/support',  label: 'Support',    icon: MessageSquare },
+  { to: '/admin/categories', label: 'Professions', icon: Layers },
   { to: '/admin/config',   label: 'Config',     icon: Settings },
 ]
 
@@ -114,7 +115,7 @@ function SidebarContent({ onNav }) {
         </span>
         <span
           className="text-[10px] font-semibold px-1.5 py-0.5 rounded ml-1"
-          style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}
+          style={{ background: '#3D2508', color: '#fbbf24' }}
         >
           ADMIN
         </span>
@@ -136,7 +137,7 @@ function SidebarContent({ onNav }) {
               }`
             }
             style={({ isActive }) => ({
-              background: isActive ? 'rgba(245,158,11,0.1)' : undefined,
+              background: isActive ? '#1A1004' : undefined,
               color: isActive ? '#f59e0b' : '#94A3B8',
             })}
           >

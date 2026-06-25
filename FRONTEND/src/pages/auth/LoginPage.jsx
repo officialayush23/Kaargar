@@ -6,9 +6,7 @@ import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { Background } from '@/components/glass/Background'
-import {
-  Card, CardContent, CardHeader, CardTitle, CardDescription
-} from '@/components/ui/card'
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
@@ -30,6 +28,7 @@ function PasswordInput({ value, onChange, placeholder = 'Password', ...rest }) {
         onChange={onChange}
         placeholder={placeholder}
         className="pr-10"
+        autoComplete="current-password"
         {...rest}
       />
       <button
@@ -48,17 +47,16 @@ export default function LoginPage() {
   const navigate  = useNavigate()
   const { setSession, setUser } = useAuthStore()
 
-  const [step,      setStep]      = useState('intent')      // intent | email | credentials | check-email | profile | area
+  const [step,      setStep]      = useState('intent')   // intent | email | credentials | check-email
   const [direction, setDirection] = useState(1)
-  const [mode,      setMode]      = useState('signin')      // signin | signup
+  const [intent,    setIntent]    = useState('user')     // 'user' | 'worker'
+  const [mode,      setMode]      = useState('signin')   // signin | signup
   const [loading,   setLoading]   = useState(false)
 
-  const [email,     setEmail]     = useState('')
-  const [password,  setPassword]  = useState('')
-  const [name,      setName]      = useState('')
-  const [area,      setArea]      = useState('')
+  const [email,    setEmail]    = useState('')
+  const [password, setPassword] = useState('')
 
-  const accent = mode === 'signin' ? '#4B7BFF' : '#22C55E'
+  const accentColor = intent === 'worker' ? '#f59e0b' : '#4B7BFF'
 
   function go(nextStep, dir = 1) {
     setDirection(dir)
@@ -72,18 +70,25 @@ export default function LoginPage() {
       if (mode === 'signin') {
         const { data, error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) { toast.error(error.message); return }
+
         setSession(data.session)
+
         try {
-          const { data: user } = await api.post('/auth/provision', {})
+          const { data: user } = await api.post('/auth/provision', {
+            role: intent === 'worker' ? 'worker' : 'user',
+          })
           setUser(user)
           const role = user?.role
-          if (role === 'admin')  navigate('/admin',  { replace: true })
-          else if (role === 'worker') navigate('/worker', { replace: true })
-          else navigate('/', { replace: true })
+          if (role === 'admin')         navigate('/admin',          { replace: true })
+          else if (role === 'worker')   navigate('/worker',         { replace: true })
+          else if (intent === 'worker') navigate('/onboard/worker', { replace: true })
+          else                          navigate('/',               { replace: true })
         } catch {
           toast.error('Could not load account. Please try again.')
         }
+
       } else {
+        // sign up — Supabase sends a confirmation email
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) { toast.error(error.message); return }
         go('check-email')
@@ -102,15 +107,11 @@ export default function LoginPage() {
     else toast.success('Password reset email sent!')
   }
 
-  const PUNE_AREAS = [
-    'Hinjewadi', 'Kothrud', 'Aundh', 'Baner', 'Wakad', 'Pimpri-Chinchwad',
-    'Hadapsar', 'Kharadi', 'Viman Nagar', 'Kalyani Nagar', 'Koregaon Park',
-    'Camp', 'Shivajinagar', 'Deccan', 'Katraj', 'Kondhwa', 'Magarpatta',
-    'Sinhagad Road', 'Warje', 'Bavdhan',
-  ]
-
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center px-4 py-12" style={{ background: 'var(--page-bg)' }}>
+    <div
+      className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
+      style={{ background: 'var(--page-bg)' }}
+    >
       <Background />
 
       {/* Logo */}
@@ -119,16 +120,22 @@ export default function LoginPage() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <span style={{ fontFamily: '"Playwrite NO", cursive', fontSize: '36px', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+        <span style={{
+          fontFamily: '"Playwrite NO", cursive',
+          fontSize: '36px', fontWeight: 700,
+          color: 'var(--text-primary)', letterSpacing: '-0.02em',
+        }}>
           Kaargar
         </span>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Hyperlocal services, Pune</p>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+          Hyperlocal services, Pune
+        </p>
       </motion.div>
 
       <div className="w-full max-w-sm relative" style={{ minHeight: '380px' }}>
         <AnimatePresence mode="wait" custom={direction}>
 
-          {/* ── Intent ───────────────────────── */}
+          {/* ── Intent ─────────────────────────────────────────────── */}
           {step === 'intent' && (
             <motion.div key="intent" custom={direction} variants={slide}
               initial="enter" animate="center" exit="exit" transition={trans}>
@@ -139,7 +146,7 @@ export default function LoginPage() {
                 </CardHeader>
                 <CardContent className="space-y-3">
                   <button
-                    onClick={() => { setMode('signin'); go('email') }}
+                    onClick={() => { setIntent('user'); go('email') }}
                     className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
                     style={{ background: 'var(--g-bg)', border: '1.5px solid rgba(75,123,255,0.3)' }}
                   >
@@ -152,20 +159,22 @@ export default function LoginPage() {
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Book workers instantly</p>
                     </div>
                   </button>
+
                   <button
-                    onClick={() => { setMode('signin'); go('email') }}
+                    onClick={() => { setIntent('worker'); go('email') }}
                     className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
-                    style={{ background: 'var(--g-bg)', border: '1.5px solid rgba(245,158,11,0.3)' }}
+                    style={{ background: 'var(--g-bg)', border: '1.5px solid #92400E' }}
                   >
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'rgba(245,158,11,0.15)' }}>
+                      style={{ background: '#2D1A06' }}>
                       <Zap size={18} style={{ color: '#f59e0b' }} />
                     </div>
                     <div>
                       <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>I am a worker</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Manage jobs & earnings</p>
+                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Manage jobs &amp; earnings</p>
                     </div>
                   </button>
+
                   <p className="text-center text-xs pt-1" style={{ color: 'var(--text-muted)' }}>
                     Same account — role assigned automatically
                   </p>
@@ -174,16 +183,26 @@ export default function LoginPage() {
             </motion.div>
           )}
 
-          {/* ── Email ────────────────────────── */}
+          {/* ── Email ──────────────────────────────────────────────── */}
           {step === 'email' && (
             <motion.div key="email" custom={direction} variants={slide}
               initial="enter" animate="center" exit="exit" transition={trans}>
               <Card>
                 <CardHeader>
-                  <button onClick={() => go('intent', -1)} className="flex items-center gap-1 mb-2 text-sm"
+                  <button onClick={() => go('intent', -1)}
+                    className="flex items-center gap-1 mb-2 text-sm"
                     style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                     <ArrowLeft size={14} /> Back
                   </button>
+                  {/* Intent badge */}
+                  <div className="mb-1">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{
+                      background: intent === 'worker' ? '#2D1A06' : 'rgba(75,123,255,0.12)',
+                      color: intent === 'worker' ? '#f59e0b' : '#4B7BFF',
+                    }}>
+                      {intent === 'worker' ? '⚡ Worker' : '🔍 Customer'}
+                    </span>
+                  </div>
                   <CardTitle>Your email</CardTitle>
                   <CardDescription>We'll sign you in or create your account</CardDescription>
                 </CardHeader>
@@ -196,24 +215,30 @@ export default function LoginPage() {
                       onChange={e => setEmail(e.target.value)}
                       autoFocus
                       required
+                      autoComplete="email"
                     />
-                    <Button type="submit" className="w-full" disabled={!email}>Continue</Button>
+                    <Button type="submit" className="w-full" disabled={!email}
+                      style={{ background: accentColor }}>
+                      Continue
+                    </Button>
                   </form>
                 </CardContent>
               </Card>
             </motion.div>
           )}
 
-          {/* ── Credentials ──────────────────── */}
+          {/* ── Credentials ────────────────────────────────────────── */}
           {step === 'credentials' && (
             <motion.div key="credentials" custom={direction} variants={slide}
               initial="enter" animate="center" exit="exit" transition={trans}>
               <Card>
                 <CardHeader>
-                  <button onClick={() => go('email', -1)} className="flex items-center gap-1 mb-2 text-sm"
+                  <button onClick={() => go('email', -1)}
+                    className="flex items-center gap-1 mb-2 text-sm"
                     style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
                     <ArrowLeft size={14} /> Back
                   </button>
+
                   {/* Sign in / Sign up toggle */}
                   <div className="flex rounded-xl p-1 mb-3" style={{ background: 'var(--g-bg)' }}>
                     {['signin', 'signup'].map(m => (
@@ -222,16 +247,16 @@ export default function LoginPage() {
                         onClick={() => setMode(m)}
                         className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
                         style={{
-                          background: mode === m ? accent : 'transparent',
+                          background: mode === m ? accentColor : 'transparent',
                           color: mode === m ? '#fff' : 'var(--text-muted)',
-                          border: 'none',
-                          cursor: 'pointer',
+                          border: 'none', cursor: 'pointer',
                         }}
                       >
                         {m === 'signin' ? 'Sign In' : 'Sign Up'}
                       </button>
                     ))}
                   </div>
+
                   <CardTitle>{mode === 'signin' ? 'Welcome back' : 'Create account'}</CardTitle>
                   <CardDescription style={{ wordBreak: 'break-all' }}>{email}</CardDescription>
                 </CardHeader>
@@ -240,20 +265,19 @@ export default function LoginPage() {
                     <PasswordInput
                       value={password}
                       onChange={e => setPassword(e.target.value)}
-                      placeholder={mode === 'signup' ? 'Create a password' : 'Password'}
+                      placeholder={mode === 'signup' ? 'Create a password (min 6 chars)' : 'Password'}
                       required
                     />
-                    <Button type="submit" className="w-full" disabled={loading || !password} style={{ background: accent }}>
+                    <Button type="submit" className="w-full"
+                      disabled={loading || !password}
+                      style={{ background: accentColor }}>
                       {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
                     </Button>
                     {mode === 'signin' && (
                       <div className="text-center">
-                        <button
-                          type="button"
-                          onClick={handleForgotPassword}
+                        <button type="button" onClick={handleForgotPassword}
                           className="text-xs"
-                          style={{ color: accent, background: 'none', border: 'none', cursor: 'pointer' }}
-                        >
+                          style={{ color: accentColor, background: 'none', border: 'none', cursor: 'pointer' }}>
                           Forgot password?
                         </button>
                       </div>
@@ -264,7 +288,7 @@ export default function LoginPage() {
             </motion.div>
           )}
 
-          {/* ── Check Email ───────────────────── */}
+          {/* ── Check Email (after sign up) ────────────────────────── */}
           {step === 'check-email' && (
             <motion.div key="check-email" custom={direction} variants={slide}
               initial="enter" animate="center" exit="exit" transition={trans}>
@@ -276,14 +300,18 @@ export default function LoginPage() {
                   </div>
                   <CardTitle className="text-center">Check your inbox</CardTitle>
                   <CardDescription className="text-center">
-                    We sent a verification link to <strong style={{ color: 'var(--text-primary)', wordBreak: 'break-all' }}>{email}</strong>. Click it to activate your account.
+                    We sent a confirmation link to{' '}
+                    <strong style={{ color: 'var(--text-primary)', wordBreak: 'break-all' }}>
+                      {email}
+                    </strong>.
+                    Click it to activate your account, then sign in.
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-3 text-center">
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                    After clicking the link, come back and sign in.
+                    Check spam if you don't see it within a minute.
                   </p>
-                  <Button variant="outline" className="w-full" onClick={() => go('credentials', -1)}>
+                  <Button variant="outline" className="w-full" onClick={() => { setMode('signin'); go('credentials', -1) }}>
                     Back to Sign In
                   </Button>
                 </CardContent>

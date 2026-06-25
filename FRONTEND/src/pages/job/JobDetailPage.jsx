@@ -31,14 +31,14 @@ import { Background } from '@/components/glass/Background'
 
 const STATUS = {
   requested:     { label: 'Requested',       color: '#60A5FA', bg: 'rgba(96,165,250,0.12)',  icon: Clock },
-  searching:     { label: 'Finding Worker',   color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',  icon: Zap },
+  searching:     { label: 'Finding Worker',   color: '#F59E0B', bg: '#251606',  icon: Zap },
   scheduled:     { label: 'Scheduled',        color: '#A78BFA', bg: 'rgba(167,139,250,0.12)', icon: CalendarClock },
   confirmed:     { label: 'Confirmed',        color: '#34D399', bg: 'rgba(52,211,153,0.12)',  icon: CheckCircle2 },
   worker_assigned: { label: 'Worker Assigned',color: '#34D399', bg: 'rgba(52,211,153,0.12)', icon: CheckCircle2 },
   assigned:      { label: 'Worker Assigned',  color: '#34D399', bg: 'rgba(52,211,153,0.12)', icon: CheckCircle2 },
   en_route:      { label: 'On the Way',       color: '#22C55E', bg: 'rgba(34,197,94,0.12)',  icon: Navigation },
   arrived:       { label: 'Worker Arrived',   color: '#22C55E', bg: 'rgba(34,197,94,0.12)',  icon: CheckCircle2 },
-  started:       { label: 'In Progress',      color: '#F59E0B', bg: 'rgba(245,158,11,0.12)', icon: CircleDot },
+  started:       { label: 'In Progress',      color: '#F59E0B', bg: '#251606', icon: CircleDot },
   completed:     { label: 'Completed',        color: '#34D399', bg: 'rgba(52,211,153,0.12)', icon: CheckCheck },
   cancelled:     { label: 'Cancelled',        color: '#F87171', bg: 'rgba(248,113,113,0.12)', icon: XCircle },
   failed:        { label: 'Failed',           color: '#F87171', bg: 'rgba(248,113,113,0.12)', icon: XCircle },
@@ -107,7 +107,7 @@ function InfoRow({ icon: Icon, label, value, accent }) {
       borderBottom: '1px solid var(--card-border)' }}>
       <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, display: 'flex',
         alignItems: 'center', justifyContent: 'center',
-        background: accent ? 'rgba(245,158,11,0.10)' : 'var(--card-bg)' }}>
+        background: accent ? '#251606' : 'var(--card-bg)' }}>
         <Icon size={15} style={{ color: accent ? 'var(--amber, #F59E0B)' : 'var(--text-muted)' }} />
       </div>
       <div style={{ flex: 1 }}>
@@ -347,7 +347,7 @@ function RescheduleModal({ open, onClose, currentDays, currentStart, currentEnd,
                     style={{
                       padding: '8px 4px', borderRadius: 10, cursor: 'pointer',
                       border: active ? '1.5px solid var(--amber, #F59E0B)' : '1px solid var(--card-border)',
-                      background: active ? 'rgba(245,158,11,0.12)' : 'var(--card-bg)',
+                      background: active ? '#251606' : 'var(--card-bg)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontSize: 12, textAlign: 'center',
                     flexDirection: 'column',
@@ -394,7 +394,7 @@ export default function JobDetailPage() {
 
   const rescheduleMut = useMutation({
     mutationFn: ({ days, windowStart, windowEnd }) =>
-      api.patch(`/jobs/${jobId}`, { preferred_days: days, arrival_window_start: windowStart, arrival_window_end: windowEnd }),
+      api.patch(`/jobs/${jobId}/reschedule`, { preferred_days: days, window_start: windowStart, window_end: windowEnd }),
     onSuccess: () => {
       toast.success('Reschedule request sent')
       queryClient.invalidateQueries(['job', jobId])

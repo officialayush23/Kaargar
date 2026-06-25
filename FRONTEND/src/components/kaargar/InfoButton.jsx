@@ -150,7 +150,7 @@ export function InfoButton({ text, title, size = 16, side = 'top', className = '
             height: size + 4,
             borderRadius: '50%',
             border: '1px solid rgba(255,255,255,0.08)',
-            background: open ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.04)',
+            background: open ? '#2D1A06' : 'rgba(255,255,255,0.04)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',

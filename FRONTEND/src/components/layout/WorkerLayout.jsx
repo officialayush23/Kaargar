@@ -136,12 +136,12 @@ function WorkerMenu({ open, onClose }) {
                 <div className="flex items-center gap-3">
                   <Avatar
                     className="h-14 w-14"
-                    style={{ border: '2px solid rgba(245,158,11,0.35)', boxShadow: '0 0 18px rgba(245,158,11,0.18)' }}
+                    style={{ border: '2px solid #B45309', boxShadow: '0 0 18px rgba(245,158,11,0.55)' }}
                   >
                     <AvatarImage src={user?.avatar_url} />
                     <AvatarFallback
                       className="text-lg font-bold"
-                      style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}
+                      style={{ background: '#3D2508', color: '#fbbf24' }}
                     >
                       {initials}
                     </AvatarFallback>
@@ -155,7 +155,7 @@ function WorkerMenu({ open, onClose }) {
                     </p>
                     <span
                       className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1"
-                      style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}
+                      style={{ background: '#2D1A06', color: '#fbbf24' }}
                     >
                       ⚡ Worker
                     </span>
@@ -317,12 +317,12 @@ function WorkerPageHeader() {
             >
               <Avatar
                 className="h-9 w-9"
-                style={{ border: '2px solid rgba(245,158,11,0.4)', boxShadow: '0 0 12px rgba(245,158,11,0.15)' }}
+                style={{ border: '2px solid #B45309', boxShadow: '0 0 12px rgba(245,158,11,0.50)' }}
               >
                 <AvatarImage src={user?.avatar_url} />
                 <AvatarFallback
                   className="text-sm font-bold"
-                  style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}
+                  style={{ background: '#2D1A06', color: '#fbbf24' }}
                 >
                   {initials}
                 </AvatarFallback>

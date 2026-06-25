@@ -19,7 +19,7 @@ from models import (
     User, WorkerProfile, WorkerCategory, WorkerAnalytics, Service, ServiceMedia,
     Package, PackageService as PackageServiceModel, Offer, PackageOrder, PackageUsage,
     WorkerAvailability, WorkerTimeOff, WorkerScheduleBlock,
-    ServiceSlotConfig, ServiceSlot,
+    ServiceSlotConfig, ServiceSlot, Tag, ServiceTag,
 )
 from schemas import (
     WorkerProfileCreate, WorkerProfileUpdate, WorkerProfileResponse,
@@ -32,6 +32,7 @@ from schemas import (
     WorkerAvailabilitySet, WorkerAvailabilityResponse,
     WorkerTimeOffCreate, WorkerTimeOffResponse, WorkerScheduleBlockResponse,
     SlotConfigCreate, SlotConfigResponse, SlotResponse, SlotGenerateRequest,
+    TagResponse, TagCreate, ServiceTagsSet,
 )
 from dependencies import get_current_user
 from services.storage import get_public_url, BUCKET_DOCUMENTS
@@ -104,15 +105,14 @@ async def update_profile(
         raise HTTPException(404, "Worker profile not found — create one first via POST /workers/profile")
 
     updates = body.model_dump(exclude_none=True)
+
+    # full_name lives on the User record, not WorkerProfile — handle separately
+    full_name = updates.pop("full_name", None)
     for field, value in updates.items():
         setattr(wp, field, value)
 
-    # Also allow updating full_name on the user record
-    if hasattr(body, 'full_name') and body.full_name:  # type: ignore[attr-defined]
-        user_result = await db.execute(select(User).where(User.id == user.id))
-        u = user_result.scalar_one_or_none()
-        if u:
-            u.full_name = body.full_name  # type: ignore[attr-defined]
+    if full_name:
+        user.full_name = full_name
 
     await db.commit()
     await db.refresh(wp)
@@ -131,6 +131,8 @@ async def update_status(
     wp = result.scalar_one_or_none()
     if not wp:
         raise HTTPException(404, "Worker profile not found")
+    if wp.verification_status != "approved":
+        raise HTTPException(403, "Your account must be approved by admin before you can go online")
     wp.status = body.status
     await db.commit()
     return SuccessResponse(message=f"Status set to {body.status}")
@@ -187,6 +189,15 @@ async def update_location(
             lon=Decimal(str(body.lon)),
             geom=geom,
         ))
+
+    # Log to location_history (raw ping trail for job audit / heat maps)
+    from models import LocationHistory
+    db.add(LocationHistory(
+        worker_id=wp.id,
+        lat=Decimal(str(body.lat)),
+        lon=Decimal(str(body.lon)),
+        geom=geom,
+    ))
 
     await db.commit()
     return SuccessResponse(message="Location updated")
@@ -307,8 +318,22 @@ async def get_my_services(
     wp = result.scalar_one_or_none()
     if not wp:
         raise HTTPException(404, "Worker profile not found")
-    svcs = await db.execute(select(Service).where(Service.worker_id == wp.id))
-    return svcs.scalars().all()
+    svcs_result = await db.execute(select(Service).where(Service.worker_id == wp.id))
+    svcs = svcs_result.scalars().all()
+
+    # Attach tags to each service
+    from schemas import TagResponse as TR
+    responses = []
+    for svc in svcs:
+        tags_result = await db.execute(
+            select(Tag).join(ServiceTag, ServiceTag.tag_id == Tag.id)
+            .where(ServiceTag.service_id == svc.id)
+        )
+        tags = tags_result.scalars().all()
+        resp = ServiceResponse.model_validate(svc)
+        resp.tags = [TR.model_validate(t) for t in tags]
+        responses.append(resp)
+    return responses
 
 
 @router.post("/me/services", response_model=ServiceResponse)
@@ -339,6 +364,22 @@ async def create_service(
             raise HTTPException(400, "Worker has no categories assigned. Update profile first.")
         dump["category_id"] = cat_id
 
+    # ── Price floor enforcement ───────────────────────────────────────────────
+    from models import Category as CatModel
+    from decimal import Decimal as _Dec
+    _cat_id = dump.get("category_id")
+    if _cat_id:
+        cat_row = await db.execute(select(CatModel).where(CatModel.id == _cat_id))
+        cat_obj = cat_row.scalar_one_or_none()
+        if cat_obj and cat_obj.min_price is not None:
+            _price = _Dec(str(dump.get("price", 0)))
+            if _price < cat_obj.min_price:
+                raise HTTPException(
+                    400,
+                    f"Minimum price for {cat_obj.name} is ₹{cat_obj.min_price}. "
+                    f"You entered ₹{_price}."
+                )
+
     svc = Service(worker_id=wp.id, **dump)
     db.add(svc)
     await db.commit()
@@ -346,7 +387,7 @@ async def create_service(
 
     # Translate title + description to hi & mr in background (no latency)
     fields = {}
-    if svc.name:        fields["title"] = svc.name
+    if svc.title:       fields["title"] = svc.title
     if svc.description: fields["description"] = svc.description
     if fields:
         background.add_task(translate_and_store, db, "service", str(svc.id), fields)
@@ -374,6 +415,24 @@ async def update_service(
     if not svc:
         raise HTTPException(404, "Service not found")
     updates = body.model_dump(exclude_none=True)
+
+    # ── Price floor enforcement on update ─────────────────────────────────────
+    if "price" in updates:
+        from models import Category as CatModel
+        from decimal import Decimal as _Dec
+        _cat_id = updates.get("category_id") or svc.category_id
+        if _cat_id:
+            cat_row = await db.execute(select(CatModel).where(CatModel.id == _cat_id))
+            cat_obj = cat_row.scalar_one_or_none()
+            if cat_obj and cat_obj.min_price is not None:
+                _price = _Dec(str(updates["price"]))
+                if _price < cat_obj.min_price:
+                    raise HTTPException(
+                        400,
+                        f"Minimum price for {cat_obj.name} is ₹{cat_obj.min_price}. "
+                        f"You entered ₹{_price}."
+                    )
+
     for k, v in updates.items():
         setattr(svc, k, v)
     await db.commit()
@@ -381,7 +440,7 @@ async def update_service(
 
     # Re-translate if title or description changed
     fields = {}
-    if "name" in updates:        fields["title"] = svc.name
+    if "title" in updates:       fields["title"] = svc.title
     if "description" in updates: fields["description"] = svc.description
     if fields:
         background.add_task(translate_and_store, db, "service", str(svc.id), fields)
@@ -410,6 +469,114 @@ async def delete_service(
     await db.delete(svc)
     await db.commit()
     return SuccessResponse(message="Service deleted")
+
+
+# ── TAGS ──────────────────────────────────────────────────────
+
+@router.get("/tags", response_model=list[TagResponse])
+async def list_tags(
+    q: Optional[str] = Query(None, max_length=80),
+    category_id: Optional[uuid.UUID] = Query(None),
+    db: AsyncSession = Depends(get_db),
+):
+    """Public — list all tags, optionally filtered by name prefix or category."""
+    from sqlalchemy import func, or_
+    stmt = select(Tag)
+    if q:
+        stmt = stmt.where(Tag.name.ilike(f"%{q}%"))
+    if category_id:
+        stmt = stmt.where(Tag.category_id == category_id)
+    stmt = stmt.order_by(Tag.usage_count.desc(), Tag.name).limit(50)
+    result = await db.execute(stmt)
+    return result.scalars().all()
+
+
+@router.post("/tags", response_model=TagResponse, status_code=201)
+async def create_tag(
+    body: TagCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Create a new tag (auto-slugify). Returns existing if slug already exists."""
+    import re
+    slug = re.sub(r"[^a-z0-9]+", "-", body.name.lower().strip()).strip("-")
+    # Return existing if same slug
+    existing = await db.execute(select(Tag).where(Tag.slug == slug))
+    tag = existing.scalar_one_or_none()
+    if tag:
+        return tag
+    tag = Tag(name=body.name.strip(), slug=slug)
+    db.add(tag)
+    await db.commit()
+    await db.refresh(tag)
+    return tag
+
+
+@router.put("/me/services/{service_id}/tags", response_model=ServiceResponse)
+async def set_service_tags(
+    service_id: uuid.UUID,
+    body: ServiceTagsSet,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Replace all tags on a service. Creates new tags on-the-fly from new_tag_names."""
+    import re
+    from sqlalchemy import delete as sa_delete, func
+
+    # Auth: service must belong to this worker
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    svc_result = await db.execute(
+        select(Service).where(Service.id == service_id, Service.worker_id == wp.id)
+    )
+    svc = svc_result.scalar_one_or_none()
+    if not svc:
+        raise HTTPException(404, "Service not found")
+
+    # Collect all tag IDs (existing + newly created)
+    all_tag_ids: list[uuid.UUID] = list(body.tag_ids)
+
+    for name in body.new_tag_names:
+        name = name.strip()
+        if not name:
+            continue
+        slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+        ex = await db.execute(select(Tag).where(Tag.slug == slug))
+        tag = ex.scalar_one_or_none()
+        if not tag:
+            tag = Tag(name=name, slug=slug)
+            db.add(tag)
+            await db.flush()
+        all_tag_ids.append(tag.id)
+
+    # Replace all service_tags rows for this service
+    await db.execute(sa_delete(ServiceTag).where(ServiceTag.service_id == service_id))
+    for tag_id in set(all_tag_ids):
+        db.add(ServiceTag(service_id=service_id, tag_id=tag_id))
+        # Bump usage_count
+        await db.execute(
+            Tag.__table__.update()
+            .where(Tag.id == tag_id)
+            .values(usage_count=Tag.usage_count + 1)
+        )
+
+    await db.commit()
+
+    # Return enriched service with tags populated
+    tags_result = await db.execute(
+        select(Tag)
+        .join(ServiceTag, ServiceTag.tag_id == Tag.id)
+        .where(ServiceTag.service_id == service_id)
+    )
+    tags = tags_result.scalars().all()
+    await db.refresh(svc)
+    # Manually attach tags to response (SQLAlchemy doesn't lazy-load in async)
+    resp = ServiceResponse.model_validate(svc)
+    from schemas import TagResponse as TR
+    resp.tags = [TR.model_validate(t) for t in tags]
+    return resp
 
 
 @router.get("/me/analytics", response_model=WorkerAnalyticsResponse)
@@ -938,6 +1105,7 @@ async def get_worker(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
         select(WorkerProfile, User)
         .join(User, User.id == WorkerProfile.user_id)
         .where(WorkerProfile.id == worker_id)
+        .where(WorkerProfile.verification_status == "approved")
     )
     row = result.first()
     if not row:
@@ -946,7 +1114,45 @@ async def get_worker(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     data = WorkerPublicResponse.model_validate(wp)
     data.full_name = u.full_name
     data.avatar_url = u.avatar_url
+    # Populate expanded public fields
+    data.status = wp.status
+    data.verification_status = wp.verification_status
+    data.max_rate = wp.max_rate
+    data.is_instant_available = wp.is_instant_available
+    data.is_discovery_available = wp.is_discovery_available
+    # Rating breakdowns (if columns exist on the model)
+    data.quality_rating = getattr(wp, "quality_rating", None)
+    data.punctuality_rating = getattr(wp, "punctuality_rating", None)
+    data.communication_rating = getattr(wp, "communication_rating", None)
+    data.value_rating = getattr(wp, "value_rating", None)
+    # Service mode — derive from worker's is_instant_available / is_discovery_available
+    # or from a direct service_mode field if it exists
+    data.service_mode = getattr(wp, "service_mode", None)
     return data
+
+
+@router.post("/me/reapply", response_model=SuccessResponse)
+async def reapply_for_verification(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Rejected workers can resubmit their profile for admin review.
+    Resets verification_status back to 'pending' and clears the rejection reason.
+    """
+    result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    if wp.verification_status == "approved":
+        raise HTTPException(400, "Your account is already approved")
+    if wp.verification_status == "pending":
+        raise HTTPException(400, "Your application is already under review")
+    # Only rejected workers reach here
+    wp.verification_status = "pending"
+    wp.rejection_reason = None
+    await db.commit()
+    return SuccessResponse(message="Reapplication submitted — we'll review your profile shortly")
 
 
 @router.get("/{worker_id}/packages")
@@ -980,8 +1186,22 @@ async def get_worker_services(worker_id: uuid.UUID, db: AsyncSession = Depends(g
     result = await db.execute(
         select(Service)
         .where(Service.worker_id == worker_id, Service.is_active == True)  # noqa: E712
+        .order_by(Service.avg_rating.desc(), Service.created_at)
     )
-    return result.scalars().all()
+    svcs = result.scalars().all()
+    # Attach tags to each service (avoids async lazy-load errors)
+    from schemas import TagResponse as TR
+    responses = []
+    for svc in svcs:
+        tags_result = await db.execute(
+            select(Tag).join(ServiceTag, ServiceTag.tag_id == Tag.id)
+            .where(ServiceTag.service_id == svc.id)
+        )
+        tags = tags_result.scalars().all()
+        resp = ServiceResponse.model_validate(svc)
+        resp.tags = [TR.model_validate(t) for t in tags]
+        responses.append(resp)
+    return responses
 
 
 @router.get("/{worker_id}/media")
@@ -1389,7 +1609,6 @@ async def generate_slots(
         dow = current.weekday()  # 0=Mon
         if dow in availability:
             av = availability[dow]
-            # Generate slots from av.start_time to av.end_time
             cursor_min = av.start_time.hour * 60 + av.start_time.minute
             end_min    = av.end_time.hour   * 60 + av.end_time.minute
             slots_today = 0
@@ -1400,7 +1619,6 @@ async def generate_slots(
                 slot_start = _time(start_h, start_m)
                 slot_end   = _time(end_h,   end_m)
 
-                # Check if slot already exists
                 existing = await db.execute(
                     select(ServiceSlot).where(
                         ServiceSlot.worker_id  == wp.id,
@@ -1463,7 +1681,7 @@ async def unblock_slot(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Unblock a previously blocked slot."""
+    """Unblock a slot, making it bookable again."""
     wp = await _get_wp(user, db)
     result = await db.execute(
         select(ServiceSlot).where(ServiceSlot.id == slot_id, ServiceSlot.worker_id == wp.id)
@@ -1478,35 +1696,48 @@ async def unblock_slot(
     return slot
 
 
-# ── Public slot view (for booking calendar) ───────────────────────────────────
-
+# ── Public: available slots for a specific service (for customers booking) ──
 @router.get("/{worker_id}/services/{service_id}/slots", response_model=list[SlotResponse])
-async def public_get_slots(
+async def get_public_service_slots(
     worker_id:  uuid.UUID,
     service_id: uuid.UUID,
-    from_date:  str = Query(..., description="YYYY-MM-DD"),
-    to_date:    str = Query(..., description="YYYY-MM-DD"),
+    date_from:  str | None = None,
+    date_to:    str | None = None,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Public endpoint — returns available (non-full, non-blocked) slots for a service.
-    Used by the booking calendar on the worker profile page.
+    Return available (non-blocked, not fully booked) slots for a service.
+    Used by BookDiscoveryPage when a customer selects a time slot.
     """
     from datetime import date as _date
-    fd = _date.fromisoformat(from_date)
-    td = _date.fromisoformat(to_date)
-    if (td - fd).days > 60:
-        raise HTTPException(400, "Date range too large (max 60 days)")
+    today = _date.today()
 
-    result = await db.execute(
+    # Parse optional date filters (YYYY-MM-DD)
+    try:
+        d_from = _date.fromisoformat(date_from) if date_from else today
+    except ValueError:
+        d_from = today
+    try:
+        d_to = _date.fromisoformat(date_to) if date_to else None
+    except ValueError:
+        d_to = None
+
+    stmt = (
         select(ServiceSlot)
         .where(
-            ServiceSlot.worker_id  == worker_id,
             ServiceSlot.service_id == service_id,
-            ServiceSlot.slot_date  >= fd,
-            ServiceSlot.slot_date  <= td,
-            ServiceSlot.is_blocked == False,
+            ServiceSlot.worker_id  == worker_id,
+            ServiceSlot.slot_date  >= d_from,
+            ServiceSlot.is_blocked == False,  # noqa: E712
         )
-        .order_by(ServiceSlot.slot_date, ServiceSlot.slot_start)
     )
-    return result.scalars().all()
+    if d_to:
+        stmt = stmt.where(ServiceSlot.slot_date <= d_to)
+
+    stmt = stmt.order_by(ServiceSlot.slot_date, ServiceSlot.slot_start)
+
+    result = await db.execute(stmt)
+    slots  = result.scalars().all()
+
+    # Filter out fully booked slots
+    return [s for s in slots if s.booked_count < s.capacity]

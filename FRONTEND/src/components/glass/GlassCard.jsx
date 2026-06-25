@@ -19,7 +19,7 @@ export function GlassCard({
   const glowMap = {
     azure:  'shadow-[0_0_32px_rgba(59,130,246,0.25)]',
     green:  'shadow-[0_0_32px_rgba(16,185,129,0.25)]',
-    amber:  'shadow-[0_0_32px_rgba(245,158,11,0.25)]',
+    amber:  'shadow-[0_0_32px_rgba(245,158,11,0.55)]',
     violet: 'shadow-[0_0_32px_rgba(124,58,237,0.25)]',
   }
 

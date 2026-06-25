@@ -192,6 +192,12 @@ export default function WorkerProfilePage() {
     enabled: !!workerId,
   })
 
+  const { data: packages = [] } = useQuery({
+    queryKey: ['worker-packages', workerId],
+    queryFn: () => api.get(`/workers/${workerId}/packages`).then(r => r.data),
+    enabled: !!workerId,
+  })
+
   const { data: reviewsData } = useQuery({
     queryKey: ['worker-reviews', workerId],
     queryFn: () => api.get(`/reviews/worker/${workerId}`).then(r => r.data),
@@ -199,7 +205,6 @@ export default function WorkerProfilePage() {
   })
 
   const reviews = Array.isArray(reviewsData) ? reviewsData : reviewsData?.reviews || []
-  const packages = services.filter(s => s._type === 'package') // or fetch separately
   const name = worker?.full_name || 'Worker'
   const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   const isVerified = worker?.verification_status === 'approved'
@@ -277,7 +282,7 @@ export default function WorkerProfilePage() {
                   <div className="flex items-center gap-1">
                     <Star size={13} className="fill-amber-400 text-amber-400" />
                     <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{rating.toFixed(1)}</span>
-                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>({worker.total_reviews || reviews.length})</span>
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>({worker.rating_count || worker.total_reviews || reviews.length})</span>
                   </div>
                 )}
                 {worker.total_jobs_completed > 0 && (
@@ -356,7 +361,7 @@ export default function WorkerProfilePage() {
                   style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--g-border)', borderRadius: 14, padding: '14px 16px' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{svc.name}</p>
+                      <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{svc.title}</p>
                       {svc.description && (
                         <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{svc.description}</p>
                       )}
@@ -367,10 +372,10 @@ export default function WorkerProfilePage() {
                             {svc.service_mode === 'walkin' ? 'Walk-in' : svc.service_mode === 'onsite' ? 'On-site' : 'Walk-in & On-site'}
                           </span>
                         )}
-                        {svc.duration_minutes && (
+                        {svc.duration_min && (
                           <span className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
                             style={{ background: 'var(--g-bg)', color: 'var(--text-muted)', border: '1px solid var(--g-border)' }}>
-                            <Clock size={9} /> {svc.duration_minutes} min
+                            <Clock size={9} /> {svc.duration_min} min
                           </span>
                         )}
                       </div>
@@ -398,7 +403,7 @@ export default function WorkerProfilePage() {
             <div className="space-y-2">
               {packages.map(pkg => (
                 <div key={pkg.id}
-                  style={{ background: 'var(--g-bg-mid)', border: '1px solid rgba(245,158,11,0.2)', borderRadius: 14, padding: '14px 16px' }}>
+                  style={{ background: 'var(--g-bg-mid)', border: '1px solid #7C4A12', borderRadius: 14, padding: '14px 16px' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -481,11 +486,11 @@ export default function WorkerProfilePage() {
                     <div className="flex items-center gap-2">
                       <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold"
                         style={{ background: 'var(--g-bg)', color: 'var(--text-secondary)', border: '1px solid var(--g-border)' }}>
-                        {rv.reviewer?.full_name?.[0]?.toUpperCase() || 'U'}
+                        {(rv.reviewer_name || rv.reviewer?.full_name || 'U')[0]?.toUpperCase()}
                       </div>
                       <div>
                         <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {rv.reviewer?.full_name || 'User'}
+                          {rv.reviewer_name || rv.reviewer?.full_name || 'User'}
                         </p>
                         <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{formatRelativeTime(rv.created_at)}</p>
                       </div>
@@ -497,8 +502,8 @@ export default function WorkerProfilePage() {
                       ))}
                     </div>
                   </div>
-                  {rv.review_text && (
-                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{rv.review_text}</p>
+                  {(rv.text || rv.review_text) && (
+                    <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{rv.text || rv.review_text}</p>
                   )}
                 </div>
               ))}

@@ -115,7 +115,7 @@ function DayPicker({ selected, onChange }) {
             style={{
               padding: '8px 4px', borderRadius: 12, cursor: 'pointer',
               border: active ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
-              background: active ? 'rgba(245,158,11,0.12)' : 'var(--card-bg)',
+              background: active ? '#251606' : 'var(--card-bg)',
               display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
               position: 'relative', transition: 'all 0.15s',
             }}>
@@ -164,7 +164,7 @@ function TimeSelect({ label, value, onChange, options, placeholder }) {
 function SummaryRow({ icon: Icon, label, children }) {
   return (
     <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: 'rgba(245,158,11,0.10)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+      <div style={{ width: 32, height: 32, borderRadius: 8, flexShrink: 0, background: '#251606', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         <Icon size={15} style={{ color: 'var(--amber)' }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
@@ -236,7 +236,7 @@ function SlotCalendar({ workerId, serviceId, selectedSlot, onSelect }) {
               style={{
                 flex: 1, padding: '8px 2px', borderRadius: 10, cursor: 'pointer',
                 border: isSelected ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
-                background: isSelected ? 'rgba(245,158,11,0.12)' : 'var(--card-bg)',
+                background: isSelected ? '#251606' : 'var(--card-bg)',
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
                 transition: 'all 0.15s',
               }}>
@@ -284,7 +284,7 @@ function SlotCalendar({ workerId, serviceId, selectedSlot, onSelect }) {
                 style={{
                   padding: '10px 6px', borderRadius: 10, cursor: full ? 'not-allowed' : 'pointer',
                   border: isChosen ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
-                  background: isChosen ? 'rgba(245,158,11,0.12)' : full ? 'rgba(255,255,255,0.02)' : 'var(--card-bg)',
+                  background: isChosen ? '#251606' : full ? 'rgba(255,255,255,0.02)' : 'var(--card-bg)',
                   opacity: full ? 0.45 : 1, transition: 'all 0.15s',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
                 }}>
@@ -488,7 +488,7 @@ export default function BookDiscoveryPage() {
                 return (
                   <motion.div key={svc.id} onClick={() => { setSelectedService(svc); setSelectedPackage(null); setSelectedSlot(null) }}
                     whileTap={{ scale: 0.98 }}
-                    style={{ padding: '14px 16px', borderRadius: 14, cursor: 'pointer', border: isActive ? '1.5px solid var(--amber)' : '1px solid var(--card-border)', background: isActive ? 'rgba(245,158,11,0.08)' : 'var(--card-bg)', transition: 'all 0.15s' }}>
+                    style={{ padding: '14px 16px', borderRadius: 14, cursor: 'pointer', border: isActive ? '1.5px solid var(--amber)' : '1px solid var(--card-border)', background: isActive ? '#1A1004' : 'var(--card-bg)', transition: 'all 0.15s' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
@@ -511,7 +511,7 @@ export default function BookDiscoveryPage() {
                         <p style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 8 }}>Packages (optional):</p>
                         {svc.packages.map(pkg => (
                           <motion.button key={pkg.id} onClick={e => { e.stopPropagation(); setSelectedPackage(selectedPackage?.id === pkg.id ? null : pkg) }} whileTap={{ scale: 0.97 }}
-                            style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: selectedPackage?.id === pkg.id ? '1.5px solid var(--amber)' : '1px solid var(--card-border)', background: selectedPackage?.id === pkg.id ? 'rgba(245,158,11,0.10)' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.15s', marginBottom: 6 }}>
+                            style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: selectedPackage?.id === pkg.id ? '1.5px solid var(--amber)' : '1px solid var(--card-border)', background: selectedPackage?.id === pkg.id ? '#251606' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.15s', marginBottom: 6 }}>
                             <div style={{ textAlign: 'left' }}>
                               <p style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>{pkg.title}</p>
                               {pkg.description && <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{pkg.description}</p>}
@@ -544,7 +544,7 @@ export default function BookDiscoveryPage() {
                 <SlotCalendar workerId={workerId} serviceId={selectedService?.id} selectedSlot={selectedSlot} onSelect={setSelectedSlot} />
                 {selectedSlot && (
                   <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                    style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.22)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: '#1A1004', border: '1px solid #7C4A12', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Check size={13} style={{ color: 'var(--amber)', flexShrink: 0 }} />
                     <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
                       Slot: <strong style={{ color: 'var(--amber)' }}>{formatShort(selectedSlot.slot_date)} · {to12h(selectedSlot.slot_start?.slice(0, 5))} – {to12h(selectedSlot.slot_end?.slice(0, 5))}</strong>
@@ -572,7 +572,7 @@ export default function BookDiscoveryPage() {
                 <DayPicker selected={preferredDays} onChange={setPreferredDays} />
                 {preferredDays.length > 0 && (
                   <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                    style={{ marginTop: 14, padding: 12, borderRadius: 10, background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.18)' }}>
+                    style={{ marginTop: 14, padding: 12, borderRadius: 10, background: '#1A1004', border: '1px solid #7C4A12' }}>
                     {preferredDays.map((d, i) => (
                       <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: i > 0 ? 4 : 0 }}>
                         <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--amber)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#000' }}>{i + 1}</div>
@@ -605,7 +605,7 @@ export default function BookDiscoveryPage() {
                 {windowStart && windowEnd && !windowValid && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: 10, fontSize: 11, color: '#F87171' }}>Window must be at least 1 hour</motion.p>}
                 {windowValid && (
                   <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
-                    style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.22)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: '#1A1004', border: '1px solid #7C4A12', display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Check size={13} style={{ color: 'var(--amber)', flexShrink: 0 }} />
                     <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>Worker arrives between <strong style={{ color: 'var(--amber)' }}>{to12h(windowStart)} – {to12h(windowEnd)}</strong></p>
                   </motion.div>
@@ -614,7 +614,7 @@ export default function BookDiscoveryPage() {
               <GlassCard className="p-4">
                 <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Your days</p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {preferredDays.map(d => <span key={d} style={{ padding: '3px 10px', borderRadius: 20, background: 'rgba(245,158,11,0.10)', border: '1px solid rgba(245,158,11,0.25)', fontSize: 11, color: 'var(--amber)', fontWeight: 500 }}>{formatShort(d)}</span>)}
+                  {preferredDays.map(d => <span key={d} style={{ padding: '3px 10px', borderRadius: 20, background: '#251606', border: '1px solid #7C4A12', fontSize: 11, color: 'var(--amber)', fontWeight: 500 }}>{formatShort(d)}</span>)}
                 </div>
               </GlassCard>
             </motion.div>
@@ -648,7 +648,7 @@ export default function BookDiscoveryPage() {
           {/* ── CONFIRM ── */}
           {step === 'confirm' && (
             <motion.div key="confirm" custom={direction} variants={slide} initial="enter" animate="center" exit="exit" transition={{ type: 'spring', stiffness: 340, damping: 32 }} className="space-y-4">
-              <div style={{ padding: '14px 16px', borderRadius: 14, background: 'rgba(245,158,11,0.07)', border: '1px solid rgba(245,158,11,0.20)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+              <div style={{ padding: '14px 16px', borderRadius: 14, background: '#1A1004', border: '1px solid #7C4A12', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
                 <Sparkles size={17} style={{ color: 'var(--amber)', flexShrink: 0, marginTop: 1 }} />
                 <div>
                   <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber)', marginBottom: 4 }}>
@@ -680,7 +680,7 @@ export default function BookDiscoveryPage() {
                   <>
                     <SummaryRow icon={Calendar} label="Preferred days">
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
-                        {preferredDays.map(d => <span key={d} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: 'rgba(245,158,11,0.10)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.25)' }}>{formatShort(d)}</span>)}
+                        {preferredDays.map(d => <span key={d} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: '#251606', color: 'var(--amber)', border: '1px solid #7C4A12' }}>{formatShort(d)}</span>)}
                       </div>
                     </SummaryRow>
                     <SummaryRow icon={Clock} label="Time window">

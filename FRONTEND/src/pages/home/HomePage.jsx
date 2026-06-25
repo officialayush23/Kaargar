@@ -61,11 +61,11 @@
 //               <div className="px-6 pt-6 pb-4" style={{ borderBottom: '1px solid var(--g-border)' }}>
 //                 <div className="flex items-center gap-4">
 //                   <Avatar className="h-16 w-16"
-//                     style={{ border: '2px solid rgba(245,158,11,0.3)', boxShadow: '0 0 20px rgba(245,158,11,0.18)' }}>
+//                     style={{ border: '2px solid #B45309', boxShadow: '0 0 20px rgba(245,158,11,0.55)' }}>
 //                     <AvatarImage src={user?.avatar_url} />
 //                     <AvatarFallback
 //                       className="text-xl font-bold"
-//                       style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}
+//                       style={{ background: '#3D2508', color: '#fbbf24' }}
 //                     >{initials}</AvatarFallback>
 //                   </Avatar>
 //                   <div>
@@ -82,7 +82,7 @@
 
 //               {/* Notifications preview */}
 //               {unreadCount > 0 && (
-//                 <div className="px-6 py-3" style={{ borderBottom: '1px solid var(--g-border)', background: 'rgba(245,158,11,0.05)' }}>
+//                 <div className="px-6 py-3" style={{ borderBottom: '1px solid var(--g-border)', background: '#1A1004' }}>
 //                   <div className="flex items-center gap-2">
 //                     <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#f59e0b' }} />
 //                     <span className="text-sm font-medium" style={{ color: '#f59e0b' }}>
@@ -132,8 +132,8 @@
 //                     onClick={() => { navigate('/worker'); onClose() }}
 //                     className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors text-left"
 //                     style={{
-//                       background: 'rgba(245,158,11,0.1)',
-//                       border: '1px solid rgba(245,158,11,0.2)',
+//                       background: '#251606',
+//                       border: '1px solid #7C4A12',
 //                       color: '#f59e0b',
 //                     }}
 //                   >
@@ -167,7 +167,7 @@
 //   const { mode, setMode } = useAppStore()
 //   const modes = [
 //     { id: 'instant',   label: 'Instant',  emoji: '⚡', activeColor: 'rgba(34,197,94,0.25)', activeBorder: 'rgba(34,197,94,0.5)', activeText: '#4ade80' },
-//     { id: 'discovery', label: 'Discover', emoji: '🧭', activeColor: 'rgba(245,158,11,0.25)', activeBorder: 'rgba(245,158,11,0.5)', activeText: '#fbbf24' },
+//     { id: 'discovery', label: 'Discover', emoji: '🧭', activeColor: '#3D2508', activeBorder: '#B45309', activeText: '#fbbf24' },
 //   ]
 
 //   return (
@@ -377,7 +377,7 @@
 //               filter: 'blur(100px)',
 //               background: mode === 'instant'
 //                 ? 'radial-gradient(ellipse, rgba(34,197,94,0.14) 0%, transparent 70%)'
-//                 : 'radial-gradient(ellipse, rgba(245,158,11,0.12) 0%, transparent 70%)',
+//                 : 'radial-gradient(ellipse, rgba(245,158,11,0.45) 0%, transparent 70%)',
 //             }}
 //           />
 //         </AnimatePresence>
@@ -477,8 +477,8 @@
 //                 borderRadius: '9999px',
 //                 padding: '2px',
 //                 background: 'var(--g-bg)',
-//                 border: '1.5px solid rgba(245,158,11,0.35)',
-//                 boxShadow: '0 0 12px rgba(245,158,11,0.15)',
+//                 border: '1.5px solid #B45309',
+//                 boxShadow: '0 0 12px rgba(245,158,11,0.50)',
 //                 cursor: 'pointer',
 //               }}
 //             >
@@ -486,7 +486,7 @@
 //                 <AvatarImage src={user?.avatar_url} />
 //                 <AvatarFallback
 //                   className="text-sm font-bold"
-//                   style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}
+//                   style={{ background: '#2D1A06', color: '#fbbf24' }}
 //                 >{initials}</AvatarFallback>
 //               </Avatar>
 //             </motion.button>
@@ -547,9 +547,9 @@
 //                 onClick={handleSearch}
 //                 className="px-3 py-1 rounded-xl text-xs font-semibold"
 //                 style={{
-//                   background: 'rgba(245,158,11,0.15)',
+//                   background: '#2D1A06',
 //                   color: '#f59e0b',
-//                   border: '1px solid rgba(245,158,11,0.3)',
+//                   border: '1px solid #92400E',
 //                 }}
 //               >
 //                 Search
@@ -658,11 +658,11 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
               <div className="px-6 pt-6 pb-4" style={{ borderBottom: '1px solid var(--g-border)' }}>
                 <div className="flex items-center gap-4">
                   <Avatar className="h-16 w-16"
-                    style={{ border: '2px solid rgba(245,158,11,0.3)', boxShadow: '0 0 20px rgba(245,158,11,0.18)' }}>
+                    style={{ border: '2px solid #B45309', boxShadow: '0 0 20px rgba(245,158,11,0.55)' }}>
                     <AvatarImage src={user?.avatar_url} />
                     <AvatarFallback
                       className="text-xl font-bold"
-                      style={{ background: 'rgba(245,158,11,0.2)', color: '#f59e0b' }}
+                      style={{ background: '#3D2508', color: '#fbbf24' }}
                     >{initials}</AvatarFallback>
                   </Avatar>
                   <div>
@@ -679,7 +679,7 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
 
               {/* Notifications preview */}
               {unreadCount > 0 && (
-                <div className="px-6 py-3" style={{ borderBottom: '1px solid var(--g-border)', background: 'rgba(245,158,11,0.05)' }}>
+                <div className="px-6 py-3" style={{ borderBottom: '1px solid var(--g-border)', background: '#1A1004' }}>
                   <div className="flex items-center gap-2">
                     <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#f59e0b' }} />
                     <span className="text-sm font-medium" style={{ color: '#f59e0b' }}>
@@ -729,8 +729,8 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
                     onClick={() => { navigate('/worker'); onClose() }}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors text-left"
                     style={{
-                      background: 'rgba(245,158,11,0.1)',
-                      border: '1px solid rgba(245,158,11,0.2)',
+                      background: '#251606',
+                      border: '1px solid #7C4A12',
                       color: '#f59e0b',
                     }}
                   >
@@ -764,7 +764,7 @@ function InlineModeToggle() {
   const { mode, setMode } = useAppStore()
   const modes = [
     { id: 'instant',   label: 'Instant',  emoji: '⚡', activeColor: 'rgba(34,197,94,0.25)', activeBorder: 'rgba(34,197,94,0.5)', activeText: '#4ade80' },
-    { id: 'discovery', label: 'Discover', emoji: '🧭', activeColor: 'rgba(245,158,11,0.25)', activeBorder: 'rgba(245,158,11,0.5)', activeText: '#fbbf24' },
+    { id: 'discovery', label: 'Discover', emoji: '🧭', activeColor: '#3D2508', activeBorder: '#B45309', activeText: '#fbbf24' },
   ]
 
   return (
@@ -974,7 +974,7 @@ export default function HomePage() {
               filter: 'blur(100px)',
               background: mode === 'instant'
                 ? 'radial-gradient(ellipse, rgba(34,197,94,0.14) 0%, transparent 70%)'
-                : 'radial-gradient(ellipse, rgba(245,158,11,0.12) 0%, transparent 70%)',
+                : 'radial-gradient(ellipse, rgba(245,158,11,0.45) 0%, transparent 70%)',
             }}
           />
         </AnimatePresence>
@@ -1051,8 +1051,8 @@ export default function HomePage() {
                 borderRadius: '9999px',
                 padding: '2px',
                 background: 'var(--g-bg)',
-                border: '1.5px solid rgba(245,158,11,0.35)',
-                boxShadow: '0 0 12px rgba(245,158,11,0.15)',
+                border: '1.5px solid #B45309',
+                boxShadow: '0 0 12px rgba(245,158,11,0.50)',
                 cursor: 'pointer',
               }}
             >
@@ -1060,7 +1060,7 @@ export default function HomePage() {
                 <AvatarImage src={user?.avatar_url} />
                 <AvatarFallback
                   className="text-sm font-bold"
-                  style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b' }}
+                  style={{ background: '#2D1A06', color: '#fbbf24' }}
                 >{initials}</AvatarFallback>
               </Avatar>
             </motion.button>
@@ -1122,9 +1122,9 @@ export default function HomePage() {
                 onClick={handleSearch}
                 className="px-3 py-1 rounded-xl text-xs font-semibold"
                 style={{
-                  background: 'rgba(245,158,11,0.15)',
+                  background: '#2D1A06',
                   color: '#f59e0b',
-                  border: '1px solid rgba(245,158,11,0.3)',
+                  border: '1px solid #92400E',
                 }}
               >
                 Search

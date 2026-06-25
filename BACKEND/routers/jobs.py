@@ -4,7 +4,7 @@ Jobs router — create, status transitions, lifecycle endpoints.
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, delete
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from decimal import Decimal
 from datetime import datetime, timezone
@@ -12,7 +12,11 @@ from uuid import UUID
 import uuid
 
 from database import get_db
-from models import User, Job, JobEvent, SOSEvent, ServiceSlot, Service, WorkerCategory, WorkerProfile
+from models import (
+    User, Job, JobEvent, SOSEvent, ServiceSlot, Service,
+    WorkerCategory, WorkerProfile, WorkerScheduleBlock,
+    CancellationPenalty, Payment, Notification,
+)
 from schemas import JobCreate, JobResponse, JobCancel, SuccessResponse, ScheduledJobCreate, ScheduledJobReschedule, ScheduledJobResponse, SlotBookingCreate
 from dependencies import get_current_user
 
@@ -83,11 +87,12 @@ async def my_jobs(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from models import Category as CatModel, User as UserModel, WorkerProfile as WP
     active_statuses = [
         "requested", "searching",
-        "scheduled",            # window-based, pending worker assignment
-        "confirmed",            # direct-worker booking, worker pre-assigned
-        "worker_assigned",      # legacy alias
+        "scheduled",
+        "confirmed",
+        "worker_assigned",
         "assigned", "en_route", "arrived", "started",
     ]
     q = select(Job).where(Job.user_id == user.id)
@@ -97,7 +102,33 @@ async def my_jobs(
         q = q.where(Job.status.notin_(active_statuses))
     q = q.order_by(Job.created_at.desc()).limit(50)
     result = await db.execute(q)
-    return result.scalars().all()
+    jobs = result.scalars().all()
+
+    # Enrich with category name + worker name (batch lookups)
+    cat_ids = list({j.category_id for j in jobs})
+    worker_ids = list({j.worker_id for j in jobs if j.worker_id})
+
+    cat_map: dict = {}
+    if cat_ids:
+        cats = await db.execute(select(CatModel.id, CatModel.name).where(CatModel.id.in_(cat_ids)))
+        cat_map = {row.id: row.name for row in cats.all()}
+
+    worker_map: dict = {}
+    if worker_ids:
+        wrows = await db.execute(
+            select(WP.id, UserModel.full_name)
+            .join(UserModel, UserModel.id == WP.user_id)
+            .where(WP.id.in_(worker_ids))
+        )
+        worker_map = {row.id: row.full_name for row in wrows.all()}
+
+    out = []
+    for j in jobs:
+        resp = JobResponse.model_validate(j)
+        resp.category_name = cat_map.get(j.category_id)
+        resp.worker_name = worker_map.get(j.worker_id) if j.worker_id else None
+        out.append(resp)
+    return out
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -106,17 +137,29 @@ async def get_job(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    from models import Category as CatModel, User as UserModel, WorkerProfile as WP
     result = await db.execute(select(Job).where(Job.id == job_id))
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(404)
     if job.user_id != user.id:
-        from models import WorkerProfile
-        wp = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+        wp = await db.execute(select(WP).where(WP.user_id == user.id))
         wp = wp.scalar_one_or_none()
         if not wp or job.worker_id != wp.id:
             raise HTTPException(403)
-    return job
+    resp = JobResponse.model_validate(job)
+    # Enrich with category name
+    cat = await db.execute(select(CatModel.name).where(CatModel.id == job.category_id))
+    resp.category_name = cat.scalar_one_or_none()
+    # Enrich with worker name
+    if job.worker_id:
+        wname = await db.execute(
+            select(UserModel.full_name)
+            .join(WP, WP.user_id == UserModel.id)
+            .where(WP.id == job.worker_id)
+        )
+        resp.worker_name = wname.scalar_one_or_none()
+    return resp
 
 
 @router.post("/{job_id}/cancel", response_model=SuccessResponse)
@@ -131,22 +174,120 @@ async def cancel_job(
     if not job:
         raise HTTPException(404)
 
+    # Guard: terminal states cannot be cancelled
+    TERMINAL = {"completed", "cancelled", "failed"}
+    if job.status in TERMINAL:
+        raise HTTPException(409, f"Cannot cancel a job that is already '{job.status}'")
+
     now = datetime.now(timezone.utc)
-    is_worker = False
-    from models import WorkerProfile
+
+    # Resolve caller role
     wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
     wp = wp_result.scalar_one_or_none()
-    if wp and job.worker_id == wp.id:
-        is_worker = True
+    is_worker = bool(wp and job.worker_id == wp.id)
 
     if job.user_id != user.id and not is_worker:
         raise HTTPException(403)
 
+    cancelled_by = "worker" if is_worker else "user"
+
+    # ── Free the schedule block (if any) ─────────────────────────────────────
+    if job.worker_id:
+        await db.execute(
+            delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id)
+        )
+
+    # ── Worker-cancels-assigned-job: apply penalty + score hit ───────────────
+    ASSIGNED_STATUSES = {"assigned", "confirmed", "en_route", "arrived", "started"}
+    if is_worker and job.status in ASSIGNED_STATUSES:
+        # Deduct cancellation score (floor at 0.0)
+        new_score = max(Decimal("0.00"), (wp.cancellation_score or Decimal("1.00")) - Decimal("0.10"))
+        wp.cancellation_score = new_score
+
+        # Record penalty record (₹100, pending collection)
+        penalty = CancellationPenalty(
+            job_id       = job.id,
+            charged_to   = user.id,
+            charged_role = "worker",
+            amount       = Decimal("100.00"),
+            reason       = "Worker cancelled an assigned job",
+            status       = "pending",
+        )
+        db.add(penalty)
+
+        # Reset worker to online (they were "busy")
+        wp.status = "online"
+
+        # Re-enqueue scheduled job for reassignment if it has remaining preferred days
+        if job.preferred_days and job.status in ("assigned", "confirmed"):
+            remaining_days = [
+                d for d in (job.preferred_days or [])
+                if d >= now.date().isoformat()
+            ]
+            if remaining_days:
+                job.preferred_days = remaining_days
+                job.worker_id = None
+                job.assigned_at = None
+                job.status = "scheduled"   # back to scheduler queue
+                await _log_event(db, job.id, "scheduled", "system", user.id, {"reason": "worker_cancel_requeue"})
+                # Notify the customer
+                db.add(Notification(
+                    user_id = job.user_id,
+                    type    = "job_worker_cancelled",
+                    title   = "Worker cancelled — finding a replacement",
+                    body    = "We're finding another worker for your booking. You'll hear from us soon.",
+                    data    = {"job_id": str(job.id)},
+                ))
+                await db.commit()
+                return SuccessResponse(message="Job returned to queue for reassignment")
+
+    # ── Trigger refund if payment was held ────────────────────────────────────
+    pay_result = await db.execute(select(Payment).where(Payment.job_id == job.id))
+    payment = pay_result.scalar_one_or_none()
+    if payment and payment.status == "held":
+        payment.status = "refund_pending"
+        payment.refund_reason = f"Job cancelled by {cancelled_by}: {body.reason or '—'}"
+        # Actual Razorpay refund call is handled by the payments router / webhook worker
+        # Setting refund_pending flags it for the escrow release task
+
+    # ── Notify the other party ────────────────────────────────────────────────
+    if is_worker:
+        # Notify the customer
+        db.add(Notification(
+            user_id = job.user_id,
+            type    = "job_cancelled_by_worker",
+            title   = "Your booking was cancelled",
+            body    = f"The worker has cancelled your booking. Reason: {body.reason or 'Not specified'}. A refund will be processed if applicable.",
+            data    = {"job_id": str(job.id)},
+        ))
+    else:
+        # Notify the assigned worker (if any)
+        if wp and job.worker_id == wp.id:
+            db.add(Notification(
+                user_id = wp.user_id,
+                type    = "job_cancelled_by_user",
+                title   = "Booking cancelled by customer",
+                body    = f"The customer has cancelled the booking. Reason: {body.reason or 'Not specified'}.",
+                data    = {"job_id": str(job.id)},
+            ))
+        elif job.worker_id:
+            # worker_id set but caller is the user — look up worker's user_id
+            other_wp = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
+            other_wp = other_wp.scalar_one_or_none()
+            if other_wp:
+                db.add(Notification(
+                    user_id = other_wp.user_id,
+                    type    = "job_cancelled_by_user",
+                    title   = "Booking cancelled by customer",
+                    body    = f"The customer has cancelled the booking. Reason: {body.reason or 'Not specified'}.",
+                    data    = {"job_id": str(job.id)},
+                ))
+
     job.status = "cancelled"
     job.cancelled_at = now
     job.cancellation_reason = body.reason
-    job.cancelled_by = "worker" if is_worker else "user"
-    await _log_event(db, job.id, "cancelled", "worker" if is_worker else "user", user.id)
+    job.cancelled_by = cancelled_by
+    await _log_event(db, job.id, "cancelled", cancelled_by, user.id)
     await db.commit()
     return SuccessResponse(message="Job cancelled")
 
@@ -184,8 +325,15 @@ async def accept_job(
     if not req:
         raise HTTPException(400, "No pending request found")
 
+    # Guard: reject if the 10-second dispatch window has already expired
+    now_utc = datetime.now(timezone.utc)
+    if req.expires_at and now_utc > req.expires_at:
+        req.status = "expired"
+        await db.commit()
+        raise HTTPException(400, "This job request has expired — it was assigned to another worker")
+
     req.status = "accepted"
-    req.responded_at = datetime.now(timezone.utc)
+    req.responded_at = now_utc
     await db.commit()
     return SuccessResponse(message="Job accepted")
 
@@ -268,19 +416,64 @@ async def complete_job(
     wp, job = await _get_worker_for_job(job_id, user, db)
     if job.worker_id != wp.id:
         raise HTTPException(403)
+    if job.status == "completed":
+        raise HTTPException(409, "Job is already completed")
+    if job.status not in ("arrived", "started", "assigned", "confirmed", "en_route"):
+        raise HTTPException(409, f"Cannot complete a job in '{job.status}' status")
+
     now = datetime.now(timezone.utc)
     job.completed_at = now
     job.status = "completed"
+
+    # ── Calculate commission + payout if not yet set ──────────────────────────
     if job.quoted_price and not job.final_price:
         job.final_price = job.quoted_price
+    if job.final_price and not job.worker_payout:
         from services.matching import calc_commission
-        commission = calc_commission(job.job_type, float(job.final_price))
+        commission = calc_commission(job.job_type or "instant", float(job.final_price))
         job.commission_rate = Decimal(str(commission["rate"]))
-        job.platform_fee = Decimal(str(commission["fee"]))
-        job.gst_on_fee = Decimal(str(commission["gst"]))
-        job.worker_payout = Decimal(str(commission["payout"]))
+        job.platform_fee   = Decimal(str(commission["fee"]))
+        job.gst_on_fee     = Decimal(str(commission["gst"]))
+        job.worker_payout  = Decimal(str(commission["payout"]))
+
+    # ── Update worker profile stats ───────────────────────────────────────────
+    wp.status = "online"
+    wp.consecutive_rejects = 0
+
+    wp.total_jobs_completed = (wp.total_jobs_completed or 0) + 1
+    # Recalculate completion_rate against total_jobs_requested (floor at 1 to avoid div/0)
+    total_requested = max(wp.total_jobs_requested or 0, wp.total_jobs_completed)
+    wp.completion_rate = Decimal(str(round(wp.total_jobs_completed / max(total_requested, 1), 4)))
+
+    # Accumulate earnings
+    if job.worker_payout:
+        wp.total_earnings = (wp.total_earnings or Decimal("0")) + job.worker_payout
+        wp.pending_payout = (wp.pending_payout or Decimal("0")) + job.worker_payout
+
+    # Recover cancellation score slightly for each completed job (+0.02, cap 1.0)
+    new_score = min(Decimal("1.00"), (wp.cancellation_score or Decimal("1.00")) + Decimal("0.02"))
+    wp.cancellation_score = new_score
+
+    # ── Free any schedule block for this job ──────────────────────────────────
+    await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
+
+    # ── Notify user that job is done ──────────────────────────────────────────
+    db.add(Notification(
+        user_id = job.user_id,
+        type    = "job_completed",
+        title   = "Service completed!",
+        body    = f"Your service has been completed. Please rate your experience.",
+        data    = {"job_id": str(job.id)},
+    ))
+
     await _log_event(db, job.id, "completed", "worker", user.id)
     await db.commit()
+
+    # Refresh analytics for this worker in the background (non-blocking)
+    import asyncio
+    from tasks.decay_scores import refresh_worker_analytics_for
+    asyncio.create_task(refresh_worker_analytics_for(wp.id))
+
     return SuccessResponse(message="Job completed")
 
 
@@ -529,11 +722,7 @@ async def book_slot(
             user_id = wp.user_id,
             type    = "job_assigned",
             title   = "New Slot Booking",
-            body    = (
-                f"New booking: {svc.title} on "
-                f"{slot.slot_date.strftime('%d %b')} "
-                f"at {slot.slot_start.strftime('%H:%M')}"
-            ),
+            body    = f"You have a new booking on {slot.slot_date} at {slot.slot_start}.",
             data    = {"job_id": str(job.id)},
         ))
         await db.commit()
@@ -541,14 +730,15 @@ async def book_slot(
     return job
 
 
-@router.patch("/{job_id}/reschedule", summary="Reschedule a window-based job (user)")
+# ── RESCHEDULE ────────────────────────────────────────────────────────────────
+
+@router.patch("/{job_id}/reschedule", response_model=ScheduledJobResponse)
 async def reschedule_job(
-    job_id: UUID,
+    job_id: uuid.UUID,
     body: ScheduledJobReschedule,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Allow user to change preferred days/window before a worker is assigned."""
     result = await db.execute(
         select(Job).where(Job.id == job_id, Job.user_id == user.id)
     )
@@ -563,7 +753,6 @@ async def reschedule_job(
     job.preferred_days  = body.preferred_days
     job.window_start    = body.window_start
     job.window_end      = body.window_end
-
     await db.commit()
     await db.refresh(job)
-    return {"job_id": str(job.id), "status": job.status, "message": "Reschedule request updated"}
+    return job

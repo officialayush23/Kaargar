@@ -83,7 +83,7 @@ export default function AdminConfig() {
                       className="rounded-lg px-3 py-1.5 text-sm font-mono outline-none"
                       style={{
                         background: 'rgba(255,255,255,0.08)',
-                        border: '1px solid rgba(245,158,11,0.4)',
+                        border: '1px solid #B45309',
                         color: '#F1F5F9',
                         width: 180,
                       }}

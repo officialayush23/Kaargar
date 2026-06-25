@@ -40,6 +40,7 @@ import AdminWorkers from '@/pages/admin/AdminWorkers'
 import AdminJobs from '@/pages/admin/AdminJobs'
 import AdminSupport from '@/pages/admin/AdminSupport'
 import AdminConfig from '@/pages/admin/AdminConfig'
+import AdminCategories from '@/pages/admin/AdminCategories'
 
 function getDefaultRoute(user) {
   if (!user) return '/login'
@@ -221,6 +222,7 @@ export default function App() {
           <Route path="jobs" element={<AdminJobs />} />
           <Route path="support" element={<AdminSupport />} />
           <Route path="config" element={<AdminConfig />} />
+          <Route path="categories" element={<AdminCategories />} />
         </Route>
 
         <Route path="*" element={<RequireAuth><RoleRedirect /></RequireAuth>} />

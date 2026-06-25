@@ -30,7 +30,7 @@ const SLIDES = [
   {
     emoji: '🔍',
     color: '#F59E0B',
-    glow: 'rgba(245,158,11,0.2)',
+    glow: 'rgba(245,158,11,0.55)',
     title: 'Discover & Schedule',
     subtitle: 'Plan ahead, your way.',
     body: 'Browse the Discover tab to find top-rated workers and services. Pick up to 3 preferred days and a time window — we\'ll confirm the best worker and notify you before they arrive.',
@@ -57,7 +57,7 @@ const SLIDES = [
   {
     emoji: '🔒',
     color: '#F59E0B',
-    glow: 'rgba(245,158,11,0.2)',
+    glow: 'rgba(245,158,11,0.55)',
     title: 'Safe & Verified',
     subtitle: 'Trust, built in.',
     body: 'Every worker is verified by our team before they can accept jobs. A one-time OTP confirms the job start — your money stays in escrow until the work is done and you approve.',

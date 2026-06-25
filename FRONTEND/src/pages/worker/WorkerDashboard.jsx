@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   TrendingUp, Briefcase, Star, ChevronRight, Clock,
   Zap, DollarSign, CheckCircle, HelpCircle,
+  ShieldAlert, ShieldCheck, RefreshCw, XCircle,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
@@ -16,6 +17,79 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import IncomingJobModal from './IncomingJobModal'
+
+function VerificationBanner({ status, rejectionReason }) {
+  const [reapplying, setReapplying] = useState(false)
+  const [done, setDone] = useState(false)
+
+  async function handleReapply() {
+    setReapplying(true)
+    try {
+      await api.post('/workers/me/reapply')
+      setDone(true)
+      toast.success('Reapplication submitted! We\'ll review your profile shortly.')
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || 'Failed to reapply')
+    } finally {
+      setReapplying(false)
+    }
+  }
+
+  if (status === 'approved') return null
+
+  const isPending = status === 'pending' || done
+  const isRejected = status === 'rejected' && !done
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -6 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="rounded-2xl p-4"
+      style={{
+        background: isPending ? '#1A1004' : 'rgba(239,68,68,0.08)',
+        border: `1px solid ${isPending ? '#7C4A12' : 'rgba(239,68,68,0.25)'}`,
+      }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
+          style={{ background: isPending ? '#2D1A06' : 'rgba(239,68,68,0.15)' }}
+        >
+          {isPending
+            ? <ShieldAlert className="h-4.5 w-4.5" style={{ color: '#f59e0b' }} />
+            : <XCircle className="h-4.5 w-4.5" style={{ color: '#ef4444' }} />
+          }
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold" style={{ color: isPending ? '#f59e0b' : '#ef4444' }}>
+            {isPending ? 'Verification pending' : 'Application rejected'}
+          </p>
+          <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            {isPending
+              ? 'Our team is reviewing your profile and documents. You\'ll be notified once approved — usually within 24 hours.'
+              : rejectionReason
+                ? `Reason: ${rejectionReason}`
+                : 'Your application was not approved. Update your profile and reapply.'
+            }
+          </p>
+          {isRejected && (
+            <button
+              onClick={handleReapply}
+              disabled={reapplying}
+              className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all"
+              style={{ background: 'rgba(239,68,68,0.15)', color: '#ef4444', border: '1px solid rgba(239,68,68,0.3)' }}
+            >
+              {reapplying
+                ? <><RefreshCw className="h-3 w-3 animate-spin" /> Submitting…</>
+                : <><RefreshCw className="h-3 w-3" /> Reapply for verification</>
+              }
+            </button>
+          )}
+        </div>
+      </div>
+    </motion.div>
+  )
+}
 
 function StatCard({ label, value, sub, icon: Icon, accentColor }) {
   return (
@@ -46,6 +120,8 @@ export default function WorkerDashboard() {
   const { data: workerStatus, refetch: refetchStatus } = useWorkerStatus()
 
   const isOnline = workerStatus?.status === 'online'
+  const verificationStatus = workerProfile?.verification_status || 'pending'
+  const isApproved = verificationStatus === 'approved'
 
   // Redirect to onboarding if worker profile doesn't exist yet
   useEffect(() => {
@@ -98,9 +174,17 @@ export default function WorkerDashboard() {
         <h1 className="text-2xl font-bold font-syne gradient-text-hero">{name}</h1>
       </div>
 
-      {/* Online toggle */}
+      {/* Verification banner — shown for pending/rejected workers */}
+      {!isApproved && (
+        <VerificationBanner
+          status={verificationStatus}
+          rejectionReason={workerProfile?.rejection_reason}
+        />
+      )}
+
+      {/* Online toggle — locked until approved */}
       <GlassCard
-        className={cn('p-4 transition-all')}
+        className={cn('p-4 transition-all', !isApproved && 'opacity-50 pointer-events-none select-none')}
         style={isOnline ? { borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.05)' } : {}}
       >
         <div className="flex items-center justify-between">

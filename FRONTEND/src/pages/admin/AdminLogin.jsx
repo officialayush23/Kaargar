@@ -30,7 +30,7 @@ function PasswordInput({ value, onChange, onKeyDown }) {
           border: '1px solid rgba(255,255,255,0.1)',
           color: '#F1F5F9',
         }}
-        onFocus={e  => e.target.style.borderColor = 'rgba(245,158,11,0.5)'}
+        onFocus={e  => e.target.style.borderColor = '#D97706'}
         onBlur={e   => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
       />
       <button
@@ -53,6 +53,23 @@ export default function AdminLogin() {
   const [password, setPassword] = useState('')
   const [loading,  setLoading]  = useState(false)
   const [error,    setError]    = useState('')
+
+  async function handleForgotPassword() {
+    if (!email.trim()) {
+      setError('Enter your email address first, then click Forgot password.')
+      return
+    }
+    try {
+      const { error: sbErr } = await supabase.auth.resetPasswordForEmail(
+        email.trim().toLowerCase(),
+        { redirectTo: `${window.location.origin}/admin/reset-password` }
+      )
+      if (sbErr) throw sbErr
+      toast.success('Password reset email sent — check your inbox.')
+    } catch (e) {
+      toast.error(e.message || 'Could not send reset email. Try again.')
+    }
+  }
 
   async function handleSignIn(e) {
     e?.preventDefault()
@@ -148,7 +165,7 @@ export default function AdminLogin() {
                   border: '1px solid rgba(255,255,255,0.1)',
                   color: '#F1F5F9',
                 }}
-                onFocus={e => e.target.style.borderColor = 'rgba(245,158,11,0.5)'}
+                onFocus={e => e.target.style.borderColor = '#D97706'}
                 onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
               />
             </div>
@@ -170,9 +187,15 @@ export default function AdminLogin() {
             <p className="text-sm text-center" style={{ color: '#f87171' }}>{error}</p>
           )}
 
-          <GlassButton type="submit" variant="brand" size="lg" className="w-full" loading={loading}>
+          <button
+            type="submit"
+            className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-6 font-semibold text-sm transition-all"
+            style={{ background: 'var(--brand)', color: '#fff', opacity: loading ? 0.7 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}
+            disabled={loading}
+          >
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
             Sign In to Admin
-          </GlassButton>
+          </button>
 
           <div className="text-center">
             <button

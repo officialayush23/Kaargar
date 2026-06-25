@@ -18,7 +18,8 @@ from dependencies import get_current_user
 from services.storage import (
     upload_file, delete_file,
     profile_photo_path, worker_post_path, worker_document_path,
-    BUCKET_PROFILE, BUCKET_POSTS, BUCKET_DOCUMENTS,
+    verification_video_path,
+    BUCKET_PROFILE, BUCKET_POSTS, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO,
 )
 
 router = APIRouter()
@@ -118,6 +119,62 @@ async def upload_document_file(
     url = upload_file(BUCKET_DOCUMENTS, path, data, file.content_type)
 
     return MediaUploadResponse(url=url, path=path, bucket=BUCKET_DOCUMENTS)
+
+
+@router.post("/verification-video", response_model=MediaUploadResponse)
+async def upload_verification_video(
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upload worker intro/verification video.
+    Stored in verification_video_worker bucket.
+    Does NOT require an approved WorkerProfile — used during onboarding.
+    Registers a worker_documents record with type='verification_video' so admin can review it.
+    Max 200MB (longer intro videos).
+    """
+    MAX_VERIF_VIDEO = 200 * 1024 * 1024
+    if file.content_type not in ALLOWED_VIDEO_TYPES:
+        raise HTTPException(400, "Only MP4/MOV/WebM video files allowed")
+
+    data = await file.read()
+    if len(data) > MAX_VERIF_VIDEO:
+        raise HTTPException(400, "Video must be under 200MB")
+
+    path = verification_video_path(str(user.id), file.filename or "intro.mp4")
+    url = upload_file(BUCKET_VERIFICATION_VIDEO, path, data, file.content_type)
+
+    # Register in worker_documents so admin sees it in verification queue
+    from models import WorkerDocument
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if wp:
+        # Upsert: remove any previous verification video record first
+        existing = await db.execute(
+            select(WorkerDocument).where(
+                WorkerDocument.worker_id == wp.id,
+                WorkerDocument.type == "verification_video",
+            )
+        )
+        old = existing.scalar_one_or_none()
+        if old:
+            # Delete old video from storage before replacing
+            try:
+                delete_file(BUCKET_VERIFICATION_VIDEO, old.cloudinary_id)
+            except Exception:
+                pass
+            await db.delete(old)
+
+        doc = WorkerDocument(
+            worker_id=wp.id,
+            type="verification_video",
+            cloudinary_url=url,
+            cloudinary_id=path,
+        )
+        db.add(doc)
+        await db.commit()
+
+    return MediaUploadResponse(url=url, path=path, bucket=BUCKET_VERIFICATION_VIDEO)
 
 
 @router.delete("/worker-post/{media_id}", response_model=SuccessResponse)

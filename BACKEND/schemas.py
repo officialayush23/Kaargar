@@ -70,6 +70,32 @@ class CategoryResponse(KaargarBase):
     min_price: Decimal
 
 
+class CategoryCreate(BaseModel):
+    name: str
+    slug: str
+    description: Optional[str] = None
+    icon_name: Optional[str] = None
+    icon_emoji: Optional[str] = None
+    color_hex: Optional[str] = '#6B7280'
+    mode: str = 'instant'          # instant | discovery | both
+    is_featured: bool = False
+    sort_order: int = 99
+    min_price: Decimal = Decimal('150')
+
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    slug: Optional[str] = None
+    description: Optional[str] = None
+    icon_name: Optional[str] = None
+    icon_emoji: Optional[str] = None
+    color_hex: Optional[str] = None
+    mode: Optional[str] = None
+    is_active: Optional[bool] = None
+    is_featured: Optional[bool] = None
+    sort_order: Optional[int] = None
+    min_price: Optional[Decimal] = None
+
 # ── PUNE AREAS ────────────────────────────────────────────────
 class PuneAreaResponse(KaargarBase):
     id: UUID
@@ -88,6 +114,7 @@ class WorkerProfileCreate(BaseModel):
 
 # FIXED: Aliases added to match frontend UI payload
 class WorkerProfileUpdate(BaseModel):
+    full_name: Optional[str] = None          # updates users.full_name
     bio: Optional[str] = None
     experience_years: Optional[int] = Field(default=None, alias="years_experience")
     pune_area: Optional[str] = Field(default=None, alias="area")
@@ -96,7 +123,7 @@ class WorkerProfileUpdate(BaseModel):
     is_discovery_available: Optional[bool] = None
     min_rate: Optional[Decimal] = None
     max_rate: Optional[Decimal] = None
-    
+
     model_config = ConfigDict(populate_by_name=True)
 
 
@@ -108,6 +135,7 @@ class WorkerProfileResponse(KaargarBase):
     pune_area: Optional[str] = None
     status: str
     verification_status: str
+    rejection_reason: Optional[str] = None
     is_instant_available: bool
     is_discovery_available: bool
     service_radius_km: int
@@ -133,8 +161,19 @@ class WorkerPublicResponse(KaargarBase):
     rating_count: int
     total_jobs_completed: int
     min_rate: Optional[Decimal] = None
+    max_rate: Optional[Decimal] = None
     full_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    # Additional public fields for WorkerProfilePage
+    status: str = "offline"
+    verification_status: str = "pending"
+    service_mode: Optional[str] = None
+    is_instant_available: bool = False
+    is_discovery_available: bool = False
+    quality_rating: Optional[Decimal] = None
+    punctuality_rating: Optional[Decimal] = None
+    communication_rating: Optional[Decimal] = None
+    value_rating: Optional[Decimal] = None
 
 
 class WorkerStatusUpdate(BaseModel):
@@ -201,6 +240,23 @@ class ServiceUpdate(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+# ── TAGS ──────────────────────────────────────────────────────
+class TagResponse(KaargarBase):
+    id: UUID
+    name: str
+    slug: str
+    usage_count: int
+
+
+class TagCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+
+class ServiceTagsSet(BaseModel):
+    tag_ids: list[UUID] = []
+    new_tag_names: list[str] = []   # names of brand-new tags to create on the fly
+
+
 class ServiceResponse(KaargarBase):
     id: UUID
     worker_id: UUID
@@ -219,6 +275,7 @@ class ServiceResponse(KaargarBase):
     requires_slot: bool = False
     slot_duration_min: Optional[int] = None
     max_slots_per_day: Optional[int] = None
+    tags: list[TagResponse] = []
     created_at: datetime
 
     @computed_field
@@ -423,6 +480,9 @@ class JobResponse(KaargarBase):
     cancellation_reason: Optional[str] = None
     cancelled_by: Optional[str] = None
     created_at: datetime
+    # Populated by the endpoint, not stored on the model
+    category_name: Optional[str] = None
+    worker_name: Optional[str] = None
 
     # Coerce datetime.time → 'HH:MM' string for window fields
     @field_validator('window_start', 'window_end', mode='before')
@@ -581,6 +641,7 @@ class SearchResult(BaseModel):
 
 class SearchResponseWrapper(BaseModel):
     results: list[SearchResult]
+    search_history_id: str | None = None
 
 
 # ── ANALYTICS ─────────────────────────────────────────────────
@@ -611,6 +672,7 @@ class AdminDashboard(BaseModel):
 
 class AdminWorkerAction(BaseModel):
     reason: Optional[str] = None
+    doc_type: Optional[str] = None  # for request-reupload: specific doc type to re-request
 
 
 class AdminConfigUpdate(BaseModel):
@@ -911,10 +973,12 @@ class UserAddressResponse(KaargarBase):
     label: str
     address_line: str
     area: Optional[str] = None
-    city: str
+    city: str = "Pune"
     lat: Optional[float] = None
     lon: Optional[float] = None
     place_id: Optional[str] = None
-    is_default: bool
+    is_default: bool = False
     created_at: datetime
+    updated_at: datetime
+
     model_config = ConfigDict(from_attributes=True)

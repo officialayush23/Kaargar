@@ -244,7 +244,7 @@ export function AddressBook({ picker = false, onSelect, selected }) {
               {/* Icon */}
               <div style={{
                 width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                background: addr.is_default ? 'rgba(245,158,11,0.15)' : 'var(--g-bg-mid)',
+                background: addr.is_default ? '#2D1A06' : 'var(--g-bg-mid)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 color: addr.is_default ? 'var(--amber, #F59E0B)' : 'var(--text-muted)',
               }}>
@@ -258,7 +258,7 @@ export function AddressBook({ picker = false, onSelect, selected }) {
                   {addr.is_default && (
                     <span style={{
                       fontSize: 10, padding: '1px 6px', borderRadius: 6,
-                      background: 'rgba(245,158,11,0.15)', color: 'var(--amber, #F59E0B)',
+                      background: '#2D1A06', color: '#fbbf24',
                       fontWeight: 600, letterSpacing: '0.04em',
                     }}>DEFAULT</span>
                   )}

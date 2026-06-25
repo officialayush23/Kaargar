@@ -155,7 +155,7 @@ export default function ReviewPage() {
                   width: '64px',
                   height: '64px',
                   borderRadius: '18px',
-                  background: 'rgba(245,158,11,0.12)',
+                  background: '#251606',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

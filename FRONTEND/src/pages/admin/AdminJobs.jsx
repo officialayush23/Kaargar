@@ -80,7 +80,7 @@ export default function AdminJobs() {
 
   const { data, isLoading } = useQuery({
     queryKey: ['admin', 'jobs', status],
-    queryFn: () => api.get('/admin/jobs', { params: { status: status === 'all' ? undefined : status, limit: 200 } }).then(r => r.data?.jobs || r.data || []),
+    queryFn: () => api.get('/admin/jobs', { params: { status: status === 'all' ? undefined : status, limit: 200 } }).then(r => r.data?.items || []),
     refetchInterval: 20_000,
   })
 

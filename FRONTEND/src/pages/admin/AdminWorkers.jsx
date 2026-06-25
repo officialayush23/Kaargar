@@ -1,15 +1,21 @@
 /**
- * AdminWorkers — worker verification queue + approved workers table.
- * Uses shadcn Table + Tabs + Dialog for confirm/reject flow.
+ * AdminWorkers — worker verification queue with full-detail side panel.
+ * Detail panel fetches /admin/workers/{id}/detail on open.
+ * Shows docs (image previews), intro video player, categories, services.
+ * Actions: Approve, Reject (+ reason), Suspend, Request Re-upload.
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { motion } from 'framer-motion'
-import { CheckCircle, XCircle, Eye, Search, BadgeCheck, Clock, AlertTriangle, FileText } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import {
+  CheckCircle, XCircle, Eye, Search, BadgeCheck, Clock, AlertTriangle,
+  FileText, Video, ChevronRight, User, MapPin, Briefcase, Star,
+  ShieldAlert, RefreshCw, X, ExternalLink, Loader2, Phone, Mail,
+} from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/utils'
 import { toast } from 'sonner'
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
@@ -19,9 +25,18 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 
 const STATUS_CONFIG = {
-  pending:  { label: 'Pending',  color: '#f59e0b', bg: 'rgba(245,158,11,0.12)',  icon: Clock },
+  pending:  { label: 'Pending',  color: '#f59e0b', bg: '#251606',  icon: Clock },
   approved: { label: 'Approved', color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   icon: BadgeCheck },
   rejected: { label: 'Rejected', color: '#f87171', bg: 'rgba(248,113,113,0.12)', icon: XCircle },
+}
+
+const DOC_LABEL = {
+  aadhaar:          'Aadhaar Card',
+  pan:              'PAN Card',
+  driving_license:  'Driving Licence',
+  voter_id:         'Voter ID',
+  passport:         'Passport',
+  verification_video: 'Intro Video',
 }
 
 function StatusBadge({ status }) {
@@ -35,12 +50,14 @@ function StatusBadge({ status }) {
   )
 }
 
-function WorkerRow({ worker, onApprove, onReject, onView }) {
+function WorkerRow({ worker, onView }) {
   const name = worker.full_name || worker.user?.full_name || 'Unknown'
-  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0,2)
-
+  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
   return (
-    <TableRow>
+    <TableRow
+      className="cursor-pointer hover:bg-white/3 transition-colors"
+      onClick={() => onView(worker)}
+    >
       <TableCell>
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
@@ -55,138 +72,464 @@ function WorkerRow({ worker, onApprove, onReject, onView }) {
           </div>
         </div>
       </TableCell>
-      <TableCell>{worker.primary_category || '—'}</TableCell>
-      <TableCell>{worker.pune_area || '—'}</TableCell>
+      <TableCell style={{ color: '#94A3B8', fontSize: 13 }}>{worker.primary_category || '—'}</TableCell>
+      <TableCell style={{ color: '#94A3B8', fontSize: 13 }}>{worker.pune_area || '—'}</TableCell>
       <TableCell><StatusBadge status={worker.verification_status} /></TableCell>
-      <TableCell style={{ color: '#475569' }}>{formatRelativeTime(worker.created_at)}</TableCell>
+      <TableCell style={{ color: '#475569', fontSize: 12 }}>{formatRelativeTime(worker.created_at)}</TableCell>
       <TableCell>
-        <div className="flex items-center gap-2">
-          <button onClick={() => onView(worker)}
-            className="p-1.5 rounded-lg transition-colors hover:bg-white/5"
-            title="View details">
-            <Eye size={14} style={{ color: '#94A3B8' }} />
-          </button>
-          {worker.verification_status === 'pending' && (
-            <>
-              <button onClick={() => onApprove(worker)}
-                className="p-1.5 rounded-lg transition-colors hover:bg-green-500/10"
-                title="Approve">
-                <CheckCircle size={14} style={{ color: '#22c55e' }} />
-              </button>
-              <button onClick={() => onReject(worker)}
-                className="p-1.5 rounded-lg transition-colors hover:bg-red-500/10"
-                title="Reject">
-                <XCircle size={14} style={{ color: '#f87171' }} />
-              </button>
-            </>
-          )}
+        <div className="flex items-center justify-end">
+          <ChevronRight size={16} style={{ color: '#475569' }} />
         </div>
       </TableCell>
     </TableRow>
   )
 }
 
-function WorkerDetailDialog({ worker, open, onClose, onApprove, onReject, approving, rejecting }) {
-  const name = worker?.full_name || worker?.user?.full_name || 'Worker'
-  return (
-    <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent onClose={onClose} className="max-w-lg">
-        <DialogHeader>
-          <DialogTitle>Worker Profile — {name}</DialogTitle>
-        </DialogHeader>
+// ── Full-screen detail panel ──────────────────────────────────────────────────
 
-        {worker && (
-          <div className="space-y-4 text-sm">
-            <div className="grid grid-cols-2 gap-3">
-              {[
-                ['Email', worker.user?.email || worker.email],
-                ['Phone', worker.user?.phone || worker.phone || '—'],
-                ['Category', worker.primary_category || '—'],
-                ['Area', worker.pune_area || '—'],
-                ['Type', worker.worker_type || 'individual'],
-                ['Status', worker.verification_status],
-              ].map(([k, v]) => (
-                <div key={k} className="p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                  <p style={{ color: '#475569', fontSize: 11 }}>{k}</p>
-                  <p style={{ color: '#F1F5F9', fontWeight: 500, marginTop: 2 }}>{v}</p>
-                </div>
+function DetailField({ label, value, icon: Icon }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-start', gap: '10px',
+      padding: '10px 12px', borderRadius: '10px',
+      background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+    }}>
+      {Icon && <Icon size={14} style={{ color: '#475569', flexShrink: 0, marginTop: '2px' }} />}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: '11px', color: '#475569', marginBottom: '2px' }}>{label}</p>
+        <p style={{ fontSize: '13px', color: '#F1F5F9', fontWeight: 500, wordBreak: 'break-word' }}>
+          {value || '—'}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+function DocCard({ doc }) {
+  const label = DOC_LABEL[doc.type] || doc.type?.replace(/_/g, ' ')
+  const isVideo = doc.type === 'verification_video'
+  const isImage = doc.url && !isVideo
+
+  return (
+    <div style={{
+      borderRadius: '12px', overflow: 'hidden',
+      border: '1px solid rgba(255,255,255,0.07)',
+      background: 'rgba(255,255,255,0.03)',
+    }}>
+      {isVideo ? (
+        <div style={{ background: '#000', position: 'relative' }}>
+          <video
+            controls
+            style={{ width: '100%', maxHeight: '200px', objectFit: 'contain', display: 'block' }}
+            src={doc.url}
+          >
+            <a href={doc.url} target="_blank" rel="noreferrer">Open video</a>
+          </video>
+        </div>
+      ) : isImage ? (
+        <a href={doc.url} target="_blank" rel="noreferrer" style={{ display: 'block' }}>
+          <img
+            src={doc.url}
+            alt={label}
+            style={{ width: '100%', height: '120px', objectFit: 'cover', display: 'block' }}
+            onError={e => { e.target.style.display = 'none' }}
+          />
+        </a>
+      ) : (
+        <a href={doc.url} target="_blank" rel="noreferrer"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80px', gap: '8px', textDecoration: 'none', color: '#4B7BFF' }}>
+          <FileText size={24} />
+          <span style={{ fontSize: 13 }}>View file</span>
+          <ExternalLink size={12} />
+        </a>
+      )}
+      <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+        <span style={{ fontSize: '12px', color: '#94A3B8', fontWeight: 500 }}>{label}</span>
+        <a href={doc.url} target="_blank" rel="noreferrer"
+          style={{ fontSize: '11px', color: '#4B7BFF', display: 'flex', alignItems: 'center', gap: '3px', textDecoration: 'none', flexShrink: 0 }}>
+          Open <ExternalLink size={10} />
+        </a>
+      </div>
+    </div>
+  )
+}
+
+function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, onRequestReupload }) {
+  const { data: detail, isLoading } = useQuery({
+    queryKey: ['admin', 'worker-detail', workerId],
+    queryFn: () => api.get(`/admin/workers/${workerId}/detail`).then(r => r.data),
+    enabled: !!workerId,
+  })
+
+  const name = detail?.full_name || 'Worker'
+  const initials = name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
+
+  const identityDocs = (detail?.documents || []).filter(d => d.type !== 'verification_video')
+  const videoDocs = (detail?.documents || []).filter(d => d.type === 'verification_video')
+
+  return (
+    <>
+      {/* Backdrop */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        onClick={onClose}
+        style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          backdropFilter: 'blur(4px)', zIndex: 50,
+        }}
+      />
+
+      {/* Panel */}
+      <motion.div
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+        style={{
+          position: 'fixed', top: 0, right: 0, bottom: 0,
+          width: '560px', maxWidth: '100vw',
+          background: '#0D1117',
+          borderLeft: '1px solid rgba(255,255,255,0.08)',
+          zIndex: 51,
+          display: 'flex', flexDirection: 'column',
+          overflowY: 'hidden',
+        }}
+      >
+        {/* Panel header */}
+        <div style={{
+          padding: '20px 24px',
+          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          display: 'flex', alignItems: 'center', gap: '16px',
+          background: '#0D1117', flexShrink: 0,
+        }}>
+          <button
+            onClick={onClose}
+            style={{
+              width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              cursor: 'pointer',
+            }}
+          >
+            <X size={15} style={{ color: '#94A3B8' }} />
+          </button>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#F1F5F9', fontFamily: 'Syne, sans-serif' }}>
+              Worker Details
+            </h2>
+            <p style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
+              Verification review
+            </p>
+          </div>
+          {detail && <StatusBadge status={detail.verification_status} />}
+        </div>
+
+        {/* Scrollable content */}
+        <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+
+          {isLoading ? (
+            <div className="space-y-3">
+              {[1,2,3,4,5].map(i => (
+                <Skeleton key={i} className="h-14 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }} />
               ))}
             </div>
-
-            {worker.bio && (
-              <div className="p-3 rounded-xl" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.07)' }}>
-                <p style={{ color: '#475569', fontSize: 11, marginBottom: 4 }}>Bio</p>
-                <p style={{ color: '#94A3B8', lineHeight: 1.6 }}>{worker.bio}</p>
-              </div>
-            )}
-
-            {worker.documents?.length > 0 && (
-              <div>
-                <p style={{ color: '#475569', fontSize: 11, marginBottom: 8 }}>Documents</p>
-                <div className="space-y-2">
-                  {worker.documents.map((doc, i) => (
-                    <a key={i} href={doc.cloudinary_url} target="_blank" rel="noreferrer"
-                      className="flex items-center gap-2 p-2.5 rounded-xl transition-colors hover:bg-white/5"
-                      style={{ border: '1px solid rgba(255,255,255,0.07)', color: '#4B7BFF', textDecoration: 'none' }}>
-                      <FileText size={14} />
-                      <span style={{ fontSize: 12 }}>{doc.type?.replace('_', ' ') || 'Document'}</span>
-                      <span style={{ color: '#475569', fontSize: 11, marginLeft: 'auto' }}>View &#8594;</span>
-                    </a>
-                  ))}
+          ) : detail ? (
+            <>
+              {/* Worker identity */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+                <Avatar className="h-16 w-16">
+                  <AvatarImage src={detail.avatar_url} />
+                  <AvatarFallback className="text-xl font-bold" style={{ background: 'rgba(75,123,255,0.15)', color: '#4B7BFF' }}>
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#F1F5F9', fontFamily: 'Syne, sans-serif' }}>
+                    {detail.full_name}
+                  </h3>
+                  <p style={{ fontSize: '13px', color: '#475569', marginTop: '3px' }}>{detail.email}</p>
+                  {detail.phone && (
+                    <p style={{ fontSize: '13px', color: '#475569' }}>{detail.phone}</p>
+                  )}
+                  <p style={{ fontSize: '12px', color: '#334155', marginTop: '4px' }}>
+                    Joined {formatRelativeTime(detail.created_at)}
+                  </p>
                 </div>
               </div>
+
+              {/* Info grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+                <DetailField label="Area" value={detail.pune_area} icon={MapPin} />
+                <DetailField label="Experience" value={detail.experience_years ? `${detail.experience_years} yrs` : null} icon={Briefcase} />
+                <DetailField label="Avg Rating" value={detail.avg_rating > 0 ? `${detail.avg_rating.toFixed(1)} ★` : 'No ratings yet'} icon={Star} />
+                <DetailField label="Jobs Done" value={String(detail.total_jobs_completed || 0)} icon={CheckCircle} />
+                <DetailField label="Email" value={detail.email} icon={Mail} />
+                <DetailField label="Phone" value={detail.phone} icon={Phone} />
+              </div>
+
+              {/* Bio */}
+              {detail.bio && (
+                <div>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Bio
+                  </p>
+                  <div style={{ padding: '12px 14px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                    <p style={{ fontSize: '13px', color: '#94A3B8', lineHeight: '1.6' }}>{detail.bio}</p>
+                  </div>
+                </div>
+              )}
+
+              {/* Categories */}
+              {detail.categories?.length > 0 && (
+                <div>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Categories ({detail.categories.length})
+                  </p>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {detail.categories.map(cat => (
+                      <span key={cat.id} style={{
+                        display: 'inline-flex', alignItems: 'center', gap: '5px',
+                        padding: '4px 10px', borderRadius: '20px',
+                        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)',
+                        fontSize: '12px', color: '#94A3B8',
+                      }}>
+                        {cat.icon_emoji && <span>{cat.icon_emoji}</span>}
+                        {cat.name}
+                        <span style={{
+                          fontSize: '10px',
+                          color: cat.mode === 'instant' ? '#22C55E' : cat.mode === 'discovery' ? '#F59E0B' : '#94A3B8',
+                        }}>
+                          {cat.mode === 'instant' ? '⚡' : cat.mode === 'discovery' ? '🔍' : '⚡🔍'}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Services */}
+              {detail.services?.length > 0 && (
+                <div>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Services ({detail.services.length})
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    {detail.services.map(svc => (
+                      <div key={svc.id} style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        padding: '8px 12px', borderRadius: '10px',
+                        background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+                      }}>
+                        <span style={{ fontSize: '13px', color: '#94A3B8' }}>{svc.title}</span>
+                        <span style={{ fontSize: '13px', color: '#F1F5F9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
+                          ₹{svc.price}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Intro video */}
+              {videoDocs.length > 0 && (
+                <div>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Intro Video
+                  </p>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {videoDocs.map(doc => <DocCard key={doc.id} doc={doc} />)}
+                  </div>
+                </div>
+              )}
+
+              {/* Identity documents */}
+              {identityDocs.length > 0 && (
+                <div>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    Identity Documents ({identityDocs.length})
+                  </p>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                    {identityDocs.map(doc => <DocCard key={doc.id} doc={doc} />)}
+                  </div>
+                </div>
+              )}
+
+              {identityDocs.length === 0 && videoDocs.length === 0 && (
+                <div style={{ textAlign: 'center', padding: '24px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
+                  <FileText size={28} style={{ color: '#334155', margin: '0 auto 8px' }} />
+                  <p style={{ fontSize: '13px', color: '#475569' }}>No documents uploaded yet</p>
+                </div>
+              )}
+            </>
+          ) : null}
+        </div>
+
+        {/* Action footer */}
+        {detail && (
+          <div style={{
+            padding: '16px 24px',
+            borderTop: '1px solid rgba(255,255,255,0.07)',
+            background: '#0D1117', flexShrink: 0,
+            display: 'flex', flexDirection: 'column', gap: '10px',
+          }}>
+            {detail.verification_status === 'pending' && (
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => onReject(detail)}
+                  style={{
+                    flex: 1, padding: '10px', borderRadius: '10px', cursor: 'pointer',
+                    background: 'rgba(248,113,113,0.1)', border: '1px solid rgba(248,113,113,0.25)',
+                    color: '#f87171', fontSize: '13px', fontWeight: 600,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  }}
+                >
+                  <XCircle size={14} /> Reject
+                </button>
+                <button
+                  onClick={() => onApprove(detail)}
+                  style={{
+                    flex: 2, padding: '10px', borderRadius: '10px', cursor: 'pointer',
+                    background: 'rgba(34,197,94,0.15)', border: '1px solid rgba(34,197,94,0.3)',
+                    color: '#22c55e', fontSize: '13px', fontWeight: 600,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  }}
+                >
+                  <CheckCircle size={14} /> Approve
+                </button>
+              </div>
             )}
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <button
+                onClick={() => onRequestReupload(detail)}
+                style={{
+                  flex: 1, padding: '8px', borderRadius: '10px', cursor: 'pointer',
+                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
+                  color: '#94A3B8', fontSize: '12px', fontWeight: 500,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                }}
+              >
+                <RefreshCw size={12} /> Request Re-upload
+              </button>
+              {detail.is_active && (
+                <button
+                  onClick={() => onSuspend(detail)}
+                  style={{
+                    flex: 1, padding: '8px', borderRadius: '10px', cursor: 'pointer',
+                    background: '#1A1004', border: '1px solid #7C4A12',
+                    color: '#f59e0b', fontSize: '12px', fontWeight: 500,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
+                  }}
+                >
+                  <ShieldAlert size={12} /> Suspend
+                </button>
+              )}
+            </div>
           </div>
         )}
+      </motion.div>
+    </>
+  )
+}
 
-        {worker?.verification_status === 'pending' && (
-          <DialogFooter>
-            <Button variant="destructive" disabled={rejecting} onClick={() => onReject(worker)}>
-              {rejecting ? 'Rejecting…' : 'Reject'}
-            </Button>
-            <Button disabled={approving} onClick={() => onApprove(worker)}
-              style={{ background: '#22c55e', color: '#fff' }}>
-              {approving ? 'Approving…' : 'Approve'}
-            </Button>
-          </DialogFooter>
-        )}
+// ── Reject reason dialog ──────────────────────────────────────────────────────
+
+function RejectDialog({ open, onClose, onConfirm, loading }) {
+  const [reason, setReason] = useState('')
+  function submit() {
+    onConfirm(reason.trim() || 'Does not meet requirements')
+    setReason('')
+  }
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent style={{ zIndex: 60 }}>
+        <DialogHeader>
+          <DialogTitle>Reject Worker</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <p className="text-sm" style={{ color: '#475569' }}>
+            Provide a reason (will be sent to the worker by email).
+          </p>
+          <textarea
+            value={reason}
+            onChange={e => setReason(e.target.value)}
+            rows={3}
+            placeholder="e.g. Identity documents are not legible. Please resubmit clear photos."
+            style={{
+              width: '100%', padding: '10px 12px', borderRadius: '10px',
+              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
+              color: '#F1F5F9', fontSize: '13px', resize: 'vertical', outline: 'none',
+            }}
+          />
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose} disabled={loading}>Cancel</Button>
+          <Button variant="destructive" onClick={submit} disabled={loading}>
+            {loading ? <Loader2 size={14} className="animate-spin mr-2" /> : null}
+            Reject
+          </Button>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   )
 }
 
+// ── Main page ─────────────────────────────────────────────────────────────────
+
 export default function AdminWorkers() {
   const qc = useQueryClient()
   const [tab, setTab] = useState('pending')
   const [search, setSearch] = useState('')
-  const [selectedWorker, setSelectedWorker] = useState(null)
-  const [approvingId, setApprovingId] = useState(null)
-  const [rejectingId, setRejectingId] = useState(null)
+  const [selectedId, setSelectedId] = useState(null)
+  const [rejectTarget, setRejectTarget] = useState(null)
 
   const { data: workers = [], isLoading } = useQuery({
     queryKey: ['admin', 'workers', tab],
-    queryFn: () => api.get('/admin/workers', { params: { status: tab, limit: 100 } }).then(r => r.data?.workers || r.data || []),
+    queryFn: () => api.get('/admin/workers', { params: { status: tab, limit: 100 } }).then(r => r.data?.items || []),
     refetchInterval: 30_000,
   })
 
   const approveMut = useMutation({
-    mutationFn: async (worker) => {
-      setApprovingId(worker.id)
-      return api.post(`/admin/workers/${worker.user_id || worker.id}/approve`)
+    mutationFn: (detail) => api.post(`/admin/workers/${detail.user_id}/approve`),
+    onSuccess: () => {
+      qc.invalidateQueries(['admin', 'workers'])
+      qc.invalidateQueries(['admin', 'worker-detail', selectedId])
+      toast.success('Worker approved')
+      setSelectedId(null)
     },
-    onSuccess: () => { qc.invalidateQueries(['admin', 'workers']); toast.success('Worker approved'); setSelectedWorker(null) },
-    onError: () => toast.error('Approval failed'),
-    onSettled: () => setApprovingId(null),
+    onError: (e) => toast.error(e.response?.data?.detail || 'Approval failed'),
   })
 
   const rejectMut = useMutation({
-    mutationFn: async (worker) => {
-      setRejectingId(worker.id)
-      return api.post(`/admin/workers/${worker.user_id || worker.id}/reject`, { reason: 'Does not meet requirements' })
+    mutationFn: ({ detail, reason }) => api.post(`/admin/workers/${detail.user_id}/reject`, { reason }),
+    onSuccess: () => {
+      qc.invalidateQueries(['admin', 'workers'])
+      qc.invalidateQueries(['admin', 'worker-detail', selectedId])
+      toast.success('Worker rejected')
+      setRejectTarget(null)
+      setSelectedId(null)
     },
-    onSuccess: () => { qc.invalidateQueries(['admin', 'workers']); toast.success('Worker rejected'); setSelectedWorker(null) },
-    onError: () => toast.error('Rejection failed'),
-    onSettled: () => setRejectingId(null),
+    onError: (e) => toast.error(e.response?.data?.detail || 'Rejection failed'),
+  })
+
+  const suspendMut = useMutation({
+    mutationFn: (detail) => api.post(`/admin/workers/${detail.user_id}/suspend`),
+    onSuccess: () => {
+      qc.invalidateQueries(['admin', 'workers'])
+      qc.invalidateQueries(['admin', 'worker-detail', selectedId])
+      toast.success('Worker suspended')
+      setSelectedId(null)
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Suspend failed'),
+  })
+
+  const reuploadMut = useMutation({
+    mutationFn: (detail) => api.post(`/admin/workers/${detail.user_id}/request-reupload`),
+    onSuccess: () => {
+      toast.success('Re-upload request sent')
+    },
+    onError: (e) => toast.error(e.response?.data?.detail || 'Failed'),
   })
 
   const filtered = workers.filter(w => {
@@ -213,7 +556,11 @@ export default function AdminWorkers() {
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>
             <TabsTrigger value="pending">
-              Pending {pendingCount > 0 && <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: 'rgba(245,158,11,0.3)' }}>{pendingCount}</span>}
+              Pending {pendingCount > 0 && (
+                <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: '#3D2508' }}>
+                  {pendingCount}
+                </span>
+              )}
             </TabsTrigger>
             <TabsTrigger value="approved">Approved</TabsTrigger>
             <TabsTrigger value="rejected">Rejected</TabsTrigger>
@@ -251,7 +598,7 @@ export default function AdminWorkers() {
                 <TableHead>Area</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead>Joined</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -259,9 +606,7 @@ export default function AdminWorkers() {
                 <WorkerRow
                   key={worker.id}
                   worker={worker}
-                  onApprove={(w) => approveMut.mutate(w)}
-                  onReject={(w) => rejectMut.mutate(w)}
-                  onView={setSelectedWorker}
+                  onView={(w) => setSelectedId(w.id)}
                 />
               ))}
             </TableBody>
@@ -269,14 +614,26 @@ export default function AdminWorkers() {
         )}
       </div>
 
-      <WorkerDetailDialog
-        worker={selectedWorker}
-        open={!!selectedWorker}
-        onClose={() => setSelectedWorker(null)}
-        onApprove={(w) => approveMut.mutate(w)}
-        onReject={(w) => rejectMut.mutate(w)}
-        approving={!!approvingId}
-        rejecting={!!rejectingId}
+      {/* Detail panel */}
+      <AnimatePresence>
+        {selectedId && (
+          <WorkerDetailPanel
+            workerId={selectedId}
+            onClose={() => setSelectedId(null)}
+            onApprove={(detail) => approveMut.mutate(detail)}
+            onReject={(detail) => setRejectTarget(detail)}
+            onSuspend={(detail) => suspendMut.mutate(detail)}
+            onRequestReupload={(detail) => reuploadMut.mutate(detail)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Reject reason dialog */}
+      <RejectDialog
+        open={!!rejectTarget}
+        onClose={() => setRejectTarget(null)}
+        loading={rejectMut.isPending}
+        onConfirm={(reason) => rejectMut.mutate({ detail: rejectTarget, reason })}
       />
     </div>
   )
