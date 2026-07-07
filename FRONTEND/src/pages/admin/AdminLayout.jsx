@@ -1,166 +1,252 @@
 /**
- * AdminLayout — persistent sidebar + top bar for all admin pages.
- * Hidden on /admin/login.
+ * AdminLayout — professional CRM sidebar + topbar.
  */
 import { useState } from 'react'
-import { Outlet, NavLink, useNavigate, Navigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { Outlet, NavLink, useNavigate, Navigate, useLocation } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare,
   Settings, LogOut, Menu, X, ShieldCheck, Layers,
-  Wallet, UserCog,
+  Wallet, UserCog, ChevronRight, Bell,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabase'
+import { useQuery } from '@tanstack/react-query'
+import { api } from '@/lib/api'
 
 const NAV = [
-  { to: '/admin',            label: 'Dashboard',  icon: LayoutDashboard, exact: true },
-  { to: '/admin/workers',    label: 'Workers',    icon: Users },
-  { to: '/admin/users',      label: 'Users',      icon: UserCog },
-  { to: '/admin/jobs',       label: 'Jobs',       icon: Briefcase },
-  { to: '/admin/payouts',    label: 'Payouts',    icon: Wallet },
-  { to: '/admin/support',    label: 'Support',    icon: MessageSquare },
+  { to: '/admin',            label: 'Dashboard',   icon: LayoutDashboard, exact: true },
+  { to: '/admin/workers',    label: 'Workers',     icon: Users,       badgeKey: 'pending_verifications' },
+  { to: '/admin/users',      label: 'Users',       icon: UserCog },
+  { to: '/admin/jobs',       label: 'Jobs',        icon: Briefcase },
+  { to: '/admin/payouts',    label: 'Payouts',     icon: Wallet },
+  { to: '/admin/support',    label: 'Support',     icon: MessageSquare, badgeKey: 'open_tickets' },
   { to: '/admin/categories', label: 'Professions', icon: Layers },
-  { to: '/admin/config',     label: 'Config',     icon: Settings },
+  { to: '/admin/config',     label: 'Config',      icon: Settings },
 ]
 
-export default function AdminLayout() {
-  const { isAuthenticated, user, logout } = useAuthStore()
-  const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+const SIDEBAR_W = 220
 
-  if (!isAuthenticated || user?.role !== 'admin') {
-    return <Navigate to="/admin/login" replace />
+function Badge({ n }) {
+  if (!n) return null
+  return (
+    <span
+      className="ml-auto text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+      style={{ background: 'rgba(248,113,113,0.2)', color: '#f87171', minWidth: 18, textAlign: 'center' }}
+    >
+      {n > 99 ? '99+' : n}
+    </span>
+  )
+}
+
+function SidebarContent({ onNav, dashData }) {
+  const { user, logout } = useAuthStore()
+  const navigate = useNavigate()
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+    logout()
+    navigate('/admin/login')
   }
 
   return (
-    <div className="min-h-screen flex" style={{ background: '#07090F', color: '#F1F5F9' }}>
-      {/* ── Sidebar ── */}
-      <aside
-        className="hidden md:flex flex-col w-60 flex-shrink-0 py-6 px-3"
-        style={{
-          background: 'rgba(13,17,23,0.95)',
-          borderRight: '1px solid rgba(255,255,255,0.07)',
-        }}
-      >
-        <SidebarContent />
-      </aside>
-
-      {/* ── Mobile sidebar overlay ── */}
-      {sidebarOpen && (
-        <div className="md:hidden fixed inset-0 z-50 flex">
-          <div
-            className="absolute inset-0"
-            style={{ background: 'rgba(0,0,0,0.7)' }}
-            onClick={() => setSidebarOpen(false)}
-          />
-          <motion.div
-            initial={{ x: -240 }}
-            animate={{ x: 0 }}
-            exit={{ x: -240 }}
-            className="relative z-10 w-60 flex flex-col py-6 px-3"
-            style={{ background: 'rgba(13,17,23,0.98)', borderRight: '1px solid rgba(255,255,255,0.07)' }}
-          >
-            <button
-              onClick={() => setSidebarOpen(false)}
-              className="absolute top-4 right-4 p-1"
-            >
-              <X className="h-5 w-5" style={{ color: '#475569' }} />
-            </button>
-            <SidebarContent onNav={() => setSidebarOpen(false)} />
-          </motion.div>
-        </div>
-      )}
-
-      {/* ── Main content ── */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
-        <header
-          className="h-14 flex items-center justify-between px-4 flex-shrink-0"
-          style={{ borderBottom: '1px solid rgba(255,255,255,0.07)' }}
+    <div className="flex flex-col h-full">
+      {/* Brand */}
+      <div className="px-4 pt-5 pb-4 flex items-center gap-2.5">
+        <div
+          className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: 'rgba(255,255,255,0.07)' }}
         >
-          <button className="md:hidden" onClick={() => setSidebarOpen(true)}>
-            <Menu className="h-5 w-5" style={{ color: '#94A3B8' }} />
-          </button>
-          <div className="flex items-center gap-2 ml-auto">
-            <span className="text-sm" style={{ color: '#475569' }}>{user?.email}</span>
-            <button
-              onClick={async () => { await supabase.auth.signOut(); logout(); navigate('/admin/login') }}
-              className="p-2 rounded-lg transition-colors"
-              style={{ color: '#475569' }}
-              title="Sign out"
-            >
-              <LogOut className="h-4 w-4" />
-            </button>
-          </div>
-        </header>
+          <ShieldCheck size={16} style={{ color: 'var(--text-secondary)' }} />
+        </div>
+        <div>
+          <p className="font-bold text-sm leading-none" style={{ fontFamily: '"Playwrite NO", cursive', color: '#F1F5F9' }}>
+            Kaargar
+          </p>
+          <p className="text-[10px] font-medium mt-0.5" style={{ color: '#475569' }}>Admin Console</p>
+        </div>
+      </div>
 
-        {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-6">
-          <Outlet />
-        </main>
+      <div className="mx-3 mb-3" style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+
+      {/* Nav */}
+      <nav className="flex-1 px-2 space-y-0.5 overflow-y-auto">
+        {NAV.map(({ to, label, icon: Icon, exact, badgeKey }) => {
+          const badgeCount = badgeKey ? dashData?.[badgeKey] : null
+          return (
+            <NavLink
+              key={to}
+              to={to}
+              end={exact}
+              onClick={onNav}
+              className={({ isActive }) =>
+                `flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
+                  isActive ? '' : 'hover:bg-white/[0.04]'
+                }`
+              }
+              style={({ isActive }) => ({
+                background: isActive ? 'rgba(255,255,255,0.07)' : undefined,
+                color: isActive ? '#F1F5F9' : '#64748B',
+                borderLeft: isActive ? '2px solid rgba(255,255,255,0.2)' : '2px solid transparent',
+              })}
+            >
+              <Icon size={15} className="shrink-0" />
+              <span>{label}</span>
+              <Badge n={badgeCount} />
+            </NavLink>
+          )
+        })}
+      </nav>
+
+      <div className="mx-3 mb-3 mt-2" style={{ height: 1, background: 'rgba(255,255,255,0.06)' }} />
+
+      {/* User row */}
+      <div className="px-3 pb-4">
+        <div
+          className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
+          style={{ background: 'rgba(255,255,255,0.04)' }}
+        >
+          <div
+            className="w-7 h-7 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0"
+            style={{ background: 'rgba(255,255,255,0.10)', color: '#94A3B8' }}
+          >
+            {user?.email?.[0]?.toUpperCase() || 'A'}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium truncate" style={{ color: '#94A3B8' }}>{user?.email}</p>
+          </div>
+          <button
+            onClick={handleLogout}
+            className="p-1 rounded-lg transition-colors hover:bg-white/5"
+            style={{ color: '#475569', background: 'none', border: 'none', cursor: 'pointer' }}
+            title="Sign out"
+          >
+            <LogOut size={13} />
+          </button>
+        </div>
       </div>
     </div>
   )
 }
 
-function SidebarContent({ onNav }) {
+export default function AdminLayout() {
+  const { isAuthenticated, user } = useAuthStore()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { pathname } = useLocation()
+
+  const { data: dashData } = useQuery({
+    queryKey: ['admin', 'dashboard'],
+    queryFn: () => api.get('/admin/dashboard/live').then(r => r.data),
+    refetchInterval: 30_000,
+    enabled: isAuthenticated && user?.role === 'admin',
+  })
+
+  if (!isAuthenticated || user?.role !== 'admin') {
+    return <Navigate to="/admin/login" replace />
+  }
+
+  // Current page title
+  const currentNav = NAV.find(n => n.exact ? pathname === n.to : pathname.startsWith(n.to))
+
   return (
-    <>
-      {/* Logo */}
-      <div className="px-3 mb-8 flex items-center gap-2">
-        <ShieldCheck className="h-5 w-5" style={{ color: '#f59e0b' }} />
-        <span
-          className="text-xl font-bold"
-          style={{ fontFamily: '"Playwrite NO", cursive', color: '#F1F5F9' }}
+    <div
+      className="min-h-screen flex"
+      style={{ background: '#070A11', color: '#F1F5F9' }}
+    >
+      {/* ── Desktop Sidebar ── */}
+      <aside
+        className="hidden md:flex flex-col flex-shrink-0"
+        style={{
+          width: SIDEBAR_W,
+          background: '#0B0F1A',
+          borderRight: '1px solid rgba(255,255,255,0.06)',
+          position: 'sticky',
+          top: 0,
+          height: '100vh',
+        }}
+      >
+        <SidebarContent dashData={dashData} />
+      </aside>
+
+      {/* ── Mobile sidebar overlay ── */}
+      <AnimatePresence>
+        {sidebarOpen && (
+          <div className="md:hidden fixed inset-0 z-50 flex">
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="absolute inset-0"
+              style={{ background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(4px)' }}
+              onClick={() => setSidebarOpen(false)}
+            />
+            <motion.div
+              initial={{ x: -SIDEBAR_W }}
+              animate={{ x: 0 }}
+              exit={{ x: -SIDEBAR_W }}
+              transition={{ type: 'spring', stiffness: 340, damping: 30 }}
+              className="relative z-10 flex flex-col"
+              style={{ width: SIDEBAR_W, background: '#0B0F1A', borderRight: '1px solid rgba(255,255,255,0.06)' }}
+            >
+              <button
+                onClick={() => setSidebarOpen(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-xl hover:bg-white/5"
+                style={{ color: '#475569', background: 'none', border: 'none', cursor: 'pointer' }}
+              >
+                <X size={15} />
+              </button>
+              <SidebarContent onNav={() => setSidebarOpen(false)} dashData={dashData} />
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ── Main ── */}
+      <div className="flex-1 flex flex-col min-w-0">
+        {/* Topbar */}
+        <header
+          className="flex items-center justify-between px-6 flex-shrink-0"
+          style={{
+            height: 56,
+            background: '#0B0F1A',
+            borderBottom: '1px solid rgba(255,255,255,0.06)',
+            position: 'sticky',
+            top: 0,
+            zIndex: 30,
+          }}
         >
-          Kaargar
-        </span>
-        <span
-          className="text-[10px] font-semibold px-1.5 py-0.5 rounded ml-1"
-          style={{ background: '#3D2508', color: '#fbbf24' }}
-        >
-          ADMIN
-        </span>
+          <div className="flex items-center gap-3">
+            <button
+              className="md:hidden p-1.5 rounded-xl hover:bg-white/5"
+              onClick={() => setSidebarOpen(true)}
+              style={{ color: '#64748B', background: 'none', border: 'none', cursor: 'pointer' }}
+            >
+              <Menu size={18} />
+            </button>
+            {currentNav && (
+              <div className="flex items-center gap-2 text-sm" style={{ color: '#475569' }}>
+                <span style={{ color: '#94A3B8', fontWeight: 500 }}>{currentNav.label}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {/* Live indicator */}
+            <div
+              className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium"
+              style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.15)', color: '#4ade80' }}
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
+              Live
+            </div>
+          </div>
+        </header>
+
+        {/* Page content */}
+        <main className="flex-1 overflow-y-auto p-6" style={{ background: '#070A11' }}>
+          <Outlet />
+        </main>
       </div>
-
-      {/* Nav links */}
-      <nav className="flex-1 space-y-0.5">
-        {NAV.map(({ to, label, icon: Icon, exact }) => (
-          <NavLink
-            key={to}
-            to={to}
-            end={exact}
-            onClick={onNav}
-            className={({ isActive }) =>
-              `flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                isActive
-                  ? 'text-amber-400'
-                  : 'hover:bg-white/5'
-              }`
-            }
-            style={({ isActive }) => ({
-              background: isActive ? '#1A1004' : undefined,
-              color: isActive ? '#f59e0b' : '#94A3B8',
-            })}
-          >
-            <Icon className="h-4 w-4 flex-shrink-0" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-
-        {/* Sign out */}
-        <div className="p-4 border-t" style={{ borderColor: 'rgba(255,255,255,0.06)' }}>
-          <button
-            onClick={onNav}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium transition-all hover:bg-white/5"
-            style={{ color: '#f87171', background: 'none', border: 'none', cursor: 'pointer' }}
-          >
-            <LogOut className="h-4 w-4 flex-shrink-0" />
-            Sign Out
-          </button>
-        </div>
-    </>
+    </div>
   )
 }

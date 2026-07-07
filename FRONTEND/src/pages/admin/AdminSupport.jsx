@@ -30,8 +30,8 @@ function TicketCard({ ticket, onResolve, resolving }) {
               </span>
               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full`}
                 style={{
-                  background: isOpen ? '#251606' : 'rgba(255,255,255,0.06)',
-                  color: isOpen ? '#f59e0b' : 'var(--text-secondary)',
+                  background: isOpen ? 'var(--accent-deep)' : 'rgba(255,255,255,0.06)',
+                  color: isOpen ? 'var(--accent)' : 'var(--text-secondary)',
                 }}>
                 {isOpen ? 'Open' : 'Resolved'}
               </span>

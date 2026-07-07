@@ -95,7 +95,7 @@ export default function LoadingScreen({ onDone }) {
               width: 5,
               height: 5,
               borderRadius: '50%',
-              background: i === 1 ? '#F59E0B' : 'rgba(255,255,255,0.25)',
+              background: i === 1 ? 'var(--accent)' : 'rgba(255,255,255,0.25)',
             }}
           />
         ))}

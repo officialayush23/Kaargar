@@ -53,7 +53,7 @@ function CenterPin({ dragging }) {
         transition={{ type: 'spring', stiffness: 400, damping: 25 }}
         style={{
           width: 44, height: 44, borderRadius: '50%',
-          background: '#F59E0B',
+          background: 'var(--accent)',
           border: '3px solid #fff',
           boxShadow: '0 4px 16px rgba(0,0,0,0.35)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -215,8 +215,8 @@ export function PuneMap({
           cursor: 'pointer',
         }}>
         {gpsLoading
-          ? <Loader2 size={18} color="#F59E0B" style={{ animation: 'spin 0.8s linear infinite' }} />
-          : <Navigation size={18} color="#F59E0B" fill="#F59E0B" />
+          ? <Loader2 size={18} color="var(--accent)" style={{ animation: 'spin 0.8s linear infinite' }} />
+          : <Navigation size={18} color="var(--accent)" fill="var(--accent)" />
         }
       </button>
 
@@ -230,13 +230,13 @@ export function PuneMap({
       }}>
         <div style={{
           width: 30, height: 30, borderRadius: 8, flexShrink: 0,
-          background: dragging ? '#FEF3C7' : 'rgba(245,158,11,0.10)',
+          background: dragging ? '#FEF3C7' : 'var(--accent-bg)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           transition: 'background 0.2s',
         }}>
           {resolving || dragging
-            ? <Loader2 size={15} color="#F59E0B" style={{ animation: 'spin 0.8s linear infinite' }} />
-            : <MapPin size={15} color="#F59E0B" />
+            ? <Loader2 size={15} color="var(--accent)" style={{ animation: 'spin 0.8s linear infinite' }} />
+            : <MapPin size={15} color="var(--accent)" />
           }
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
@@ -292,17 +292,17 @@ function MapFallback({ onSelect, height, className }) {
     <div className={`rounded-2xl overflow-hidden ${className}`}
       style={{ height, background: 'var(--bg-elevated)', padding: 16, boxSizing: 'border-box', overflowY: 'auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-        <Navigation size={14} color="#F59E0B" />
-        <span style={{ fontSize: 12, fontWeight: 500, color: '#F59E0B' }}>Select your area in Pune</span>
+        <Navigation size={14} color="var(--accent)" />
+        <span style={{ fontSize: 12, fontWeight: 500, color: 'var(--accent)' }}>Select your area in Pune</span>
       </div>
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
         {AREAS.map(area => (
           <button key={area.name} onClick={() => pick(area)} style={{
             textAlign: 'left', padding: '10px 12px', borderRadius: 12, fontSize: 13,
             fontWeight: 500, cursor: 'pointer', transition: 'all 0.15s',
-            background: selected === area.name ? 'rgba(245,158,11,0.15)' : 'rgba(255,255,255,0.05)',
-            border: selected === area.name ? '1.5px solid #F59E0B' : '1px solid rgba(255,255,255,0.08)',
-            color: selected === area.name ? '#F59E0B' : 'rgba(255,255,255,0.6)',
+            background: selected === area.name ? 'var(--accent-bg-md)' : 'rgba(255,255,255,0.05)',
+            border: selected === area.name ? '1.5px solid var(--accent)' : '1px solid rgba(255,255,255,0.08)',
+            color: selected === area.name ? 'var(--accent)' : 'rgba(255,255,255,0.6)',
           }}>
             {area.name}
           </button>

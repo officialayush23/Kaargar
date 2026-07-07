@@ -138,16 +138,23 @@ function SupabaseAuthSync() {
 
         if (session && (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED')) {
           try {
-            const { data } = await api.post('/auth/provision', {})
+            // Read signup intent stored by LoginPage before signUp()
+            const signupIntent = localStorage.getItem('kaargar_signup_intent')
+            const provisionBody = signupIntent === 'worker' ? { role: 'worker' } : {}
+            const { data } = await api.post('/auth/provision', provisionBody)
             setUser(data)
 
             if (event === 'SIGNED_IN') {
+              // Clear persisted intent after successful provision
+              localStorage.removeItem('kaargar_signup_intent')
+
               const role = data?.role
               const currentPath = window.location.pathname
               // Only auto-navigate from login/root (e.g. email confirmation redirect)
               if (currentPath === '/login' || currentPath === '/') {
                 if (role === 'admin') navigate('/admin', { replace: true })
                 else if (role === 'worker') navigate('/worker', { replace: true })
+                else if (signupIntent === 'worker') navigate('/onboard/worker', { replace: true })
                 else navigate('/', { replace: true })
               }
             }

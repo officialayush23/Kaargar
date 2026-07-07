@@ -155,7 +155,7 @@ function PackageForm({ initial, services, onSave, onCancel }) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--g-bg-mid)', border: '1px solid #7C4A12' }}>
+    <form onSubmit={handleSubmit} className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--accent-mid)' }}>
       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
         {initial ? 'Edit package' : 'New package'}
       </p>
@@ -227,7 +227,7 @@ function PackageForm({ initial, services, onSave, onCancel }) {
               className="flex-1 py-2 px-2 rounded-[10px] text-xs font-semibold transition-all"
               style={
                 redemption === opt.value
-                  ? { background: '#2D1A06', color: '#f59e0b', border: '1px solid #92400E' }
+                  ? { background: 'var(--accent-deep)', color: 'var(--accent)', border: '1px solid var(--accent-dim)' }
                   : { color: 'var(--text-muted)', border: '1px solid transparent' }
               }
             >
@@ -270,7 +270,7 @@ function PackageForm({ initial, services, onSave, onCancel }) {
           type="submit"
           disabled={loading}
           className="flex-1 py-2.5 rounded-xl text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50"
-          style={{ background: '#2D1A06', color: '#f59e0b', border: '1px solid #92400E' }}
+          style={{ background: 'var(--accent-deep)', color: 'var(--accent)', border: '1px solid var(--accent-dim)' }}
         >
           {loading ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
           Save package
@@ -453,8 +453,8 @@ export default function WorkerPackages() {
       </div>
 
       {services.length === 0 && (
-        <div className="rounded-xl p-4 text-center" style={{ background: '#1A1004', border: '1px solid #7C4A12' }}>
-          <p className="text-sm font-medium" style={{ color: '#f59e0b' }}>Add services first</p>
+        <div className="rounded-xl p-4 text-center" style={{ background: 'var(--accent-card)', border: '1px solid var(--accent-mid)' }}>
+          <p className="text-sm font-medium" style={{ color: 'var(--accent)' }}>Add services first</p>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
             Go to Services and add at least one service before creating packages.
           </p>

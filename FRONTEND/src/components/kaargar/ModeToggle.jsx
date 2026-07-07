@@ -6,9 +6,9 @@ const MODES = [
   {
     id: 'instant',
     label: 'Instant',
-    icon: Zap,
-    activeBg: '#F59E0B',
-    activeBorder: '#F59E0B',
+    // icon: Zap,
+    activeBg: 'var(--accent)',
+    activeBorder: 'var(--accent)',
     activeColor: '#000',
     dotColor: '#000',
   },
@@ -16,10 +16,10 @@ const MODES = [
     id: 'discovery',
     label: 'Discover',
     icon: Compass,
-    activeBg: '#92400E',
-    activeBorder: '#92400E',
-    activeColor: '#FDE68A',
-    dotColor: '#FDE68A',
+    activeBg: 'var(--accent-dim)',
+    activeBorder: 'var(--accent-dim)',
+    activeColor: 'var(--accent-soft)',
+    dotColor: 'var(--accent-soft)',
   },
 ]
 

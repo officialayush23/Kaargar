@@ -246,7 +246,7 @@ function OfferCard({ offer, onEdit, onDelete, deleting }) {
             {days !== null && (
               <span
                 className="text-xs font-medium"
-                style={{ color: expired ? '#f87171' : urgentExpiry ? '#f59e0b' : 'var(--text-muted)' }}
+                style={{ color: expired ? '#f87171' : urgentExpiry ? 'var(--accent)' : 'var(--text-muted)' }}
               >
                 {expired ? 'Expired' : `${days}d left`}
               </span>

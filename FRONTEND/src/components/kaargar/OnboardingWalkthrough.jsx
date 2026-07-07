@@ -171,7 +171,7 @@ export function OnboardingWalkthrough({ onDone }) {
             <p style={{
               fontSize: '11px',
               fontWeight: 600,
-              color: '#F59E0B',
+              color: 'var(--accent)',
               textTransform: 'uppercase',
               letterSpacing: '0.08em',
               marginBottom: '6px',
@@ -224,7 +224,7 @@ export function OnboardingWalkthrough({ onDone }) {
                     onClick={() => { setDir(i > idx ? 1 : -1); setIdx(i) }}
                     animate={{
                       width: i === idx ? 20 : 6,
-                      background: i === idx ? '#F59E0B' : 'rgba(255,255,255,0.15)',
+                      background: i === idx ? 'var(--accent)' : 'rgba(255,255,255,0.15)',
                     }}
                     transition={{ duration: 0.2 }}
                     style={{
@@ -264,7 +264,7 @@ export function OnboardingWalkthrough({ onDone }) {
                     padding: '10px 20px',
                     borderRadius: '12px',
                     border: 'none',
-                    background: '#F59E0B',
+                    background: 'var(--accent)',
                     color: '#000',
                     fontSize: '14px',
                     fontWeight: 700,

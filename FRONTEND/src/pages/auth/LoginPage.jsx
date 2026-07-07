@@ -56,7 +56,7 @@ export default function LoginPage() {
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
 
-  const accentColor = '#F59E0B'
+  const accentColor = 'var(--accent)'
 
   function go(nextStep, dir = 1) {
     setDirection(dir)
@@ -88,6 +88,10 @@ export default function LoginPage() {
         }
 
       } else {
+        // Persist intent so SupabaseAuthSync can use it after email verification
+        if (intent === 'worker') localStorage.setItem('kaargar_signup_intent', 'worker')
+        else localStorage.removeItem('kaargar_signup_intent')
+
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) {
           // Account already exists — silently switch to sign-in
@@ -97,6 +101,7 @@ export default function LoginPage() {
             error.message?.toLowerCase().includes('registered')
           ) {
             setMode('signin')
+            localStorage.removeItem('kaargar_signup_intent')
             toast.info('Account already exists — please sign in.')
           } else {
             toast.error(error.message)
@@ -160,11 +165,11 @@ export default function LoginPage() {
                   <button
                     onClick={() => { setIntent('user'); go('email') }}
                     className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
-                    style={{ background: 'var(--g-bg)', border: '1.5px solid rgba(245,158,11,0.3)' }}
+                    style={{ background: 'var(--g-bg)', border: '1.5px solid var(--accent-border)' }}
                   >
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'rgba(245,158,11,0.12)' }}>
-                      <Search size={18} style={{ color: '#F59E0B' }} />
+                      style={{ background: 'var(--accent-bg)' }}>
+                      <Search size={18} style={{ color: 'var(--accent)' }} />
                     </div>
                     <div>
                       <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>I need services</p>
@@ -175,11 +180,11 @@ export default function LoginPage() {
                   <button
                     onClick={() => { setIntent('worker'); go('email') }}
                     className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
-                    style={{ background: 'var(--g-bg)', border: '1.5px solid #92400E' }}
+                    style={{ background: 'var(--g-bg)', border: '1.5px solid var(--accent-dim)' }}
                   >
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: '#2D1A06' }}>
-                      <Zap size={18} style={{ color: '#f59e0b' }} />
+                      style={{ background: 'var(--accent-deep)' }}>
+                      <Zap size={18} style={{ color: 'var(--accent)' }} />
                     </div>
                     <div>
                       <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>I am a worker</p>
@@ -209,8 +214,8 @@ export default function LoginPage() {
                   {/* Intent badge */}
                   <div className="mb-1">
                     <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{
-                      background: '#2D1A06',
-                      color: '#f59e0b',
+                      background: 'var(--accent-deep)',
+                      color: 'var(--accent)',
                     }}>
                       {intent === 'worker' ? '⚡ Worker' : '🔍 Customer'}
                     </span>

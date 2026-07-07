@@ -194,7 +194,7 @@ function AreaPicker({ value, onChange, error }) {
                     padding: '9px 12px',
                     borderRadius: '8px',
                     border: 'none',
-                    background: value === area ? '#2D1A06' : 'transparent',
+                    background: value === area ? 'var(--accent-deep)' : 'transparent',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -233,6 +233,7 @@ export default function WorkerOnboardPage() {
   // Step 1: Bio
   const [bio, setBio] = useState('')
   const [yearsExp, setYearsExp] = useState('')
+  const [phone, setPhone] = useState(useAuthStore.getState().user?.phone?.replace(/^\+91/, '') || '')
   const [minRate, setMinRate] = useState('')
   const [maxRate, setMaxRate] = useState('')
 
@@ -361,6 +362,12 @@ export default function WorkerOnboardPage() {
     if (!validateStep()) return
     setLoading(true)
     try {
+      // Save phone if provided
+      const phoneDigits = phone.replace(/\D/g, '')
+      if (phoneDigits.length === 10) {
+        try { await api.patch('/users/me', { phone: `+91${phoneDigits}` }) } catch (_) {}
+      }
+
       await api.post('/workers/profile', {
         bio: bio.trim() || undefined,
         experience_years: yearsExp ? Number(yearsExp) : 0,
@@ -533,6 +540,30 @@ export default function WorkerOnboardPage() {
                   icon={Clock}
                   error={errors.yearsExp}
                 />
+
+                {/* Phone */}
+                <div>
+                  <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                    Mobile number <span style={{ color: 'var(--text-muted)' }}>(clients use this)</span>
+                  </p>
+                  <div
+                    className="flex items-center rounded-xl overflow-hidden"
+                    style={{ border: '1.5px solid var(--card-border)', background: 'var(--card-bg)' }}
+                  >
+                    <span className="px-3 py-3 text-sm border-r shrink-0"
+                      style={{ color: 'var(--text-muted)', borderColor: 'var(--card-border)' }}>+91</span>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      maxLength={10}
+                      value={phone}
+                      onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                      placeholder="98765 43210"
+                      className="flex-1 px-3 py-3 text-sm bg-transparent outline-none"
+                      style={{ color: 'var(--text-primary)' }}
+                    />
+                  </div>
+                </div>
               </GlassCard>
 
               <GlassCard className="p-5 space-y-4" style={{ position: 'relative', zIndex: 30 }}>
@@ -610,7 +641,7 @@ export default function WorkerOnboardPage() {
                               ? `1.5px solid ${cat.color_hex || 'var(--amber)'}`
                               : '1px solid var(--card-border)',
                             background: selected
-                              ? `${cat.color_hex || '#F59E0B'}12`
+                              ? `${cat.color_hex || 'var(--accent)'}12`
                               : 'var(--card-bg)',
                             display: 'flex',
                             alignItems: 'center',
@@ -622,7 +653,7 @@ export default function WorkerOnboardPage() {
                         >
                           <div style={{
                             width: '32px', height: '32px', borderRadius: '8px',
-                            background: `${cat.color_hex || '#F59E0B'}20`,
+                            background: `${cat.color_hex || 'var(--accent)'}20`,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             flexShrink: 0,
                           }}>
@@ -1001,7 +1032,7 @@ export default function WorkerOnboardPage() {
                             ? '1.5px solid var(--amber)'
                             : '1px solid var(--card-border)',
                           background: radius === opt.value
-                            ? '#251606'
+                            ? 'var(--accent-deep)'
                             : 'var(--card-bg)',
                           display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px',
                           cursor: 'pointer', transition: 'all 0.15s ease'
@@ -1045,8 +1076,8 @@ export default function WorkerOnboardPage() {
                   <div key={i} style={{
                     borderRadius: 12,
                     padding: '10px 12px',
-                    background: day.enabled ? '#1A1004' : 'transparent',
-                    border: day.enabled ? '1px solid #36220A' : '1px solid var(--card-border)',
+                    background: day.enabled ? 'var(--accent-card)' : 'transparent',
+                    border: day.enabled ? '1px solid var(--accent-mid)' : '1px solid var(--card-border)',
                     transition: 'all 0.2s',
                   }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1054,8 +1085,8 @@ export default function WorkerOnboardPage() {
                         onClick={() => toggleDay(i)}
                         style={{
                           width: 40, height: 22, borderRadius: 11, flexShrink: 0,
-                          background: day.enabled ? '#F59E0B' : 'var(--g-bg-mid)',
-                          border: `1px solid ${day.enabled ? '#F59E0B' : 'var(--g-border)'}`,
+                          background: day.enabled ? 'var(--accent)' : 'var(--g-bg-mid)',
+                          border: `1px solid ${day.enabled ? 'var(--accent)' : 'var(--g-border)'}`,
                           position: 'relative', cursor: 'pointer', transition: 'all 0.2s',
                         }}>
                         <div style={{
@@ -1068,7 +1099,7 @@ export default function WorkerOnboardPage() {
                       </button>
                       <span style={{
                         fontSize: 14, fontWeight: 600, flex: 1,
-                        color: day.enabled ? 'var(--amber, #F59E0B)' : 'var(--text-muted)',
+                        color: day.enabled ? 'var(--accent)' : 'var(--text-muted)',
                       }}>
                         {DAYS[i]}
                       </span>
@@ -1136,7 +1167,7 @@ export default function WorkerOnboardPage() {
               <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
                 <div style={{
                   width: '64px', height: '64px', borderRadius: '20px', margin: '0 auto 16px',
-                  background: 'rgba(245,158,11,0.12)',
+                  background: 'var(--accent-bg)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
                   <Rocket size={30} style={{ color: 'var(--brand)' }} />
@@ -1165,12 +1196,12 @@ export default function WorkerOnboardPage() {
                   }}>
                     <div style={{
                       width: '20px', height: '20px', borderRadius: '6px', flexShrink: 0, marginTop: '1px',
-                      background: row.ok ? 'rgba(34,197,94,0.12)' : '#251606',
+                      background: row.ok ? 'rgba(34,197,94,0.12)' : 'var(--accent-deep)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       {row.ok
                         ? <Check size={11} style={{ color: '#22C55E' }} />
-                        : <AlertCircle size={11} style={{ color: '#F59E0B' }} />
+                        : <AlertCircle size={11} style={{ color: 'var(--accent)' }} />
                       }
                     </div>
                     <div style={{ flex: 1, minWidth: 0 }}>
@@ -1184,7 +1215,7 @@ export default function WorkerOnboardPage() {
               </GlassCard>
 
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '12px 14px', borderRadius: '12px',
-                background: 'rgba(245,158,11,0.06)', border: '1px solid rgba(245,158,11,0.2)' }}>
+                background: 'var(--accent-bg-sm)', border: '1px solid var(--accent-border)' }}>
                 <AlertCircle size={13} style={{ color: 'var(--brand)', flexShrink: 0, marginTop: '1px' }} />
                 <p className="text-xs" style={{ color: 'var(--brand)', lineHeight: '1.6' }}>
                   Your profile will be submitted for review. You can start receiving jobs once approved (usually within 24 hours).

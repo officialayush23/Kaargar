@@ -9,7 +9,7 @@ import { api } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const STATUS_CFG = {
-  pending:    { label: 'Pending',    color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  icon: Clock },
+  pending:    { label: 'Pending',    color: 'var(--accent)', bg: 'var(--accent-bg)',  icon: Clock },
   processing: { label: 'Processing', color: '#60a5fa', bg: 'rgba(96,165,250,0.1)',  icon: RefreshCw },
   paid:       { label: 'Paid',       color: '#22c55e', bg: 'rgba(34,197,94,0.1)',   icon: CheckCircle },
   failed:     { label: 'Failed',     color: '#f87171', bg: 'rgba(248,113,113,0.1)', icon: XCircle },
@@ -82,7 +82,7 @@ export default function AdminPayouts() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <SummaryCard label="Pending"    value={fmt(summary?.pending?.total    || 0)} sub={`${summary?.pending?.count    || 0} payouts`} color="#f59e0b" delay={0}    />
+        <SummaryCard label="Pending"    value={fmt(summary?.pending?.total    || 0)} sub={`${summary?.pending?.count    || 0} payouts`} color="var(--accent)" delay={0}    />
         <SummaryCard label="Processing" value={fmt(summary?.processing?.total || 0)} sub={`${summary?.processing?.count || 0} payouts`} color="#60a5fa" delay={0.04} />
         <SummaryCard label="Paid"       value={fmt(summary?.paid?.total       || 0)} sub={`${summary?.paid?.count       || 0} payouts`} color="#22c55e" delay={0.08} />
         <SummaryCard label="Failed"     value={fmt(summary?.failed?.total     || 0)} sub={`${summary?.failed?.count     || 0} payouts`} color="#f87171" delay={0.12} />

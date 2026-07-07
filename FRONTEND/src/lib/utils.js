@@ -52,7 +52,7 @@ export const JOB_STATUS_LABELS = {
 
 export const JOB_STATUS_COLORS = {
   requested: '#94A3B8',
-  searching: '#F59E0B',
+  searching: 'var(--accent)',
   assigned: '#4B7BFF',
   en_route: '#8B5CF6',
   arrived: '#06B6D4',

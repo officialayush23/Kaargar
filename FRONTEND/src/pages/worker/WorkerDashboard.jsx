@@ -46,22 +46,22 @@ function VerificationBanner({ status, rejectionReason }) {
       animate={{ opacity: 1, y: 0 }}
       className="rounded-2xl p-4"
       style={{
-        background: isPending ? '#1A1004' : 'rgba(239,68,68,0.08)',
-        border: `1px solid ${isPending ? '#7C4A12' : 'rgba(239,68,68,0.25)'}`,
+        background: isPending ? 'var(--accent-card)' : 'rgba(239,68,68,0.08)',
+        border: `1px solid ${isPending ? 'var(--accent-mid)' : 'rgba(239,68,68,0.25)'}`,
       }}
     >
       <div className="flex items-start gap-3">
         <div
           className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-          style={{ background: isPending ? '#2D1A06' : 'rgba(239,68,68,0.15)' }}
+          style={{ background: isPending ? 'var(--accent-deep)' : 'rgba(239,68,68,0.15)' }}
         >
           {isPending
-            ? <ShieldAlert className="h-4.5 w-4.5" style={{ color: '#f59e0b' }} />
+            ? <ShieldAlert className="h-4.5 w-4.5" style={{ color: 'var(--accent)' }} />
             : <XCircle className="h-4.5 w-4.5" style={{ color: '#ef4444' }} />
           }
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold" style={{ color: isPending ? '#f59e0b' : '#ef4444' }}>
+          <p className="text-sm font-semibold" style={{ color: isPending ? 'var(--accent)' : '#ef4444' }}>
             {isPending ? 'Verification pending' : 'Application rejected'}
           </p>
           <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
@@ -287,14 +287,14 @@ export default function WorkerDashboard() {
               value={formatCurrency(analytics?.month_earnings || 0)}
               sub={`${analytics?.month_jobs || 0} total jobs`}
               icon={TrendingUp}
-              accentColor="#F59E0B"
+              accentColor="var(--accent)"
             />
             <StatCard
               label="Rating"
               value={Number(analytics?.avg_rating || 0).toFixed(1)}
               sub={`${analytics?.total_reviews || 0} reviews`}
               icon={Star}
-              accentColor="#f59e0b"
+              accentColor="var(--accent)"
             />
             <StatCard
               label="Acceptance"
@@ -329,7 +329,7 @@ export default function WorkerDashboard() {
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl flex items-center justify-center"
             style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <HelpCircle className="h-5 w-5" style={{ color: '#F59E0B' }} />
+            <HelpCircle className="h-5 w-5" style={{ color: 'var(--accent)' }} />
           </div>
           <div>
             <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Help & Support</p>
@@ -349,7 +349,7 @@ export default function WorkerDashboard() {
           <button
             onClick={() => navigate('/worker/analytics')}
             className="text-xs transition-colors"
-            style={{ color: '#F59E0B' }}
+            style={{ color: 'var(--accent)' }}
           >
             See all
           </button>

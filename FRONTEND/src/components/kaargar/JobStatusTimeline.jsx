@@ -22,7 +22,7 @@ export function JobStatusTimeline({ status }) {
                 className="w-8 h-8 rounded-full flex items-center justify-center transition-all"
                 style={
                   isDone    ? { background: 'rgba(34,197,94,0.2)',  color: 'var(--instant)' } :
-                  isCurrent ? { background: 'rgba(245,158,11,0.15)', color: 'var(--brand)' }   :
+                  isCurrent ? { background: 'var(--accent-bg-md)', color: 'var(--brand)' }   :
                               { background: 'var(--g-bg)',           color: 'var(--text-muted)' }
                 }
               >

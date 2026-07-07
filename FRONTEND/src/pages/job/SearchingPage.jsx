@@ -53,7 +53,7 @@ function UserPin() {
           style={{
             position: 'absolute',
             borderRadius: '50%',
-            border: '1.5px solid rgba(245,158,11,0.3)',
+            border: '1.5px solid var(--accent-border)',
             pointerEvents: 'none',
           }}
           initial={{ width: 0, height: 0, opacity: 0.85 }}
@@ -67,7 +67,7 @@ function UserPin() {
       <div style={{
         width: 22, height: 22,
         borderRadius: '50%',
-        background: '#F59E0B',
+        background: 'var(--accent)',
         border: '3px solid #fff',
         boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
         position: 'relative',
@@ -98,10 +98,10 @@ function WorkerPin({ delay, highlight }) {
         <div style={{
           width: 36, height: 36,
           borderRadius: '50%',
-          background: highlight ? '#F59E0B' : 'rgba(255,255,255,0.12)',
+          background: highlight ? 'var(--accent)' : 'rgba(255,255,255,0.12)',
           backdropFilter: 'blur(10px)',
           WebkitBackdropFilter: 'blur(10px)',
-          border: `1.5px solid ${highlight ? '#F59E0B' : 'rgba(255,255,255,0.22)'}`,
+          border: `1.5px solid ${highlight ? 'var(--accent)' : 'rgba(255,255,255,0.22)'}`,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 15,
           boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
@@ -271,7 +271,7 @@ function WorkerFoundCard({ worker, jobId, onChat }) {
         onClick={() => navigate(`/job/${jobId}/active`)}
         className="w-full flex items-center justify-center gap-2 py-4 rounded-2xl font-semibold text-base transition-all active:scale-95"
         style={{
-          background: '#F59E0B',
+          background: 'var(--accent)',
           color: '#000',
         }}
       >
@@ -467,7 +467,7 @@ export default function SearchingPage() {
             whiteSpace: 'nowrap',
           }}
         >
-          <span style={{ color: '#F59E0B', fontSize: 11, fontWeight: 600 }}>
+          <span style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600 }}>
             📍 Your location
           </span>
         </div>
@@ -512,7 +512,7 @@ export default function SearchingPage() {
               onClick={() => navigate('/')}
               className="px-6 py-3 rounded-2xl font-semibold text-sm"
               style={{
-                background: '#F59E0B',
+                background: 'var(--accent)',
                 color: '#000',
               }}
             >

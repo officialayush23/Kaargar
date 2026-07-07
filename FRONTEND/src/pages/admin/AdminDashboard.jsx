@@ -1,57 +1,110 @@
+/**
+ * AdminDashboard — live CRM overview with stats, activity, quick actions.
+ */
 import { useQuery } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
-import { Zap, Users, IndianRupee, TrendingUp, Activity, AlertCircle, Clock, CheckCircle, ArrowRight } from 'lucide-react'
+import {
+  Zap, Users, IndianRupee, TrendingUp, Activity,
+  AlertCircle, Clock, CheckCircle, ArrowRight, Briefcase,
+  LifeBuoy, Shield, Settings, Wallet, ChevronRight,
+} from 'lucide-react'
 import { api } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
 
-function StatCard({ label, value, sub, icon: Icon, color, delay = 0 }) {
+const CARD_ANIM = i => ({
+  initial: { opacity: 0, y: 14 },
+  animate: { opacity: 1, y: 0 },
+  transition: { delay: i * 0.05, type: 'spring', stiffness: 280, damping: 26 },
+})
+
+function StatCard({ label, value, sub, icon: Icon, accent, i }) {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay, type: 'spring', stiffness: 260, damping: 24 }}
+    <motion.div {...CARD_ANIM(i)}
       style={{
-        background: 'rgba(13,17,23,0.85)',
+        background: '#0B0F1A',
         border: '1px solid rgba(255,255,255,0.07)',
         borderRadius: 16,
         padding: '18px 20px',
       }}
     >
-      <div className="flex items-start justify-between mb-3">
-        <p style={{ color: '#475569', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+      <div className="flex items-center justify-between mb-3">
+        <p style={{ color: '#475569', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           {label}
         </p>
-        <div style={{ width: 32, height: 32, borderRadius: 10, background: 'rgba(255,255,255,0.07)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-          <Icon size={15} style={{ color }} />
+        <div style={{
+          width: 30, height: 30, borderRadius: 10,
+          background: 'rgba(255,255,255,0.06)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <Icon size={14} style={{ color: accent }} />
         </div>
       </div>
-      <p style={{ fontSize: 26, fontWeight: 700, fontFamily: 'monospace', color: '#F1F5F9', lineHeight: 1 }}>{value}</p>
-      {sub && <p style={{ color: '#334155', fontSize: 11, marginTop: 6 }}>{sub}</p>}
+      <p style={{ fontSize: 28, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color: '#F1F5F9', lineHeight: 1 }}>
+        {value}
+      </p>
+      {sub && <p style={{ color: '#334155', fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>{sub}</p>}
     </motion.div>
   )
 }
 
-function QuickLink({ label, to, count, color }) {
+function ActionRow({ icon: Icon, label, badge, badgeColor, to, desc }) {
   const navigate = useNavigate()
   return (
     <button
       onClick={() => navigate(to)}
-      className="flex items-center justify-between w-full px-4 py-3 rounded-xl transition-all text-left"
-      style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}
-      onMouseEnter={e => e.currentTarget.style.borderColor = '#92400E'}
-      onMouseLeave={e => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.06)'}
+      className="w-full flex items-center gap-3 px-4 py-3 transition-all text-left rounded-xl group"
+      style={{ background: 'none', border: 'none', cursor: 'pointer' }}
+      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+      onMouseLeave={e => e.currentTarget.style.background = 'none'}
     >
-      <div className="flex items-center gap-3">
-        {count != null && (
-          <span style={{ fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 100, background: 'rgba(255,255,255,0.08)', color }}>{count}</span>
-        )}
-        <span style={{ color: '#94A3B8', fontSize: 13 }}>{label}</span>
+      <div
+        style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+      >
+        <Icon size={15} style={{ color: '#64748B' }} />
       </div>
-      <ArrowRight size={14} style={{ color: '#334155' }} />
+      <div className="flex-1 min-w-0">
+        <p style={{ color: '#CBD5E1', fontSize: 13, fontWeight: 500 }}>{label}</p>
+        {desc && <p style={{ color: '#475569', fontSize: 11, marginTop: 1 }}>{desc}</p>}
+      </div>
+      <div className="flex items-center gap-2">
+        {badge != null && badge > 0 && (
+          <span style={{
+            fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 100,
+            background: badgeColor ? `${badgeColor}20` : 'rgba(255,255,255,0.08)',
+            color: badgeColor || '#94A3B8',
+          }}>
+            {badge}
+          </span>
+        )}
+        <ChevronRight size={14} style={{ color: '#334155' }} />
+      </div>
     </button>
   )
 }
+
+const HEALTH_ITEMS = (data) => [
+  {
+    label: 'Fill rate', value: data?.fill_rate != null ? `${Number(data.fill_rate).toFixed(1)}%` : '—',
+    ok: data?.fill_rate > 70,
+    desc: '>70% is healthy',
+  },
+  {
+    label: 'Online workers', value: data?.online_workers ?? '—',
+    ok: data?.online_workers > 5,
+    desc: 'Ready to accept jobs',
+  },
+  {
+    label: 'Pending verif.', value: data?.pending_verifications ?? '—',
+    ok: data?.pending_verifications === 0,
+    desc: 'Workers awaiting approval',
+  },
+  {
+    label: 'Open tickets', value: data?.open_tickets ?? '—',
+    ok: data?.open_tickets === 0,
+    desc: 'Support queue',
+  },
+]
 
 export default function AdminDashboard() {
   const { data, isLoading, error } = useQuery({
@@ -64,47 +117,89 @@ export default function AdminDashboard() {
     <div className="rounded-2xl p-5 flex items-center gap-3"
       style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
       <AlertCircle size={18} style={{ color: '#f87171' }} />
-      <p style={{ color: '#f87171', fontSize: 13 }}>Failed to load dashboard. Check backend connection.</p>
+      <p style={{ color: '#f87171', fontSize: 13 }}>Failed to load dashboard data — check backend connection.</p>
     </div>
   )
 
-  const stats = [
-    { label: 'Active Jobs',      value: data?.active_jobs ?? 0,      sub: 'currently in progress',    icon: Zap,          color: '#22c55e' },
-    { label: 'Online Workers',   value: data?.online_workers ?? 0,    sub: 'accepting jobs now',       icon: Users,        color: '#F59E0B' },
-    { label: "Today's Revenue",  value: `₹${(data?.today_revenue ?? 0).toLocaleString('en-IN')}`, sub: 'platform fees', icon: IndianRupee, color: '#f59e0b' },
-    { label: 'Searching',        value: data?.searching_jobs ?? 0,    sub: 'finding a worker',         icon: Activity,     color: '#a78bfa' },
-    { label: 'Fill Rate',        value: data?.fill_rate != null ? `${Number(data.fill_rate).toFixed(1)}%` : '—', sub: 'jobs matched', icon: TrendingUp, color: '#34d399' },
-    { label: 'Pending Verif.',   value: data?.pending_verifications ?? '—', sub: 'workers awaiting approval', icon: Clock, color: '#fb923c' },
+  const STATS = [
+    { label: 'Active Jobs',     value: data?.active_jobs ?? 0,  sub: 'currently in progress',    icon: Zap,          accent: '#22c55e' },
+    { label: 'Online Workers',  value: data?.online_workers ?? 0,    sub: 'accepting jobs now',   icon: Users,        accent: 'var(--accent)' },
+    { label: "Today's Revenue", value: `₹${(data?.today_revenue ?? 0).toLocaleString('en-IN')}`, sub: 'platform commission', icon: IndianRupee, accent: 'var(--accent)' },
+    { label: 'Searching',       value: data?.searching_jobs ?? 0,    sub: 'finding a worker',     icon: Activity,     accent: '#a78bfa' },
   ]
 
   return (
-    <div>
-      <div className="mb-7">
+    <div className="space-y-6 max-w-5xl">
+
+      {/* Header */}
+      <div>
         <h1 className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>Live Dashboard</h1>
-        <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>Real-time platform metrics · auto-refreshes every 15s</p>
+        <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>
+          Real-time metrics · auto-refreshes every 15 seconds
+        </p>
       </div>
 
+      {/* Stat grid */}
       {isLoading ? (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-7">
-          {[1,2,3,4,5,6].map(i => <Skeleton key={i} className="h-28 rounded-2xl" style={{ background: 'rgba(255,255,255,0.05)' }} />)}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-28 rounded-2xl" style={{ background: 'rgba(255,255,255,0.04)' }} />)}
         </div>
       ) : (
-        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4 mb-7">
-          {stats.map((s, i) => <StatCard key={s.label} {...s} delay={i * 0.04} />)}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+          {STATS.map((s, i) => <StatCard key={s.label} {...s} i={i} />)}
         </div>
       )}
 
-      {/* Quick actions */}
-      <div style={{ background: 'rgba(13,17,23,0.85)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '18px 20px' }}>
-        <p style={{ color: '#475569', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 12 }}>
-          Quick Actions
-        </p>
-        <div className="space-y-2">
-          <QuickLink label="Pending worker verifications" to="/admin/workers" count={data?.pending_verifications} color="#f59e0b" />
-          <QuickLink label="Open support tickets" to="/admin/support" count={data?.open_tickets} color="#f87171" />
-          <QuickLink label="Recent jobs" to="/admin/jobs" color="#94A3B8" />
-          <QuickLink label="Platform configuration" to="/admin/config" color="#94A3B8" />
-        </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+
+        {/* Health signals */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.2, type: 'spring', stiffness: 260, damping: 26 }}
+          style={{ background: '#0B0F1A', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '18px 20px' }}
+        >
+          <p style={{ color: '#475569', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>
+            Platform Health
+          </p>
+          <div className="space-y-3">
+            {HEALTH_ITEMS(data).map(item => (
+              <div key={item.label} className="flex items-center justify-between gap-4">
+                <div>
+                  <p style={{ color: '#94A3B8', fontSize: 12 }}>{item.label}</p>
+                  <p style={{ color: '#334155', fontSize: 10, marginTop: 1 }}>{item.desc}</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 18, fontWeight: 700, color: '#F1F5F9' }}>
+                    {isLoading ? '—' : item.value}
+                  </span>
+                  <div style={{
+                    width: 8, height: 8, borderRadius: '50%',
+                    background: isLoading ? '#334155' : item.ok ? '#22c55e' : '#f87171',
+                    boxShadow: isLoading ? 'none' : item.ok ? '0 0 6px #22c55e80' : '0 0 6px #f8717180',
+                  }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </motion.div>
+
+        {/* Quick navigation */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.25, type: 'spring', stiffness: 260, damping: 26 }}
+          style={{ background: '#0B0F1A', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '18px 4px' }}
+        >
+          <p style={{ color: '#475569', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, paddingLeft: 16 }}>
+            Quick Navigation
+          </p>
+          <ActionRow to="/admin/workers"    icon={Shield}      label="Worker Verifications" badge={data?.pending_verifications} badgeColor="#f59e0b" desc="Approve pending workers" />
+          <ActionRow to="/admin/support"    icon={LifeBuoy}    label="Support Tickets"      badge={data?.open_tickets} badgeColor="#f87171" desc="Review open cases" />
+          <ActionRow to="/admin/jobs"       icon={Briefcase}   label="Recent Jobs"          desc="All jobs across the platform" />
+          <ActionRow to="/admin/payouts"    icon={Wallet}      label="Worker Payouts"       desc="Pending & completed payouts" />
+          <ActionRow to="/admin/config"     icon={Settings}    label="Platform Config"      desc="Commission, limits, matching" />
+        </motion.div>
       </div>
     </div>
   )

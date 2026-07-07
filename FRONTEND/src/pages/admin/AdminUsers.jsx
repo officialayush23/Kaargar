@@ -23,7 +23,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 const ROLE_CFG = {
   user:   { label: 'User',   color: '#94A3B8', bg: 'rgba(148,163,184,0.1)', icon: User },
   worker: { label: 'Worker', color: '#60a5fa', bg: 'rgba(96,165,250,0.1)',  icon: Briefcase },
-  admin:  { label: 'Admin',  color: '#f59e0b', bg: 'rgba(245,158,11,0.1)',  icon: ShieldCheck },
+  admin:  { label: 'Admin',  color: 'var(--accent)', bg: 'var(--accent-bg)',  icon: ShieldCheck },
 }
 
 function RoleBadge({ role }) {

@@ -24,16 +24,16 @@ const SORT_OPTIONS = [
 ]
 
 const QUICK_TAGS = [
-  { label: 'Electrician', emoji: '⚡', color: '#F59E0B' },
+  { label: 'Electrician', emoji: '⚡', color: 'var(--accent)' },
   { label: 'Plumber',     emoji: '🔧', color: '#3B82F6' },
-  { label: 'Carpenter',   emoji: '🪚', color: '#92400E' },
+  { label: 'Carpenter',   emoji: '🪚', color: 'var(--accent-dim)' },
   { label: 'Cleaner',     emoji: '🧹', color: '#10B981' },
   { label: 'AC Repair',   emoji: '❄️', color: '#06B6D4' },
   { label: 'Painter',     emoji: '🎨', color: '#F97316' },
   { label: 'Mechanic',    emoji: '🔩', color: '#374151' },
   { label: 'Pest Control',emoji: '🐛', color: '#DC2626' },
   { label: 'Photographer',emoji: '📸', color: '#EC4899' },
-  { label: 'Chef',        emoji: '👨‍🍳', color: '#F59E0B' },
+  { label: 'Chef',        emoji: '👨‍🍳', color: 'var(--accent)' },
   { label: 'Beautician',  emoji: '💄', color: '#A855F7' },
   { label: 'Tutor',       emoji: '📚', color: '#6366F1' },
 ]
@@ -53,7 +53,7 @@ const PLATFORM_FEATURES = [
   },
   {
     icon: Wallet,
-    color: '#fbbf24',
+    color: 'var(--accent-hover)',
     title: 'Secure Payments',
     desc: 'Pay only after the job is done. Money held in escrow until you approve.',
   },
@@ -215,7 +215,7 @@ function TrendingCard({ worker, onClick, index }) {
 }
 
 /* ── Section header ─────────────────────────────────────────────── */
-function SectionHeader({ icon: Icon, title, subtitle, accent = '#f59e0b', onSeeAll }) {
+function SectionHeader({ icon: Icon, title, subtitle, accent = 'var(--accent)', onSeeAll }) {
   return (
     <div className="flex items-start justify-between mb-4">
       <div className="flex items-start gap-3">
@@ -283,7 +283,7 @@ function DiscoveryHome({ onSearch, navigate }) {
           icon={Sparkles}
           title="Browse by profession"
           subtitle="Tap to find workers instantly"
-          accent="#f59e0b"
+          accent="var(--accent)"
         />
         <div className="grid grid-cols-4 gap-2">
           {QUICK_TAGS.slice(0, 8).map(({ label, emoji, color }, i) => (
@@ -340,7 +340,7 @@ function DiscoveryHome({ onSearch, navigate }) {
           icon={Package}
           title="Recommended packages"
           subtitle="Curated deals from top workers"
-          accent="#f59e0b"
+          accent="#e99f2f"
         />
         {recLoading ? (
           <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
@@ -373,16 +373,16 @@ function DiscoveryHome({ onSearch, navigate }) {
                 style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
               >
                 <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ background: '#251606' }}>
-                  <Package className="h-5 w-5 text-amber-400" />
+                  style={{ background: '#e99f2f' }}>
+                  <Package className="h-5 w-5 text-black" />
                 </div>
                 <div>
                   <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{name}</p>
                   <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Workers offering soon</p>
                 </div>
                 <span className="text-xs px-2 py-1 rounded-lg inline-block"
-                  style={{ background: '#1A1004', color: '#f59e0b' }}>
-                  Coming soon
+                  style={{ background: '#e99f2f', color: '#000000' }}>
+                  Coming soon..
                 </span>
               </motion.div>
             ))}
@@ -400,7 +400,7 @@ function DiscoveryHome({ onSearch, navigate }) {
           icon={TrendingUp}
           title="Trending near you"
           subtitle="Most booked workers this week"
-          accent="#60a5fa"
+          accent="#e99f2f"
           onSeeAll={() => onSearch('electrician')}
         />
         {trendLoading ? (
@@ -441,7 +441,7 @@ function DiscoveryHome({ onSearch, navigate }) {
           icon={Shield}
           title="Why Kaargar?"
           subtitle="Built for trust, speed, and quality"
-          accent="#f472b6"
+          accent="#e99f2f"
         />
         <div className="grid grid-cols-2 gap-3">
           {PLATFORM_FEATURES.map(({ icon: Icon, color, title, desc }, i) => (
@@ -493,7 +493,7 @@ function DiscoveryHome({ onSearch, navigate }) {
           ].map(({ step, text }) => (
             <div key={step} className="flex items-center gap-3">
               <span className="w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0"
-                style={{ background: '#3D2508', color: '#fbbf24' }}>
+                style={{ background: '#e99f2f', color: '#000000' , border: '1px solid #B45309'}}>
                 {step}
               </span>
               <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{text}</span>
@@ -551,8 +551,8 @@ export default function DiscoveryPage() {
       <div className="pt-2 pb-5">
 
         <div className="flex items-center gap-2 mb-1">
-          <Compass className="h-3.5 w-3.5 text-amber-400" />
-          <span className="text-[11px] font-bold text-amber-400 uppercase tracking-widest">Discovery</span>
+          <Compass className="h-3.5 w-3.5 text-amber-500" />
+          <span className="text-[11px] font-bold text-amber-500 uppercase tracking-widest">Discovery</span>
         </div>
         <h1 className="text-xl font-semibold mb-0.5"
           style={{ color: 'var(--text-primary)' }}>
@@ -565,7 +565,7 @@ export default function DiscoveryPage() {
 
       {/* ── Sticky search bar ─────────────────────────────────── */}
       <div className="sticky top-0 z-20 -mx-4 px-4 pb-3 pt-1"
-        style={{ background: 'rgba(7,9,15,0.85)', backdropFilter: 'blur(16px)' }}>
+       >
         <form onSubmit={e => { e.preventDefault(); handleSearch() }}>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
@@ -580,7 +580,7 @@ export default function DiscoveryPage() {
                 className="w-full rounded-xl pl-10 pr-10 py-3 text-sm outline-none transition-all"
                 style={{
                   background: 'var(--bg-elevated)',
-                  border: `1px solid ${currentQuery ? '#92400E' : 'var(--border)'}`,
+                  border: `1px solid ${currentQuery ? 'var(--accent-dim)' : 'var(--border)'}`,
                   color: 'var(--text-primary)',
                 }}
               />
@@ -595,9 +595,9 @@ export default function DiscoveryPage() {
               whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
               className="p-3 rounded-xl flex-shrink-0 transition-all"
               style={{
-                background: showFilters ? '#2D1A06' : 'var(--bg-elevated)',
+                background: showFilters ? '#e99f2f' : 'var(--bg-elevated)',
                 border: `1px solid ${showFilters ? '#B45309' : 'var(--border)'}`,
-                color: showFilters ? '#f59e0b' : 'var(--text-muted)',
+                color: showFilters ? '#000000' : 'var(--text-muted)',
               }}>
               <SlidersHorizontal className="h-4 w-4" />
             </motion.button>
@@ -616,9 +616,9 @@ export default function DiscoveryPage() {
                     onClick={() => setSort(opt.value)}
                     className="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all"
                     style={{
-                      background: sort === opt.value ? '#2D1A06' : 'var(--bg-elevated)',
+                      background: sort === opt.value ? '#e99f2f' : 'var(--bg-elevated)',
                       border: `1px solid ${sort === opt.value ? '#B45309' : 'var(--border)'}`,
-                      color: sort === opt.value ? '#f59e0b' : 'var(--text-muted)',
+                      color: sort === opt.value ? '#000000' : 'var(--text-muted)',
                     }}>
                     {opt.label}
                   </motion.button>
@@ -648,7 +648,7 @@ export default function DiscoveryPage() {
                 {isLoading || isFetching ? (
                   <span className="flex items-center gap-2">
                     <span className="w-3 h-3 rounded-full border-2 animate-spin"
-                      style={{ borderColor: '#92400E', borderTopColor: '#f59e0b' }} />
+                      style={{ borderColor: 'var(--accent-dim)', borderTopColor: 'var(--accent)' }} />
                     Searching…
                   </span>
                 ) : `${workers.length} result${workers.length !== 1 ? 's' : ''} for "${currentQuery}"`}

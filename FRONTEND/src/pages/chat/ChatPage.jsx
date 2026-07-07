@@ -24,7 +24,7 @@ function Message({ msg, isOwn }) {
           'max-w-[78%] px-4 py-2.5 rounded-2xl',
           isOwn ? 'rounded-br-sm' : 'glass rounded-bl-sm'
         )}
-        style={isOwn ? { background: '#F59E0B' } : undefined}
+        style={isOwn ? { background: 'var(--accent)' } : undefined}
       >
         <p className="text-sm leading-relaxed" style={{ color: isOwn ? '#000' : 'var(--text-primary)' }}>
           {msg.content}
@@ -189,7 +189,7 @@ export default function ChatPage() {
           whileHover={{ scale: 1.05 }}
           whileTap={{ scale: 0.92 }}
           className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 disabled:opacity-35"
-          style={{ background: '#F59E0B' }}
+          style={{ background: 'var(--accent)' }}
         >
           {sending
             ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

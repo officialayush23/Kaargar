@@ -140,7 +140,7 @@ function SavedAddressPicker({ onSelect }) {
             style={{
               flexShrink: 0, padding: '7px 13px', borderRadius: 20,
               border: addr.is_default ? '1.5px solid var(--brand)' : '1px solid var(--card-border)',
-              background: addr.is_default ? 'rgba(245,158,11,0.10)' : 'var(--card-bg)',
+              background: addr.is_default ? 'var(--accent-bg)' : 'var(--card-bg)',
               color: addr.is_default ? 'var(--brand)' : 'var(--text-secondary)',
               fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
             }}>
@@ -226,7 +226,7 @@ function LocationStep({ location, onLocationSelect, category }) {
               size={16}
               style={{
                 position: 'absolute', left: 12, top: '50%',
-                transform: 'translateY(-50%)', color: '#F59E0B', pointerEvents: 'none', zIndex: 1,
+                transform: 'translateY(-50%)', color: 'var(--accent)', pointerEvents: 'none', zIndex: 1,
               }}
             />
             <input
@@ -247,7 +247,7 @@ function LocationStep({ location, onLocationSelect, category }) {
             />
             {acLoading && (
               <div style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)' }}>
-                <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid rgba(245,158,11,0.3)', borderTopColor: '#F59E0B', animation: 'spin 0.8s linear infinite' }} />
+                <div style={{ width: 16, height: 16, borderRadius: '50%', border: '2px solid var(--accent-border)', borderTopColor: 'var(--accent)', animation: 'spin 0.8s linear infinite' }} />
               </div>
             )}
 
@@ -277,7 +277,7 @@ function LocationStep({ location, onLocationSelect, category }) {
                       onMouseEnter={e => e.currentTarget.style.background = '#F8FAFC'}
                       onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
                     >
-                      <MapPin size={14} color="#F59E0B" style={{ flexShrink: 0, marginTop: 2 }} />
+                      <MapPin size={14} color="var(--accent)" style={{ flexShrink: 0, marginTop: 2 }} />
                       <div style={{ minWidth: 0 }}>
                         <p style={{ fontSize: 13, fontWeight: 500, color: '#1E293B', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {s.main_text || s.description}
@@ -445,7 +445,7 @@ function ConfirmStep({ category, location, mode, description, loading, onSubmit 
                   <span className="text-[10px] font-semibold" style={{ color: '#000' }}>Instant</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: '#F59E0B' }}>
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: 'var(--accent)' }}>
                   <Compass className="h-2.5 w-2.5" style={{ color: '#000' }} />
                   <span className="text-[10px] font-semibold" style={{ color: '#000' }}>Discovery</span>
                 </div>
@@ -484,7 +484,7 @@ function ConfirmStep({ category, location, mode, description, loading, onSubmit 
           loading && 'opacity-70'
         )}
         style={{
-          background: mode === 'instant' ? '#22C55E' : '#F59E0B',
+          background: mode === 'instant' ? '#22C55E' : 'var(--accent)',
           color: '#000',
         }}
       >

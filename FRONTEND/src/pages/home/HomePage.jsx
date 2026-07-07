@@ -61,7 +61,7 @@
 //               <div className="px-6 pt-6 pb-4" style={{ borderBottom: '1px solid var(--g-border)' }}>
 //                 <div className="flex items-center gap-4">
 //                   <Avatar className="h-16 w-16"
-//                     style={{ border: '2px solid rgba(245,158,11,0.3)' }}>
+//                     style={{ border: '2px solid var(--accent-border)' }}>
 //                     <AvatarImage src={user?.avatar_url} />
 //                     <AvatarFallback
 //                       className="text-xl font-bold"
@@ -84,8 +84,8 @@
 //               {unreadCount > 0 && (
 //                 <div className="px-6 py-3" style={{ borderBottom: '1px solid var(--g-border)', background: '#1A1004' }}>
 //                   <div className="flex items-center gap-2">
-//                     <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: '#f59e0b' }} />
-//                     <span className="text-sm font-medium" style={{ color: '#f59e0b' }}>
+//                     <div className="w-2 h-2 rounded-full animate-pulse" style={{ background: 'var(--accent)' }} />
+//                     <span className="text-sm font-medium" style={{ color: 'var(--accent)' }}>
 //                       {unreadCount} new notification{unreadCount > 1 ? 's' : ''}
 //                     </span>
 //                   </div>
@@ -134,7 +134,7 @@
 //                     style={{
 //                       background: '#251606',
 //                       border: '1px solid #7C4A12',
-//                       color: '#f59e0b',
+//                       color: 'var(--accent)',
 //                     }}
 //                   >
 //                     <span className="text-xl">⚡</span>
@@ -429,7 +429,7 @@
 //                     height: '16px',
 //                     borderRadius: '8px',
 //                     padding: '0 3px',
-//                     background: '#f59e0b',
+//                     background: 'var(--accent)',
 //                     color: '#000',
 //                     fontSize: '9px',
 //                     fontWeight: 700,
@@ -462,7 +462,7 @@
 //               }}
 //             >
 //               {theme === 'dark'
-//                 ? <Sun size={16} style={{ color: '#f59e0b' }} />
+//                 ? <Sun size={16} style={{ color: 'var(--accent)' }} />
 //                 : <Moon size={16} style={{ color: 'var(--text-secondary)' }} />
 //               }
 //             </motion.button>
@@ -486,7 +486,7 @@
 //                 <AvatarImage src={user?.avatar_url} />
 //                 <AvatarFallback
 //                   className="text-sm font-bold"
-//                   style={{ background: '#2D1A06', color: '#fbbf24' }}
+//                   style={{ background: 'var(--accent-deep)', color: '#fbbf24' }}
 //                 >{initials}</AvatarFallback>
 //               </Avatar>
 //             </motion.button>
@@ -547,8 +547,8 @@
 //                 onClick={handleSearch}
 //                 className="px-3 py-1 rounded-xl text-xs font-semibold"
 //                 style={{
-//                   background: '#2D1A06',
-//                   color: '#f59e0b',
+//                   background: 'var(--accent-deep)',
+//                   color: 'var(--accent)',
 //                   border: '1px solid #92400E',
 //                 }}
 //               >
@@ -655,7 +655,7 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
               <div className="px-6 pt-6 pb-4" style={{ borderBottom: '1px solid var(--g-border)' }}>
                 <div className="flex items-center gap-4">
                   <Avatar className="h-16 w-16"
-                    style={{ border: '2px solid rgba(245,158,11,0.3)' }}>
+                    style={{ border: '2px solid var(--accent-border)' }}>
                     <AvatarImage src={user?.avatar_url} />
                     <AvatarFallback
                       className="text-xl font-bold"
@@ -678,7 +678,7 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
               {unreadCount > 0 && (
                 <div className="px-6 py-3" style={{ borderBottom: '1px solid var(--g-border)', background: 'var(--surface)' }}>
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{ background: '#F59E0B' }} />
+                    <div className="w-2 h-2 rounded-full" style={{ background: 'var(--accent)' }} />
                     <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                       {unreadCount} new notification{unreadCount > 1 ? 's' : ''}
                     </span>
@@ -726,7 +726,7 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
                     onClick={() => { navigate('/worker'); onClose() }}
                     className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl transition-colors text-left"
                     style={{
-                      background: '#F59E0B',
+                      background: 'var(--accent)',
                       color: '#000',
                     }}
                   >
@@ -759,8 +759,8 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
 function InlineModeToggle() {
   const { mode, setMode } = useAppStore()
   const modes = [
-    { id: 'instant',   label: 'Instant',  emoji: '⚡', activeBg: '#F59E0B', activeBorder: '#F59E0B', activeText: '#000' },
-    { id: 'discovery', label: 'Discover', emoji: '🧭', activeBg: '#92400E', activeBorder: '#92400E', activeText: '#FDE68A' },
+    { id: 'instant',   label: 'Instant',  emoji: '⚡', activeBg: 'var(--accent)', activeBorder: 'var(--accent)', activeText: '#000' },
+    { id: 'discovery', label: 'Discover', emoji: '🧭', activeBg: 'var(--accent-dim)', activeBorder: 'var(--accent-dim)', activeText: 'var(--accent-soft)' },
   ]
 
   return (
@@ -994,7 +994,7 @@ export default function HomePage() {
                     height: '16px',
                     borderRadius: '8px',
                     padding: '0 3px',
-                    background: '#f59e0b',
+                    background: 'var(--accent)',
                     color: '#000',
                     fontSize: '9px',
                     fontWeight: 700,
@@ -1048,7 +1048,7 @@ export default function HomePage() {
             </span>
             <span
               className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
-              style={{ background: '#F59E0B', color: '#000' }}
+              style={{ background: 'var(--accent)', color: '#000' }}
             >
               Pune
             </span>
@@ -1090,7 +1090,7 @@ export default function HomePage() {
               <button
                 onClick={handleSearch}
                 className="px-3 py-1 rounded-xl text-xs font-semibold"
-                style={{ background: '#F59E0B', color: '#000' }}
+                style={{ background: 'var(--accent)', color: '#000' }}
               >
                 Go
               </button>

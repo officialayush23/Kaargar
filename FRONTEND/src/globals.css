@@ -50,15 +50,34 @@
   --g-shine:   rgba(255,255,255,0.20);
   --g-blur:    blur(24px) saturate(180%);
 
+  /* ── ACCENT SYSTEM ── change --accent-hex to retheme the whole app ──
+     All components reference these vars. Hex values are for SVG/Canvas only. */
+  --accent-hex:    #F59E0B;           /* ← ONE place to change primary accent */
+  --accent-rgb:    245,158,11;        /* ← RGB channels for rgba() usage       */
+  --accent-dim-hex:#92400E;           /* ← ONE place to change dimmed accent  */
+  --accent:        var(--amber);
+  --accent-hover:  var(--amber-lt);
+  --accent-dim:    #92400E;           /* discover button, darker variant */
+  --accent-soft:   #FDE68A;           /* text on accent-dim background */
+  --accent-deep:   #2D1A06;           /* very dark accent background */
+  --accent-mid:    #7C4A12;           /* mid-dark accent border / divider */
+  --accent-muted:  #3D2508;           /* muted dark amber for subtle hover/active */
+  --accent-card:   #1A1004;           /* darkest accent card/panel background    */
+  --accent-bg-sm:  rgba(245,158,11,0.06);
+  --accent-bg:     rgba(245,158,11,0.10);
+  --accent-bg-md:  rgba(245,158,11,0.15);
+  --accent-border: rgba(245,158,11,0.25);
+  --accent-on:     #000000;           /* text color on top of --accent */
+
   /* Semantic compat */
   --bg-base:      var(--void);
   --bg-surface:   var(--deep);
   --bg-elevated:  var(--surface);
   --bg-glass:     var(--g-bg);
-  --brand:        var(--amber);
-  --brand-hover:  var(--amber-lt);
+  --brand:        var(--accent);
+  --brand-hover:  var(--accent-hover);
   --instant:      var(--emerald);
-  --discovery:    var(--amber);
+  --discovery:    var(--accent);
   --border:       var(--g-border);
   --page-bg:      var(--void);
 
@@ -113,15 +132,31 @@
   --g-shine:   rgba(255,255,255,0.95);
   --g-blur:    blur(20px) saturate(160%);
 
+  /* Accent system — same palette, stays amber in light mode */
+  --accent-hex:    #F59E0B;
+  --accent-dim-hex:#92400E;
+  --accent:        var(--amber);
+  --accent-hover:  var(--amber-lt);
+  --accent-dim:    #92400E;
+  --accent-soft:   #FDE68A;
+  --accent-deep:   #2D1A06;
+  --accent-mid:    #7C4A12;
+  --accent-muted:  #3D2508;
+  --accent-bg-sm:  rgba(245,158,11,0.06);
+  --accent-bg:     rgba(245,158,11,0.10);
+  --accent-bg-md:  rgba(245,158,11,0.15);
+  --accent-border: rgba(245,158,11,0.25);
+  --accent-on:     #000000;
+
   /* Semantic */
   --bg-base:     #FFFFFF;
   --bg-surface:  #F9FAFB;
   --bg-elevated: #F3F4F6;
   --bg-glass:    var(--g-bg);
-  --brand:       var(--amber);
-  --brand-hover: var(--amber-lt);
+  --brand:       var(--accent);
+  --brand-hover: var(--accent-hover);
   --instant:     #16A34A;
-  --discovery:   var(--amber);
+  --discovery:   var(--accent);
   --border:      rgba(0,0,0,0.08);
   --page-bg:     #F9FAFB;
 

@@ -66,7 +66,7 @@ export function WorkerCard({ worker, index = 0 }) {
                   {name}
                 </h3>
                 {isVerified && (
-                  <BadgeCheck size={14} style={{ color: '#F59E0B', flexShrink: 0 }} />
+                  <BadgeCheck size={14} style={{ color: 'var(--accent)', flexShrink: 0 }} />
                 )}
               </div>
               <p className="text-xs mt-0.5 truncate" style={{ color: 'var(--text-muted)' }}>
@@ -133,7 +133,7 @@ export function WorkerCard({ worker, index = 0 }) {
         )}
         {worker.accepts_instant && (
           <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full"
-            style={{ background: 'rgba(245,158,11,0.12)', color: '#F59E0B', border: '1px solid rgba(245,158,11,0.25)' }}>
+            style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent-border)' }}>
             Instant
           </span>
         )}

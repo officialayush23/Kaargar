@@ -93,7 +93,7 @@ export function MobileBottomNav() {
                 <span className="text-base relative leading-none">{link.emoji}</span>
                 <span
                   className="text-[10px] font-medium relative leading-none"
-                  style={{ color: active ? '#F59E0B' : 'var(--text-muted)' }}
+                  style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }}
                 >
                   {link.label}
                 </span>

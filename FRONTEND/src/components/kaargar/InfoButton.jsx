@@ -120,7 +120,7 @@ export function InfoButton({ text, title, size = 16, side = 'top', className = '
         >
           {title && (
             <p style={{
-              fontSize: 11, fontWeight: 700, color: '#F59E0B',
+              fontSize: 11, fontWeight: 700, color: 'var(--accent)',
               marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em',
             }}>
               {title}
@@ -150,7 +150,7 @@ export function InfoButton({ text, title, size = 16, side = 'top', className = '
             height: size + 4,
             borderRadius: '50%',
             border: '1px solid rgba(255,255,255,0.08)',
-            background: open ? '#2D1A06' : 'rgba(255,255,255,0.04)',
+            background: open ? 'var(--accent-deep)' : 'rgba(255,255,255,0.04)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -165,7 +165,7 @@ export function InfoButton({ text, title, size = 16, side = 'top', className = '
           <Info
             size={size - 2}
             style={{
-              color: open ? '#F59E0B' : '#475569',
+              color: open ? 'var(--accent)' : '#475569',
               transition: 'color 0.15s',
             }}
           />

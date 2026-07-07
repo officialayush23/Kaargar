@@ -17,7 +17,7 @@ import { Badge } from '@/components/ui/badge'
 
 const MODE_COLORS = {
   instant:   { bg: 'rgba(34,197,94,0.12)',  text: '#4ade80',  label: 'Instant'   },
-  discovery: { bg: '#251606', text: '#fbbf24',  label: 'Discovery' },
+  discovery: { bg: 'var(--accent-deep)', text: 'var(--accent-hover)',  label: 'Discovery' },
   both:      { bg: 'rgba(99,102,241,0.12)', text: '#a5b4fc',  label: 'Both'      },
 }
 
@@ -310,7 +310,7 @@ export default function AdminCategories() {
           { label: 'Total', value: stats.total },
           { label: 'Active', value: stats.active, color: '#4ade80' },
           { label: 'Instant', value: stats.instant, color: '#4ade80' },
-          { label: 'Discovery', value: stats.discovery, color: '#fbbf24' },
+          { label: 'Discovery', value: stats.discovery, color: 'var(--accent-hover)' },
         ].map(s => (
           <div key={s.label} className="rounded-xl p-4"
             style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}>
@@ -409,7 +409,7 @@ export default function AdminCategories() {
                           {cat.name}
                           {cat.is_featured && (
                             <span className="ml-2 text-xs px-1.5 py-0.5 rounded"
-                              style={{ background: 'rgba(245,158,11,0.1)', color: 'var(--amber)' }}>
+                              style={{ background: 'var(--accent-bg)', color: 'var(--amber)' }}>
                               Featured
                             </span>
                           )}

@@ -41,7 +41,7 @@ function StarRow({ value, onChange, size = 32 }) {
               fill: n <= display ? 'var(--amber)' : 'transparent',
               color: n <= display ? 'var(--amber)' : 'var(--text-muted)',
               transition: 'all 0.12s ease',
-              filter: n <= display ? 'drop-shadow(0 0 6px rgba(245,158,11,0.6))' : 'none',
+              filter: n <= display ? 'drop-shadow(0 0 6px rgba(var(--accent-rgb,245,158,11),0.6))' : 'none',
             }}
           />
         </motion.button>
@@ -155,7 +155,7 @@ export default function ReviewPage() {
                   width: '64px',
                   height: '64px',
                   borderRadius: '18px',
-                  background: '#251606',
+                  background: 'var(--accent-deep)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',

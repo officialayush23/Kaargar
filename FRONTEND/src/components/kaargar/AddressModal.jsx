@@ -62,7 +62,7 @@ export function AddressModal({ open, onClose }) {
         {/* Current active */}
         <div
           className="flex items-center gap-3 p-3 rounded-xl"
-          style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)' }}
+          style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)' }}
         >
           <MapPin className="h-4 w-4 shrink-0" style={{ color: 'var(--brand)' }} />
           <span className="text-sm truncate" style={{ color: 'var(--text-primary)' }}>{displayLocation}</span>
@@ -98,7 +98,7 @@ export function AddressModal({ open, onClose }) {
                     whileHover={{ x: 2 }}
                     className="flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all"
                     style={active
-                      ? { background: 'rgba(245,158,11,0.15)', borderColor: 'rgba(245,158,11,0.3)' }
+                      ? { background: 'var(--accent-bg-md)', borderColor: 'var(--accent-border)' }
                       : { background: 'var(--g-bg)', borderColor: 'var(--g-border)' }
                     }
                     onClick={() => selectSaved(addr)}
@@ -151,7 +151,7 @@ export function AddressModal({ open, onClose }) {
                   onClick={() => selectArea(area)}
                   className="text-left px-3 py-2.5 rounded-xl text-sm font-medium transition-all border"
                   style={active
-                    ? { background: 'rgba(245,158,11,0.2)', borderColor: 'rgba(245,158,11,0.35)', color: 'var(--brand)' }
+                    ? { background: 'var(--accent-bg-md)', borderColor: 'var(--accent-border)', color: 'var(--brand)' }
                     : { background: 'var(--g-bg)', borderColor: 'var(--g-border)', color: 'var(--text-secondary)' }
                   }
                 >
@@ -222,7 +222,7 @@ function AddAddressForm({ onSave, onCancel }) {
             onClick={() => setType(t)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all border"
             style={type === t
-              ? { background: 'rgba(245,158,11,0.2)', borderColor: 'rgba(245,158,11,0.35)', color: 'var(--brand)' }
+              ? { background: 'var(--accent-bg-md)', borderColor: 'var(--accent-border)', color: 'var(--brand)' }
               : { background: 'var(--g-bg)', borderColor: 'var(--g-border)', color: 'var(--text-muted)' }
             }
           >

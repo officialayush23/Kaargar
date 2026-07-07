@@ -48,7 +48,7 @@ function CategoryCard({ category, index, onClick }) {
         gap: '7px',
         padding: '10px 6px',
         borderRadius: '12px',
-        border: `1px solid ${hovered ? 'rgba(245,158,11,0.3)' : 'var(--card-border)'}`,
+        border: `1px solid ${hovered ? 'var(--accent-border)' : 'var(--card-border)'}`,
         background: hovered ? 'var(--elevated)' : 'var(--card)',
         transition: 'background 0.15s ease, border-color 0.15s ease',
         cursor: 'pointer',
@@ -140,7 +140,7 @@ export function CategoryGrid({ categories, isLoading, mode, onSelect, showAll = 
             border: '1px solid var(--card-border)',
             color: 'var(--text-secondary)',
           }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'rgba(245,158,11,0.4)'; e.currentTarget.style.color = '#F59E0B' }}
+          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-border)'; e.currentTarget.style.color = 'var(--accent)' }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--card-border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
         >
           All services <ChevronRight size={13} />

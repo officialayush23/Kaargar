@@ -57,7 +57,7 @@ function LangPill() {
               fontWeight: active ? 700 : 500,
               cursor: 'pointer',
               border: 'none',
-              background: active ? '#F59E0B' : 'transparent',
+              background: active ? 'var(--accent)' : 'transparent',
               color: active ? '#000' : 'var(--text-muted)',
               transition: 'all 0.15s',
               lineHeight: 1.4,
@@ -138,7 +138,7 @@ function WorkerMenu({ open, onClose }) {
                     <AvatarImage src={user?.avatar_url} />
                     <AvatarFallback
                       className="text-lg font-bold"
-                      style={{ background: '#3D2508', color: '#fbbf24' }}
+                      style={{ background: 'var(--accent-muted)', color: 'var(--accent-hover)' }}
                     >
                       {initials}
                     </AvatarFallback>
@@ -152,7 +152,7 @@ function WorkerMenu({ open, onClose }) {
                     </p>
                     <span
                       className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1"
-                      style={{ background: '#2D1A06', color: '#fbbf24' }}
+                      style={{ background: 'var(--accent-deep)', color: 'var(--accent-hover)' }}
                     >
                       ⚡ Worker
                     </span>
@@ -187,7 +187,7 @@ function WorkerMenu({ open, onClose }) {
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   {isDark
-                    ? <Sun className="h-4 w-4 flex-shrink-0" style={{ color: '#f59e0b' }} />
+                    ? <Sun className="h-4 w-4 flex-shrink-0" style={{ color: 'var(--accent)' }} />
                     : <Moon className="h-4 w-4 flex-shrink-0" style={{ color: '#6b7280' }} />
                   }
                   <span className="text-sm font-medium">
@@ -292,7 +292,7 @@ function WorkerPageHeader() {
                     height: '16px',
                     borderRadius: '8px',
                     padding: '0 3px',
-                    background: '#f59e0b',
+                    background: 'var(--accent)',
                     color: '#000',
                     fontSize: '9px',
                     fontWeight: 700,
@@ -319,7 +319,7 @@ function WorkerPageHeader() {
                 <AvatarImage src={user?.avatar_url} />
                 <AvatarFallback
                   className="text-sm font-bold"
-                  style={{ background: '#2D1A06', color: '#fbbf24' }}
+                  style={{ background: 'var(--accent-deep)', color: 'var(--accent-hover)' }}
                 >
                   {initials}
                 </AvatarFallback>

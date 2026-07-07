@@ -78,7 +78,7 @@ function AddressForm({ initial, onSave, onCancel }) {
               style={{
                 padding: '5px 14px', borderRadius: 20, fontSize: 13, cursor: 'pointer',
                 border: label === p ? '1.5px solid var(--brand)' : '1px solid var(--card-border)',
-                background: label === p ? 'rgba(245,158,11,0.12)' : 'var(--card-bg)',
+                background: label === p ? 'var(--accent-bg)' : 'var(--card-bg)',
                 color: label === p ? 'var(--brand)' : 'var(--text-secondary)',
                 fontWeight: label === p ? 600 : 400,
               }}>
@@ -235,7 +235,7 @@ export function AddressBook({ picker = false, onSelect, selected }) {
                   ? '1.5px solid var(--brand)'
                   : '1px solid var(--card-border)',
                 background: isSelected
-                  ? 'rgba(245,158,11,0.08)'
+                  ? 'var(--accent-bg)'
                   : 'var(--card-bg)',
                 cursor: picker ? 'pointer' : 'default',
                 display: 'flex', alignItems: 'flex-start', gap: 10,
@@ -244,9 +244,9 @@ export function AddressBook({ picker = false, onSelect, selected }) {
               {/* Icon */}
               <div style={{
                 width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-                background: addr.is_default ? '#2D1A06' : 'var(--g-bg-mid)',
+                background: addr.is_default ? 'var(--accent-deep)' : 'var(--g-bg-mid)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                color: addr.is_default ? 'var(--amber, #F59E0B)' : 'var(--text-muted)',
+                color: addr.is_default ? 'var(--accent)' : 'var(--text-muted)',
               }}>
                 <LabelIcon label={addr.label} />
               </div>
@@ -258,7 +258,7 @@ export function AddressBook({ picker = false, onSelect, selected }) {
                   {addr.is_default && (
                     <span style={{
                       fontSize: 10, padding: '1px 6px', borderRadius: 6,
-                      background: '#2D1A06', color: '#fbbf24',
+                      background: 'var(--accent-deep)', color: 'var(--accent-hover)',
                       fontWeight: 600, letterSpacing: '0.04em',
                     }}>DEFAULT</span>
                   )}
@@ -346,8 +346,8 @@ export function AddressBook({ picker = false, onSelect, selected }) {
                 onClick={() => { setShowForm(true); setEditing(null) }}
                 style={{
                   width: '100%', padding: '11px', borderRadius: 14,
-                  border: '1.5px dashed rgba(245,158,11,0.3)',
-                  background: 'rgba(245,158,11,0.05)',
+                  border: '1.5px dashed var(--accent-border)',
+                  background: 'var(--accent-bg-sm)',
                   color: 'var(--brand)', fontSize: 13, fontWeight: 600,
                   cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                 }}>
@@ -364,8 +364,8 @@ export function AddressBook({ picker = false, onSelect, selected }) {
           onClick={() => setShowForm(v => !v)}
           style={{
             width: '100%', marginTop: 8, padding: '10px',
-            borderRadius: 12, border: '1px dashed rgba(245,158,11,0.3)',
-            background: 'rgba(245,158,11,0.05)', color: 'var(--brand)',
+            borderRadius: 12, border: '1px dashed var(--accent-border)',
+            background: 'var(--accent-bg-sm)', color: 'var(--brand)',
             fontSize: 13, cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
           }}>

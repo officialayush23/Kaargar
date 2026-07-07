@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { motion } from 'framer-motion'
-import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Pencil, Check, HelpCircle, HardHat, MapPin } from 'lucide-react'
+import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Pencil, Check, HelpCircle, HardHat, Phone, X } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
@@ -28,11 +28,11 @@ function MenuItem({ icon: Icon, label, sub, onClick, danger, color }) {
       >
         <Icon
           className="h-4 w-4"
-          style={{ color: danger ? '#f87171' : 'var(--text-secondary)' }}
+          style={{ color: danger ? '#e99f2f' : 'var(--text-secondary)' }}
         />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium" style={{ color: danger ? '#f87171' : 'var(--text-primary)' }}>{label}</p>
+        <p className="text-sm font-medium" style={{ color: danger ? '#e99f2f' : 'var(--text-primary)' }}>{label}</p>
         {sub && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
       </div>
       {!danger && <ChevronRight className="h-4 w-4" style={{ color: 'var(--text-muted)' }} />}
@@ -46,6 +46,9 @@ export default function ProfilePage() {
   const [editingName, setEditingName] = useState(false)
   const [name, setName] = useState(user?.full_name || '')
   const [savingName, setSavingName] = useState(false)
+  const [editingPhone, setEditingPhone] = useState(false)
+  const [phone, setPhone] = useState((user?.phone || '').replace(/^\+91/, ''))
+  const [savingPhone, setSavingPhone] = useState(false)
 
   async function handleSaveName() {
     if (!name.trim()) return
@@ -66,6 +69,22 @@ export default function ProfilePage() {
     }
   }
 
+  async function handleSavePhone() {
+    const digits = phone.replace(/\D/g, '')
+    if (digits.length !== 10) { toast.error('Enter a valid 10-digit number'); return }
+    setSavingPhone(true)
+    try {
+      await api.patch('/users/me', { phone: `+91${digits}` })
+      updateUser({ phone: `+91${digits}` })
+      setEditingPhone(false)
+      toast.success('Phone updated')
+    } catch {
+      toast.error('Failed to update phone')
+    } finally {
+      setSavingPhone(false)
+    }
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut()
     logout()
@@ -77,7 +96,7 @@ export default function ProfilePage() {
   return (
     <div className="px-4 pt-6 pb-8 space-y-6">
       <div>
-        <h1 className="text-2xl font-bold font-syne gradient-text-hero">Profile</h1>
+        <h1 className="text-2xl font-bold font-mono gradient-text-hero">Profile</h1>
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Manage your account</p>
       </div>
 
@@ -128,6 +147,55 @@ export default function ProfilePage() {
           </div>
         </div>
 
+        {/* Phone number row */}
+        <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--g-border)' }}>
+          {editingPhone ? (
+            <div className="flex items-center gap-2">
+              <div
+                className="flex items-center flex-1 rounded-xl overflow-hidden"
+                style={{ border: '1.5px solid rgba(255,255,255,0.14)', background: 'rgba(255,255,255,0.05)' }}
+              >
+                <span className="px-3 py-2.5 text-xs font-medium border-r shrink-0"
+                  style={{ color: 'var(--text-muted)', borderColor: 'rgba(255,255,255,0.10)' }}>+91</span>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  maxLength={10}
+                  value={phone}
+                  onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  className="flex-1 px-3 py-2.5 text-sm bg-transparent outline-none"
+                  style={{ color: 'var(--text-primary)' }}
+                  autoFocus
+                />
+              </div>
+              <button onClick={handleSavePhone} disabled={savingPhone}
+                className="p-2 rounded-xl transition-colors"
+                style={{ background: 'rgba(255,255,255,0.1)', color: 'var(--text-primary)', border: 'none', cursor: 'pointer' }}>
+                {savingPhone ? <Phone size={14} className="animate-pulse" /> : <Check size={14} />}
+              </button>
+              <button onClick={() => { setEditingPhone(false); setPhone((user?.phone || '').replace(/^\+91/, '')) }}
+                className="p-2 rounded-xl transition-colors"
+                style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171', border: 'none', cursor: 'pointer' }}>
+                <X size={14} />
+              </button>
+            </div>
+          ) : (
+            <button onClick={() => setEditingPhone(true)}
+              className="w-full flex items-center gap-3 text-left group"
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
+              <Phone size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+              <div className="flex-1 min-w-0">
+                {user?.phone ? (
+                  <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>{user.phone}</p>
+                ) : (
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Add phone number</p>
+                )}
+              </div>
+              <Pencil size={12} style={{ color: 'var(--text-muted)', opacity: 0.6 }} />
+            </button>
+          )}
+        </div>
+
         {typeof isWorker === 'function' && isWorker() && (
           <div className="mt-4 pt-4" style={{ borderTop: '1px solid var(--g-border)' }}>
             <GlassButton
@@ -151,33 +219,33 @@ export default function ProfilePage() {
               style={{
                 padding: '12px 14px',
                 borderRadius: '14px',
-                background: '#1A1004',
-                border: '1px solid #36220A',
+                background: 'rgba(255,255,255,0.05)',
+                border: '1px solid rgba(255,255,255,0.10)',
                 cursor: 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: '12px',
                 transition: 'all 0.15s ease',
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#251606'}
-              onMouseLeave={e => e.currentTarget.style.background = '#1A1004'}
+              onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
             >
               <div style={{
                 width: '36px', height: '36px', borderRadius: '10px',
-                background: '#2D1A06',
+                background: 'rgba(255,255,255,0.08)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
               }}>
-                <HardHat size={18} style={{ color: 'var(--amber)' }} />
+                <HardHat size={18} style={{ color: 'var(--text-secondary)' }} />
               </div>
               <div style={{ flex: 1 }}>
-                <p className="text-sm font-semibold" style={{ color: 'var(--amber)' }}>
+                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   Become a Worker
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                   Earn by offering your skills on Kaargar
                 </p>
               </div>
-              <ChevronRight size={15} style={{ color: 'var(--amber)', opacity: 0.6, flexShrink: 0 }} />
+              <ChevronRight size={15} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
             </motion.button>
           </div>
         )}

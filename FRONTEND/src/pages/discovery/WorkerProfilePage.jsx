@@ -99,7 +99,7 @@ function MediaCarousel({ items = [] }) {
             <button key={i} onClick={() => setIdx(i)}
               style={{
                 width: 52, height: 52, borderRadius: 10, overflow: 'hidden', flexShrink: 0, cursor: 'pointer',
-                border: i === idx ? '2px solid #F59E0B' : '1.5px solid var(--g-border)',
+                border: i === idx ? '2px solid var(--accent)' : '1.5px solid var(--g-border)',
                 background: 'var(--g-bg)', padding: 0,
               }}>
               {(item.thumbnail_url || item.cloudinary_url || item.url) && (
@@ -143,7 +143,7 @@ function RatingBar({ label, value, max = 5 }) {
           initial={{ width: 0 }}
           animate={{ width: `${pct}%` }}
           transition={{ duration: 0.6, delay: 0.1 }}
-          style={{ height: '100%', borderRadius: 3, background: '#f59e0b' }}
+          style={{ height: '100%', borderRadius: 3, background: 'var(--accent)' }}
         />
       </div>
       <span className="font-mono" style={{ color: 'var(--text-secondary)', width: 24, textAlign: 'right' }}>
@@ -271,7 +271,7 @@ export default function WorkerProfilePage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h1 className="text-lg font-bold font-syne" style={{ color: 'var(--text-primary)' }}>{name}</h1>
-                {isVerified && <BadgeCheck size={18} style={{ color: '#F59E0B' }} />}
+                {isVerified && <BadgeCheck size={18} style={{ color: 'var(--accent)' }} />}
               </div>
               <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>
                 {worker.bio || worker.primary_category || 'Professional service provider'}
@@ -403,7 +403,7 @@ export default function WorkerProfilePage() {
             <div className="space-y-2">
               {packages.map(pkg => (
                 <div key={pkg.id}
-                  style={{ background: 'var(--g-bg-mid)', border: '1px solid #7C4A12', borderRadius: 14, padding: '14px 16px' }}>
+                  style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--accent-mid)', borderRadius: 14, padding: '14px 16px' }}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
@@ -423,7 +423,7 @@ export default function WorkerProfilePage() {
                       )}
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="text-sm font-bold font-mono" style={{ color: '#f59e0b' }}>
+                      <p className="text-sm font-bold font-mono" style={{ color: 'var(--accent)' }}>
                         {formatCurrency(pkg.discounted_price)}
                       </p>
                       {pkg.original_price > pkg.discounted_price && (
@@ -457,7 +457,7 @@ export default function WorkerProfilePage() {
                   <p className="text-4xl font-bold font-mono" style={{ color: 'var(--text-primary)' }}>{rating.toFixed(1)}</p>
                   <div className="flex gap-0.5 mt-1 justify-center">
                     {[1,2,3,4,5].map(s => (
-                      <Star key={s} size={11} style={{ color: s <= Math.round(rating) ? '#f59e0b' : 'var(--g-border)' }}
+                      <Star key={s} size={11} style={{ color: s <= Math.round(rating) ? 'var(--accent)' : 'var(--g-border)' }}
                         className={s <= Math.round(rating) ? 'fill-amber-400' : ''} />
                     ))}
                   </div>
@@ -497,7 +497,7 @@ export default function WorkerProfilePage() {
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">
                       {[1,2,3,4,5].map(s => (
-                        <Star key={s} size={10} style={{ color: s <= rv.rating ? '#f59e0b' : 'var(--g-border)' }}
+                        <Star key={s} size={10} style={{ color: s <= rv.rating ? 'var(--accent)' : 'var(--g-border)' }}
                           className={s <= rv.rating ? 'fill-amber-400' : ''} />
                       ))}
                     </div>

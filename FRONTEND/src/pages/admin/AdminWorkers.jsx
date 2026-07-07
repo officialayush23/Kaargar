@@ -25,7 +25,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 
 const STATUS_CONFIG = {
-  pending:  { label: 'Pending',  color: '#f59e0b', bg: '#251606',  icon: Clock },
+  pending:  { label: 'Pending',  color: 'var(--accent)', bg: 'var(--accent-deep)',  icon: Clock },
   approved: { label: 'Approved', color: '#22c55e', bg: 'rgba(34,197,94,0.12)',   icon: BadgeCheck },
   rejected: { label: 'Rejected', color: '#f87171', bg: 'rgba(248,113,113,0.12)', icon: XCircle },
 }
@@ -146,7 +146,7 @@ function DocCard({ doc }) {
       <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
         <span style={{ fontSize: '12px', color: '#94A3B8', fontWeight: 500 }}>{label}</span>
         <a href={doc.url} target="_blank" rel="noreferrer"
-          style={{ fontSize: '11px', color: '#F59E0B', display: 'flex', alignItems: 'center', gap: '3px', textDecoration: 'none', flexShrink: 0 }}>
+          style={{ fontSize: '11px', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '3px', textDecoration: 'none', flexShrink: 0 }}>
           Open <ExternalLink size={10} />
         </a>
       </div>
@@ -299,7 +299,7 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
                         {cat.name}
                         <span style={{
                           fontSize: '10px',
-                          color: cat.mode === 'instant' ? '#22C55E' : cat.mode === 'discovery' ? '#F59E0B' : '#94A3B8',
+                          color: cat.mode === 'instant' ? '#22C55E' : cat.mode === 'discovery' ? 'var(--accent)' : '#94A3B8',
                         }}>
                           {cat.mode === 'instant' ? '⚡' : cat.mode === 'discovery' ? '🔍' : '⚡🔍'}
                         </span>
@@ -417,8 +417,8 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
                   onClick={() => onSuspend(detail)}
                   style={{
                     flex: 1, padding: '8px', borderRadius: '10px', cursor: 'pointer',
-                    background: '#1A1004', border: '1px solid #7C4A12',
-                    color: '#f59e0b', fontSize: '12px', fontWeight: 500,
+                    background: 'var(--accent-card)', border: '1px solid var(--accent-mid)',
+                    color: 'var(--accent)', fontSize: '12px', fontWeight: 500,
                     display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
                   }}
                 >
@@ -557,7 +557,7 @@ export default function AdminWorkers() {
           <TabsList>
             <TabsTrigger value="pending">
               Pending {pendingCount > 0 && (
-                <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: '#3D2508' }}>
+                <span className="ml-1.5 px-1.5 py-0.5 rounded text-[10px] font-bold" style={{ background: 'var(--accent-muted)' }}>
                   {pendingCount}
                 </span>
               )}

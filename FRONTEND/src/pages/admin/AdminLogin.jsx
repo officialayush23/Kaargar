@@ -140,8 +140,8 @@ export default function AdminLogin() {
         >
           {/* Admin badge */}
           <div className="flex items-center gap-2 mb-2">
-            <ShieldCheck size={16} style={{ color: '#f59e0b' }} />
-            <span className="text-xs font-semibold" style={{ color: '#f59e0b' }}>Admin Access Only</span>
+            <ShieldCheck size={16} style={{ color: 'var(--accent)' }} />
+            <span className="text-xs font-semibold" style={{ color: 'var(--accent)' }}>Admin Access Only</span>
           </div>
 
           <div>

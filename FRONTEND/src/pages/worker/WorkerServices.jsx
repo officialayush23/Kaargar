@@ -113,7 +113,7 @@ function TagInput({ selectedTags, onChange }) {
       >
         {selectedTags.map(tag => (
           <span key={tag.id} className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium"
-            style={{ background: '#2D1A06', color: '#F59E0B', border: `1px solid #92400E` }}>
+            style={{ background: 'var(--accent-deep)', color: 'var(--accent)', border: `1px solid var(--accent-dim)` }}>
             {tag.name}
             <button type="button" onClick={(e) => { e.stopPropagation(); removeTag(tag.id) }} className="opacity-60 hover:opacity-100">
               <X size={10} />
@@ -148,7 +148,7 @@ function TagInput({ selectedTags, onChange }) {
             {input.trim().length >= 2 && !suggestions.find(t => t.name.toLowerCase() === input.trim().toLowerCase()) && (
               <button type="button" onMouseDown={addNew}
                 className="w-full flex items-center gap-2 px-3 py-2 text-sm hover:bg-white/5 transition-colors text-left"
-                style={{ color: '#F59E0B' }}>
+                style={{ color: 'var(--accent)' }}>
                 <Plus size={12} /> Create "{input.trim()}"
               </button>
             )}
@@ -215,7 +215,7 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
             <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Base rate ₹</p>
             {minPrice && (
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md"
-                style={{ background: '#251606', color: '#f59e0b' }}>
+                style={{ background: 'var(--accent-deep)', color: 'var(--accent)' }}>
                 Min ₹{minPrice}
               </span>
             )}
@@ -294,7 +294,7 @@ function ServiceCard({ svc, onEdit, onDelete, deleting }) {
             <div className="flex flex-wrap gap-1 mt-2">
               {tags.map(tag => (
                 <span key={tag.id} className="text-[10px] px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(245,158,11,0.10)', color: 'var(--brand)', border: '1px solid rgba(245,158,11,0.25)' }}>
+                  style={{ background: 'var(--accent-bg)', color: 'var(--brand)', border: '1px solid var(--accent-border)' }}>
                   {tag.name}
                 </span>
               ))}

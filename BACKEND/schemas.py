@@ -684,6 +684,12 @@ class AdminConfigUpdate(BaseModel):
     value: str
 
 
+class AdminConfigCreate(BaseModel):
+    key: str
+    value: str
+    description: Optional[str] = None
+
+
 # ── GENERIC ───────────────────────────────────────────────────
 class Paginated(BaseModel):
     items: list

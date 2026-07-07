@@ -9,7 +9,7 @@ from decimal import Decimal
 
 from database import get_db
 from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category
-from schemas import AdminDashboard, AdminWorkerAction, AdminConfigUpdate, SuccessResponse, CategoryCreate, CategoryUpdate, CategoryResponse
+from schemas import AdminDashboard, AdminWorkerAction, AdminConfigUpdate, AdminConfigCreate, SuccessResponse, CategoryCreate, CategoryUpdate, CategoryResponse
 from dependencies import require_admin
 from services.storage import get_public_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
 
@@ -518,6 +518,42 @@ async def update_config(
     config.updated_by = admin.id
     await db.commit()
     return SuccessResponse(message="Config updated")
+
+
+@router.post("/config", response_model=SuccessResponse)
+async def create_config(
+    body: AdminConfigCreate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    from datetime import datetime, timezone
+    existing = await db.execute(select(PlatformConfig).where(PlatformConfig.key == body.key))
+    if existing.scalar_one_or_none():
+        raise HTTPException(409, f"Config key '{body.key}' already exists")
+    cfg = PlatformConfig(
+        key=body.key,
+        value=body.value,
+        description=body.description,
+        updated_by=admin.id,
+    )
+    db.add(cfg)
+    await db.commit()
+    return SuccessResponse(message="Config key created")
+
+
+@router.delete("/config/{key}", response_model=SuccessResponse)
+async def delete_config(
+    key: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(PlatformConfig).where(PlatformConfig.key == key))
+    cfg = result.scalar_one_or_none()
+    if not cfg:
+        raise HTTPException(404, "Config key not found")
+    await db.delete(cfg)
+    await db.commit()
+    return SuccessResponse(message="Config key deleted")
 
 
 # ── PROFESSION / CATEGORY MANAGEMENT ────────────────────────────
