@@ -113,14 +113,19 @@ function WorkerMenu({ open, onClose }) {
             onClick={onClose}
           />
           <motion.div
-            className="fixed inset-x-0 top-0 z-50"
+            // Stops well above the floating bottom nav (which sits at
+            // max(1.25rem, safe-area + 0.75rem) with its own height on top of
+            // that) instead of running the full viewport height — leaves a
+            // clear visible margin between the sheet and the nav pill.
+            className="fixed inset-x-0 top-0 z-50 flex flex-col"
+            style={{ bottom: 'calc(7rem + env(safe-area-inset-bottom, 0px))' }}
             initial={{ y: -40, opacity: 0 }}
             animate={{ y: 0, opacity: 1 }}
             exit={{ y: -40, opacity: 0 }}
             transition={{ type: 'spring', stiffness: 360, damping: 28 }}
           >
             <div
-              className="mx-4 mt-4 rounded-3xl overflow-hidden"
+              className="mx-4 mt-4 rounded-3xl overflow-hidden flex flex-col min-h-0"
               style={{
                 background: isDark ? 'rgba(15,15,15,0.97)' : 'rgba(255,255,255,0.97)',
                 backdropFilter: 'blur(40px) saturate(180%)',
@@ -128,8 +133,8 @@ function WorkerMenu({ open, onClose }) {
                 border: '1px solid var(--g-border)',
               }}
             >
-              {/* Profile header */}
-              <div className="px-5 pt-5 pb-4" style={{ borderBottom: '1px solid var(--g-border)' }}>
+              {/* Profile header — fixed, doesn't scroll */}
+              <div className="px-5 pt-5 pb-4 shrink-0" style={{ borderBottom: '1px solid var(--g-border)' }}>
                 <div className="flex items-center gap-3">
                   <Avatar
                     className="h-14 w-14"
@@ -162,8 +167,8 @@ function WorkerMenu({ open, onClose }) {
                 </div>
               </div>
 
-              {/* Menu items */}
-              <div className="p-3 space-y-0.5">
+              {/* Menu items — the only part that scrolls */}
+              <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-0.5">
                 {menuItems.map(({ label, icon: Icon, path }) => (
                   <button
                     key={path}
@@ -196,8 +201,8 @@ function WorkerMenu({ open, onClose }) {
                 </button>
               </div>
 
-              {/* Sign out */}
-              <div className="px-4 pb-4">
+              {/* Sign out — pinned at the bottom of the sheet, never scrolls away */}
+              <div className="px-4 pb-4 pt-3 shrink-0" style={{ borderTop: '1px solid var(--g-border)' }}>
                 <button
                   onClick={async () => { await supabase.auth.signOut(); logout(); navigate('/login'); onClose() }}
                   className="w-full py-3 rounded-2xl text-sm font-medium transition-colors"

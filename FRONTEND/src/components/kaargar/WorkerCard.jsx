@@ -23,6 +23,7 @@ export function WorkerCard({ worker, index = 0 }) {
   const isVerified = worker.verification_status === 'approved'
   const minRate = worker.min_rate ? formatCurrency(worker.min_rate) : null
   const maxRate = worker.max_rate ? formatCurrency(worker.max_rate) : null
+  const distanceKm = typeof worker.distance_km === 'number' ? worker.distance_km : null
 
   return (
     <motion.div
@@ -115,6 +116,18 @@ export function WorkerCard({ worker, index = 0 }) {
                   <MapPin size={11} style={{ color: 'var(--text-muted)' }} />
                   <span className="text-[13px] truncate" style={{ color: 'var(--text-muted)', maxWidth: '80px' }}>
                     {area}
+                  </span>
+                </div>
+              </>
+            )}
+
+            {distanceKm !== null && (
+              <>
+                <span style={{ color: 'var(--g-border)' }}>&#183;</span>
+                <div className="flex items-center gap-1">
+                  <MapPin size={11} style={{ color: 'var(--accent)' }} />
+                  <span className="text-[13px] font-medium" style={{ color: 'var(--accent)' }}>
+                    {distanceKm < 1 ? `${Math.round(distanceKm * 1000)}m` : `${distanceKm.toFixed(1)}km`} away
                   </span>
                 </div>
               </>

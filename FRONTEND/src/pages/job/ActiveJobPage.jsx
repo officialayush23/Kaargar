@@ -1,12 +1,13 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageSquare, Phone, MapPin, Shield, Star, CheckCircle, Clock, Zap, CreditCard, Loader2, AlertCircle, ShieldAlert, FileText, ArrowRight, PhoneCall, Siren } from 'lucide-react'
+import { MessageSquare, Phone, MapPin, Shield, Star, CheckCircle, Clock, Zap, CreditCard, Loader2, AlertCircle, ShieldAlert, FileText, ArrowRight, ArrowLeft, PhoneCall, Siren, XCircle, Search, Calendar, HeadphonesIcon } from 'lucide-react'
 import { api } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
 import { JobStatusTimeline } from '@/components/kaargar/JobStatusTimeline'
 import { JobCompletionFlow } from '@/components/kaargar/JobCompletionFlow'
+import { JobTrackingMap } from '@/components/kaargar/JobTrackingMap'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
@@ -19,6 +20,11 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 const STATUS_CONFIG = {
+  requested:         { label: 'Requested',             color: 'text-azure',       dot: 'bg-azure',        icon: Clock },
+  scheduled:         { label: 'Scheduled',              color: 'text-violet-400',  dot: 'bg-violet-400',   icon: Calendar },
+  searching:         { label: 'Finding a worker',      color: 'text-azure',       dot: 'bg-azure',        icon: Search },
+  confirmed:         { label: 'Worker assigned',       color: 'text-azure',       dot: 'bg-azure',        icon: Zap },
+  worker_assigned:   { label: 'Worker assigned',       color: 'text-azure',       dot: 'bg-azure',        icon: Zap },
   assigned:          { label: 'Worker assigned',      color: 'text-azure',       dot: 'bg-azure',        icon: Zap },
   en_route:          { label: 'On the way',           color: 'text-violet-400',  dot: 'bg-violet-400',   icon: MapPin },
   arrived:           { label: 'Worker arrived',        color: 'text-amber-400',   dot: 'bg-amber-400',    icon: Clock },
@@ -27,6 +33,8 @@ const STATUS_CONFIG = {
   approved:          { label: 'Approved — code shared',color: 'text-emerald-400', dot: 'bg-emerald-400',  icon: CheckCircle },
   disputed:          { label: 'Disputed',              color: 'text-red-400',     dot: 'bg-red-400',      icon: ShieldAlert },
   completed:         { label: 'Job completed',         color: 'text-emerald-400', dot: 'bg-emerald-400',  icon: CheckCircle },
+  cancelled:         { label: 'Booking cancelled',     color: 'text-red-400',     dot: 'bg-red-400',      icon: XCircle },
+  failed:            { label: 'No worker found',       color: 'text-red-400',     dot: 'bg-red-400',      icon: XCircle },
 }
 
 /* ─── Rating Modal ────────────────────────────────────────────────────────── */
@@ -274,17 +282,22 @@ export default function ActiveJobPage() {
       const { data } = await api.get(`/jobs/${jobId}`)
       setJob(data)
       setLoading(false)
-      // Check existing payment status
-      try {
-        const { data: pmt } = await api.get(`/payments/${jobId}`)
-        setPaymentStatus(pmt.status)
-      } catch {
-        // no payment yet — that's fine
+      // Only the customer ever pays, and only once there's a billed amount —
+      // checking earlier just spams the console with expected 404s (no
+      // Payment row exists until a completed job has an approved total).
+      const billable = data.approved_total ?? data.final_price
+      if (data.user_id === user?.id && billable) {
+        try {
+          const { data: pmt } = await api.get(`/payments/${jobId}`)
+          setPaymentStatus(pmt.status)
+        } catch {
+          // no payment record created yet — fine, PayNowButton handles that
+        }
       }
     } catch {
       setLoading(false)
     }
-  }, [jobId])
+  }, [jobId, user?.id])
 
   useEffect(() => {
     fetchJob()
@@ -353,8 +366,28 @@ export default function ActiveJobPage() {
     }
   }
 
+  // This page is shared between the customer route (/job/:jobId, under
+  // AppLayout — which adds NO padding of its own, unlike every other
+  // customer page here that supplies its own px-4/pt-*) and the worker
+  // portal route (/worker/job/:jobId/active, under WorkerLayout — which
+  // already wraps every page's <Outlet> in its own px-4). Hardcoding px-4
+  // here unconditionally would leave the customer view flush against the
+  // screen edges with no top spacing (the actual bug being fixed) while
+  // simultaneously double-padding the worker view. So the horizontal/top
+  // padding is only added for the customer viewer; the worker view relies
+  // on WorkerLayout's existing wrapper, same as every other worker page.
   return (
-    <div className="space-y-5">
+    <div className={isWorkerViewer ? 'space-y-5 pb-8' : 'px-4 pt-6 pb-8 space-y-5'}>
+
+      {/* Back — this page is reached from the Bookings list (both active and
+          past), so it needs a way back to it; there was none before. */}
+      <button
+        onClick={() => navigate(-1)}
+        className="flex items-center gap-1.5 text-sm"
+        style={{ color: 'var(--text-muted)' }}
+      >
+        <ArrowLeft className="h-4 w-4" /> Back
+      </button>
 
       {/* Status banner */}
       {job && (
@@ -386,6 +419,21 @@ export default function ActiveJobPage() {
         <div className="flex items-center justify-center h-40">
           <div className="w-8 h-8 rounded-full border-2 border-azure/30 border-t-azure animate-spin" />
         </div>
+      )}
+
+      {/* Tracking map — destination pin + live worker marker.
+          Worker only needs navigation on the way there; once they've
+          arrived the map/nav is just clutter, so it's hidden for them from
+          that point on. Customer keeps seeing it through the rest of the
+          job (still useful context even after the worker has arrived). */}
+      {job && (
+        isWorkerViewer
+          ? ['assigned', 'confirmed', 'worker_assigned', 'en_route'].includes(job.status)
+          : !['completed', 'cancelled', 'failed', 'disputed'].includes(job.status)
+      ) && (
+        <motion.div initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}>
+          <JobTrackingMap job={job} />
+        </motion.div>
       )}
 
       {/* Disputed banner — both sides */}
@@ -441,27 +489,34 @@ export default function ActiveJobPage() {
         </GlassCard>
       )}
 
-      {/* Other-party card */}
+      {/* Other-party card — customer can tap through to the worker's full profile */}
       {otherPartyName && (
         <GlassCard className="p-5">
           <div className="flex items-center gap-4">
-            <Avatar className="w-14 h-14 border-2 shrink-0" style={{ borderColor: 'var(--g-border)' }}>
-              <AvatarImage src={otherPartyAvatar} />
-              <AvatarFallback className="font-bold text-base">{getInitials(otherPartyName)}</AvatarFallback>
-            </Avatar>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>{otherPartyName}</p>
-              {isWorkerViewer ? (
-                <div className="flex items-center gap-1 mt-1">
-                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Customer</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1 mt-1">
-                  <Shield className="h-3 w-3 text-azure" />
-                  <span className="text-[13px] text-azure">Verified worker</span>
-                </div>
-              )}
-            </div>
+            <button
+              onClick={() => !isWorkerViewer && job?.worker_id && navigate(`/worker/${job.worker_id}`)}
+              disabled={isWorkerViewer || !job?.worker_id}
+              className="flex items-center gap-4 flex-1 min-w-0 text-left"
+              style={{ background: 'none', border: 'none', cursor: (!isWorkerViewer && job?.worker_id) ? 'pointer' : 'default', padding: 0 }}
+            >
+              <Avatar className="w-14 h-14 border-2 shrink-0" style={{ borderColor: 'var(--g-border)' }}>
+                <AvatarImage src={otherPartyAvatar} />
+                <AvatarFallback className="font-bold text-base">{getInitials(otherPartyName)}</AvatarFallback>
+              </Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>{otherPartyName}</p>
+                {isWorkerViewer ? (
+                  <div className="flex items-center gap-1 mt-1">
+                    <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Customer</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 mt-1">
+                    <Shield className="h-3 w-3 text-azure" />
+                    <span className="text-[13px] text-azure">Verified worker · View profile</span>
+                  </div>
+                )}
+              </div>
+            </button>
             <div className="flex flex-col gap-2">
               <Link to={chatPath}>
                 <motion.div
@@ -496,13 +551,82 @@ export default function ActiveJobPage() {
         </GlassCard>
       )}
 
+      {/* Booking details — category, booked date, price. Uses `new Date(job.created_at)`
+          directly since it's already a full ISO timestamp from the backend; the old
+          JobDetailPage appended a second "T00:00:00" onto that same string, which
+          produced "Invalid Date" instead of the actual booking time. */}
+      {job && (
+        <GlassCard className="p-5">
+          <p className="text-xs uppercase tracking-widest font-medium mb-4" style={{ color: 'var(--text-muted)' }}>
+            Booking details
+          </p>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Service</span>
+              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                {job.category_name || job.title || 'Service'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Booked</span>
+              <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                {job.created_at
+                  ? new Date(job.created_at).toLocaleString('en-IN', {
+                      day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true,
+                    })
+                  : '—'}
+              </span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>Type</span>
+              <span className="text-sm font-medium capitalize" style={{ color: 'var(--text-primary)' }}>
+                {job.source === 'discovery' ? 'Discovery booking' : 'Instant booking'}
+              </span>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
+      {/* Before/after photos the worker submitted at job completion */}
+      {job && ((job.before_photos?.length ?? 0) > 0 || (job.after_photos?.length ?? 0) > 0) && (
+        <GlassCard className="p-5">
+          <p className="text-xs uppercase tracking-widest font-medium mb-4" style={{ color: 'var(--text-muted)' }}>
+            Job photos
+          </p>
+          {job.before_photos?.length > 0 && (
+            <div className="mb-4">
+              <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>Before</p>
+              <div className="grid grid-cols-3 gap-2">
+                {job.before_photos.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noreferrer" className="block aspect-square rounded-xl overflow-hidden" style={{ background: 'var(--g-bg)' }}>
+                    <img src={url} alt={`Before ${i + 1}`} className="w-full h-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+          {job.after_photos?.length > 0 && (
+            <div>
+              <p className="text-xs font-medium mb-2" style={{ color: 'var(--text-secondary)' }}>After</p>
+              <div className="grid grid-cols-3 gap-2">
+                {job.after_photos.map((url, i) => (
+                  <a key={i} href={url} target="_blank" rel="noreferrer" className="block aspect-square rounded-xl overflow-hidden" style={{ background: 'var(--g-bg)' }}>
+                    <img src={url} alt={`After ${i + 1}`} className="w-full h-full object-cover" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+        </GlassCard>
+      )}
+
       {/* Job timeline */}
       {job && (
         <GlassCard className="p-5">
           <p className="text-xs uppercase tracking-widest font-medium mb-5" style={{ color: 'var(--text-muted)' }}>
             Job progress
           </p>
-          <JobStatusTimeline status={job.status} />
+          <JobStatusTimeline status={job.status} source={job.source} isWorkerViewer={isWorkerViewer} />
         </GlassCard>
       )}
 
@@ -578,8 +702,8 @@ export default function ActiveJobPage() {
         )}
       </AnimatePresence>
 
-      {/* SOS — only during active job */}
-      {job && !['completed', 'cancelled'].includes(job.status) && (
+      {/* SOS — only meaningful during an active job (police/instant-support tap-to-call) */}
+      {job && !['completed', 'cancelled', 'failed'].includes(job.status) && (
         <GlassButton
           variant="danger"
           size="sm"
@@ -588,6 +712,21 @@ export default function ActiveJobPage() {
           onClick={() => setSosOpen(true)}
         >
           Safety & Support
+        </GlassButton>
+      )}
+
+      {/* A finished/cancelled booking has no live emergency to call in on, but the
+          customer can still need help with it (billing dispute, lost item, etc.) —
+          this was previously not reachable at all once a job left the "active" tabs. */}
+      {job && ['completed', 'cancelled', 'failed', 'disputed'].includes(job.status) && (
+        <GlassButton
+          variant="outline"
+          size="sm"
+          className="w-full"
+          icon={HeadphonesIcon}
+          onClick={() => navigate(`/support?job_id=${jobId}`)}
+        >
+          Get help with this booking
         </GlassButton>
       )}
 

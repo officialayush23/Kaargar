@@ -384,7 +384,7 @@ export default function SearchingPage() {
   const workerFound = jobStatus === 'assigned' && worker
 
   return (
-    <div className="min-h-full flex flex-col gap-4 pb-6">
+    <div className="min-h-full flex flex-col gap-4 px-4 pt-5 pb-6">
       {/* Header */}
       <div className="flex items-center justify-between pt-1">
         <h1 className="text-lg font-bold font-syne" style={{ color: 'var(--text-primary)' }}>

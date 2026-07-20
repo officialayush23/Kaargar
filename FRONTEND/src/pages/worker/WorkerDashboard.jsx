@@ -10,6 +10,7 @@ import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkerAnalytics, useWorkerStatus, useWorkerProfile } from '@/hooks/useWorker'
 import { useJobs } from '@/hooks/useJobs'
+import { useLocationPublisher } from '@/hooks/useLocationPublisher'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatRelativeTime } from '@/lib/utils'
 import { GlassCard } from '@/components/glass/GlassCard'
@@ -122,6 +123,10 @@ export default function WorkerDashboard() {
   const isOnline = workerStatus?.status === 'online'
   const verificationStatus = workerProfile?.verification_status || 'pending'
   const isApproved = verificationStatus === 'approved'
+
+  // Publish live GPS while online — feeds both the instant-job matching
+  // radius query and the customer-facing tracking map on ActiveJobPage.
+  useLocationPublisher(isOnline)
 
   // Redirect to onboarding if worker profile doesn't exist yet
   useEffect(() => {

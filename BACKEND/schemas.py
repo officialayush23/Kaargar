@@ -578,6 +578,14 @@ class JobContactResponse(BaseModel):
     ciphertext: str
 
 
+class JobWorkerLocationResponse(BaseModel):
+    """Live worker position for the tracking map — customer-facing, no PII."""
+    lat: float
+    lon: float
+    heading: Optional[float] = None
+    updated_at: datetime
+
+
 # ── CHAT & MESSAGES ───────────────────────────────────────────
 class MessageCreate(BaseModel):
     content: str
@@ -717,6 +725,7 @@ class SearchResult(BaseModel):
     avatar_url: Optional[str] = None
     category_name: Optional[str] = None
     relevance_score: Optional[float] = None
+    distance_km: Optional[float] = None
 
 class SearchResponseWrapper(BaseModel):
     results: list[SearchResult]

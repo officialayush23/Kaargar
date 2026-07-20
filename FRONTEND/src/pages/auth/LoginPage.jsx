@@ -55,6 +55,7 @@ export default function LoginPage() {
 
   const [email,    setEmail]    = useState('')
   const [password, setPassword] = useState('')
+  const [fullName, setFullName] = useState('')
 
   const accentColor = 'var(--accent)'
 
@@ -88,9 +89,15 @@ export default function LoginPage() {
         }
 
       } else {
-        // Persist intent so SupabaseAuthSync can use it after email verification
+        if (!fullName.trim()) { toast.error('Enter your name'); return }
+
+        // Persist intent + name so SupabaseAuthSync can use them after email
+        // verification (the /auth/provision call that actually creates the
+        // DB user row happens later, on the SIGNED_IN event fired once the
+        // confirmation link is clicked — not here).
         if (intent === 'worker') localStorage.setItem('kaargar_signup_intent', 'worker')
         else localStorage.removeItem('kaargar_signup_intent')
+        localStorage.setItem('kaargar_signup_full_name', fullName.trim())
 
         const { error } = await supabase.auth.signUp({ email, password })
         if (error) {
@@ -102,6 +109,7 @@ export default function LoginPage() {
           ) {
             setMode('signin')
             localStorage.removeItem('kaargar_signup_intent')
+            localStorage.removeItem('kaargar_signup_full_name')
             toast.info('Account already exists — please sign in.')
           } else {
             toast.error(error.message)
@@ -279,6 +287,16 @@ export default function LoginPage() {
                 </CardHeader>
                 <CardContent>
                   <form onSubmit={handleCredentials} className="space-y-3">
+                    {mode === 'signup' && (
+                      <Input
+                        type="text"
+                        placeholder="Your full name"
+                        value={fullName}
+                        onChange={e => setFullName(e.target.value)}
+                        autoComplete="name"
+                        required
+                      />
+                    )}
                     <PasswordInput
                       value={password}
                       onChange={e => setPassword(e.target.value)}
@@ -286,7 +304,7 @@ export default function LoginPage() {
                       required
                     />
                     <Button type="submit" className="w-full"
-                      disabled={loading || !password}
+                      disabled={loading || !password || (mode === 'signup' && !fullName.trim())}
                       style={{ background: accentColor }}>
                       {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
                     </Button>

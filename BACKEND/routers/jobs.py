@@ -23,7 +23,7 @@ from schemas import (
     ScheduledJobReschedule, ScheduledJobResponse, SlotBookingCreate,
     JobItemReceiptCreate, JobItemReceiptResponse, JobApprovalSummary,
     JobRejectRequest, JobOtpVerifyRequest, JobCompletionCodeResponse,
-    JobContactResponse,
+    JobContactResponse, JobWorkerLocationResponse,
 )
 from dependencies import get_current_user
 from services.storage import (
@@ -107,6 +107,14 @@ async def my_jobs(
         "confirmed",
         "worker_assigned",
         "assigned", "en_route", "arrived", "started",
+        # These three were missing — a job waiting on customer approval, or
+        # already approved and waiting for the completion code to be used,
+        # or under an active dispute, is very much still "active" work, not
+        # done. Without them here, `status="past"` (which is just "not in
+        # active_statuses") swept these into the Past tab the moment the
+        # worker submitted for approval, even though the customer still had
+        # a bill to review and a job to pay for.
+        "awaiting_approval", "approved", "disputed",
     ]
 
     if as_role == "worker":
@@ -248,6 +256,54 @@ async def get_job_contact(
     from services.crypto import encrypt_phone
     enc = encrypt_phone(row.phone)
     return JobContactResponse(name=row.full_name, iv=enc["iv"], ciphertext=enc["ciphertext"])
+
+
+@router.get("/{job_id}/worker-location", response_model=JobWorkerLocationResponse)
+async def get_job_worker_location(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Live worker position for the customer-facing tracking map. Only the
+    customer on this job (or the assigned worker themself) may read it, and
+    only while the job is actually in progress — same window as /contact.
+    Frontend also subscribes to Supabase Realtime UPDATE events on
+    worker_locations (filter: worker_id=eq.<job.worker_id>) for live pushes;
+    this endpoint just supplies the initial position before the first push.
+    """
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404)
+
+    is_customer = job.user_id == user.id
+    if not is_customer:
+        wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+        wp = wp_result.scalar_one_or_none()
+        if not wp or job.worker_id != wp.id:
+            raise HTTPException(403)
+
+    trackable_statuses = {"worker_assigned", "assigned", "en_route", "arrived", "started"}
+    if job.status not in trackable_statuses:
+        raise HTTPException(400, "Live tracking is only available while the job is in progress")
+    if not job.worker_id:
+        raise HTTPException(404, "No worker assigned yet")
+
+    from models import WorkerLocation
+    loc_result = await db.execute(
+        select(WorkerLocation).where(WorkerLocation.worker_id == job.worker_id)
+    )
+    loc = loc_result.scalar_one_or_none()
+    if not loc:
+        raise HTTPException(404, "Worker location not available yet")
+
+    return JobWorkerLocationResponse(
+        lat=float(loc.lat),
+        lon=float(loc.lon),
+        heading=float(loc.heading) if loc.heading is not None else None,
+        updated_at=loc.updated_at,
+    )
 
 
 @router.post("/{job_id}/cancel", response_model=SuccessResponse)

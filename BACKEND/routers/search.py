@@ -14,10 +14,14 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import select, func, update, or_, case
+from geoalchemy2.functions import ST_Distance, ST_MakePoint, ST_SetSRID
 
 from database import get_db
-from models import Service, WorkerProfile, User, SearchHistory, UserPreference
+from models import (
+    Service, WorkerProfile, User, SearchHistory, UserPreference,
+    Category, Tag, ServiceTag, WorkerLocation,
+)
 from schemas import SearchResult, SearchResponseWrapper
 from dependencies import get_current_user
 
@@ -63,31 +67,117 @@ async def search(
     q: str = Query(..., min_length=1),
     mode: Optional[str] = Query(None),
     category_id: Optional[str] = Query(None),
+    sort: str = Query("rating", pattern="^(rating|price_asc|price_desc|distance)$"),
+    lat: Optional[float] = Query(None),
+    lon: Optional[float] = Query(None),
     page: int = Query(1, ge=1),
     limit: int = Query(20, le=50),
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
+    """
+    Tokenized, multi-field, relevance-ranked search (Google/YouTube-style)
+    instead of a single ILIKE on the service title.
+
+    The old query did `Service.title.ilike(f"%{q}%")` — a single, literal
+    substring match on the title only. Real data shows exactly why "security
+    guard" failed: a service titled "24hrs Guard" (miscategorized under
+    "Electrician", no matching description/tags) has neither "security" nor
+    the phrase "security guard" anywhere in its title, so the old query
+    filtered it out even though "guard" is a clear, relevant match.
+
+    Now each word of the query is checked independently against title,
+    description, category name, and tags — a row qualifies if it matches
+    ANY word (OR across tokens, not AND — a strict AND would still have
+    rejected "24hrs Guard" since it never mentions "security" anywhere).
+    Rows are ranked by how many distinct words matched (closer full-phrase
+    matches naturally rank higher), then by the requested sort.
+    """
     offset = (page - 1) * limit
-    pattern = f"%{q}%"
+    tokens = [t for t in q.strip().split() if t] or [q.strip()]
+
+    explicit_cat_id = None
+    if category_id:
+        try:
+            explicit_cat_id = UUID(category_id)
+        except ValueError:
+            explicit_cat_id = None
 
     svc_q = (
-        select(Service, WorkerProfile, User)
+        select(Service, WorkerProfile, User, Category)
         .join(WorkerProfile, WorkerProfile.id == Service.worker_id)
         .join(User, User.id == WorkerProfile.user_id)
+        .join(Category, Category.id == Service.category_id)
         .where(Service.is_active == True)
         .where(WorkerProfile.verification_status == "approved")
-        .where(Service.title.ilike(pattern))
     )
-    if mode:
-        from models import Category as CatModel
-        svc_q = svc_q.join(CatModel, CatModel.id == Service.category_id).where(CatModel.mode == mode)
 
-    svc_q = svc_q.order_by(Service.avg_rating.desc()).offset(offset).limit(limit)
-    rows = (await db.execute(svc_q)).fetchall()
+    # Tag matching uses a correlated EXISTS subquery rather than an outer join
+    # to Tag — a join fans out one row per tag, and since `relevance` is
+    # computed per joined row (not aggregated per service), DISTINCT can't
+    # dedupe a service that has multiple tags: it comes back once per tag,
+    # each copy with a different apparent relevance. EXISTS keeps one row
+    # per service regardless of how many tags it has.
+    def _tag_match(pattern: str):
+        return select(1).select_from(ServiceTag).join(
+            Tag, Tag.id == ServiceTag.tag_id
+        ).where(
+            ServiceTag.service_id == Service.id,
+            Tag.name.ilike(pattern),
+        ).exists()
+
+    token_matches = []
+    for tok in tokens:
+        pattern = f"%{tok}%"
+        token_matches.append(or_(
+            Service.title.ilike(pattern),
+            Service.description.ilike(pattern),
+            Category.name.ilike(pattern),
+            _tag_match(pattern),
+        ))
+
+    # Qualify on ANY token matching anywhere (OR), then rank by how many
+    # distinct tokens matched — a query that matches more words ranks higher,
+    # without requiring every word to appear (the bug above).
+    svc_q = svc_q.where(or_(*token_matches))
+    relevance_col = sum(case((expr, 1), else_=0) for expr in token_matches).label("relevance")
+
+    if mode:
+        # "both"-mode categories must match every mode filter, not just an
+        # exact string equal to it — this was the actual reason Discovery
+        # search returned nothing for real data: e.g. "Electrician" is
+        # mode="both" (it's offered both instant and discovery), but
+        # `Category.mode == "discovery"` is False for "both", so every
+        # both-mode category (most of them) was being silently excluded
+        # from every mode-scoped search.
+        svc_q = svc_q.where(or_(Category.mode == mode, Category.mode == "both"))
+    if explicit_cat_id:
+        svc_q = svc_q.where(Service.category_id == explicit_cat_id)
+
+    distance_col = None
+    if sort == "distance" and lat is not None and lon is not None:
+        distance_col = (
+            ST_Distance(
+                WorkerLocation.geom,
+                ST_SetSRID(ST_MakePoint(lon, lat), 4326),
+            ) / 1000.0
+        ).label("distance_km")
+        svc_q = svc_q.outerjoin(WorkerLocation, WorkerLocation.worker_id == WorkerProfile.id)
+        svc_q = svc_q.add_columns(relevance_col, distance_col).order_by(distance_col.asc().nulls_last())
+    elif sort == "price_asc":
+        svc_q = svc_q.add_columns(relevance_col).order_by(Service.price.asc())
+    elif sort == "price_desc":
+        svc_q = svc_q.add_columns(relevance_col).order_by(Service.price.desc())
+    else:
+        svc_q = svc_q.add_columns(relevance_col).order_by(relevance_col.desc(), Service.avg_rating.desc())
+
+    svc_q = svc_q.offset(offset).limit(limit)
+    rows = (await db.execute(svc_q)).all()
 
     results = []
-    for svc, wp, u in rows:
+    for row in rows:
+        svc, wp, u, cat = row[0], row[1], row[2], row[3]
+        dist_km = float(row[5]) if distance_col is not None and len(row) > 5 and row[5] is not None else None
         results.append(SearchResult(
             result_type="service",
             id=svc.id,
@@ -97,6 +187,8 @@ async def search(
             worker_id=wp.id,
             worker_name=u.full_name,
             avatar_url=u.avatar_url,
+            category_name=cat.name if cat else None,
+            distance_km=dist_km,
         ))
 
     resolved_cat_id = None

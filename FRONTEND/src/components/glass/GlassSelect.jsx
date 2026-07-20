@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ChevronDown, Check } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -32,22 +33,47 @@ export function GlassSelect({
   align = 'left', // 'left' | 'right' — which edge the panel hugs
 }) {
   const [open, setOpen] = useState(false)
+  const [rect, setRect] = useState(null) // trigger's bounding rect while open
   const containerRef = useRef()
+  const panelRef = useRef()
+
+  // The trigger commonly sits inside a `.glass-card` (overflow:hidden, for its
+  // rounded-corner clipping) — an absolutely-positioned dropdown panel nested
+  // inside that card gets clipped by the ancestor regardless of z-index. So
+  // instead the panel is portaled to <body> and placed with `position: fixed`
+  // using the trigger's own viewport rect, which sidesteps any ancestor's
+  // overflow/stacking context entirely.
+  const updateRect = useCallback(() => {
+    if (containerRef.current) setRect(containerRef.current.getBoundingClientRect())
+  }, [])
+
+  useLayoutEffect(() => {
+    if (open) updateRect()
+  }, [open, updateRect])
 
   useEffect(() => {
     function onClickOutside(e) {
-      if (containerRef.current && !containerRef.current.contains(e.target)) setOpen(false)
+      if (
+        containerRef.current && !containerRef.current.contains(e.target) &&
+        panelRef.current && !panelRef.current.contains(e.target)
+      ) setOpen(false)
     }
     function onKey(e) {
       if (e.key === 'Escape') setOpen(false)
     }
     document.addEventListener('mousedown', onClickOutside)
     document.addEventListener('keydown', onKey)
+    if (open) {
+      window.addEventListener('scroll', updateRect, true)
+      window.addEventListener('resize', updateRect)
+    }
     return () => {
       document.removeEventListener('mousedown', onClickOutside)
       document.removeEventListener('keydown', onKey)
+      window.removeEventListener('scroll', updateRect, true)
+      window.removeEventListener('resize', updateRect)
     }
-  }, [])
+  }, [open, updateRect])
 
   const normalized = options.map(o =>
     (o !== null && typeof o === 'object') ? o : { value: o, label: String(o) }
@@ -96,19 +122,23 @@ export function GlassSelect({
         />
       </button>
 
-      <AnimatePresence>
-        {open && (
+      {open && rect && createPortal(
+        <AnimatePresence>
           <motion.div
+            ref={panelRef}
             initial={{ opacity: 0, y: -4, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.98 }}
             transition={{ duration: 0.12 }}
             style={{
-              position: 'absolute',
-              top: 'calc(100% + 6px)',
-              [align]: 0,
-              minWidth: '100%',
-              zIndex: 120,
+              position: 'fixed',
+              top: rect.bottom + 6,
+              ...(align === 'right'
+                ? { right: Math.max(8, window.innerWidth - rect.right) }
+                : { left: rect.left }),
+              minWidth: rect.width,
+              maxWidth: `calc(100vw - 16px)`,
+              zIndex: 1000,
               borderRadius: '14px',
               background: 'var(--elevated)',
               border: '1px solid var(--card-border)',
@@ -162,8 +192,9 @@ export function GlassSelect({
               })}
             </div>
           </motion.div>
-        )}
-      </AnimatePresence>
+        </AnimatePresence>,
+        document.body
+      )}
     </div>
   )
 }

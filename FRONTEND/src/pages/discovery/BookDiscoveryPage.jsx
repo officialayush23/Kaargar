@@ -23,6 +23,7 @@ import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput } from '@/components/glass/GlassInput'
 import { GlassSelect } from '@/components/glass/GlassSelect'
 import { InfoButton } from '@/components/kaargar/InfoButton'
+import { MapLocationPicker } from '@/components/kaargar/MapLocationPicker'
 import { api } from '@/lib/api'
 import { useAddresses } from '@/hooks/useAddresses'
 import { toast } from 'sonner'
@@ -321,6 +322,12 @@ export default function BookDiscoveryPage() {
   const [address,         setAddress]         = useState('')
   const [locationArea,    setLocationArea]    = useState('')
   const [locationNote,    setLocationNote]    = useState('')
+  // Actual picked coordinates from the map/search — previously this step
+  // collected an address but the booking payload silently sent Pune's city
+  // center every time. Falls back to that same center only if the map
+  // genuinely never resolved a location (e.g. geolocation denied + no search).
+  const [locationLat,     setLocationLat]     = useState(null)
+  const [locationLon,     setLocationLon]     = useState(null)
 
   // Recurring multi-day booking — only offered when the worker has opted in.
   // Distinct from `preferredDays` (which is retry-order fallback for ONE job):
@@ -409,7 +416,7 @@ export default function BookDiscoveryPage() {
         preferred_days: preferredDays,
         window_start: to24h(windowStart),
         window_end: to24h(windowEnd),
-        location_lat: 18.5204, location_lon: 73.8567,
+        location_lat: locationLat || 18.5204, location_lon: locationLon || 73.8567,
         location_address: address,
         location_area: locationArea || null,
         location_note: locationNote || null,
@@ -442,7 +449,7 @@ export default function BookDiscoveryPage() {
             preferred_days: [day],
             window_start: to24h(windowStart),
             window_end: to24h(windowEnd),
-            location_lat: 18.5204, location_lon: 73.8567,
+            location_lat: locationLat || 18.5204, location_lon: locationLon || 73.8567,
             location_address: address,
             location_area: locationArea || null,
             location_note: locationNote || null,
@@ -478,7 +485,7 @@ export default function BookDiscoveryPage() {
         slot_id: selectedSlot.id,
         service_id: selectedService.id,
         package_id: selectedPackage?.id || null,
-        location_lat: 18.5204, location_lon: 73.8567,
+        location_lat: locationLat || 18.5204, location_lon: locationLon || 73.8567,
         location_address: address,
         location_area: locationArea || null,
         location_note: locationNote || null,
@@ -748,15 +755,27 @@ export default function BookDiscoveryPage() {
                     <MapPin size={15} style={{ color: 'var(--amber)' }} />
                     <h3 className="font-syne font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Service address</h3>
                   </div>
-                  <InfoButton text="The worker will come to this address. Enter a complete address so they can find you easily." />
+                  <InfoButton text="Drag the map or search to pin the exact spot — we use your current location by default. The worker travels to these coordinates, so the pin matters more than the typed address." />
                 </div>
                 <div className="space-y-3">
                   {/* Saved addresses quick-pick */}
-                <SavedAddressPicker onSelect={(addr) => {
-                  setAddress(addr.address_line)
-                  if (addr.area) setLocationArea(addr.area)
-                }} />
-                                <GlassInput label="Full address" placeholder="Flat no., building, street…" value={address} onChange={e => setAddress(e.target.value)} icon={MapPin} autoFocus />
+                  <SavedAddressPicker onSelect={(addr) => {
+                    setAddress(addr.address_line)
+                    if (addr.area) setLocationArea(addr.area)
+                    if (addr.lat && addr.lon) { setLocationLat(parseFloat(addr.lat)); setLocationLon(parseFloat(addr.lon)) }
+                  }} />
+
+                  <MapLocationPicker
+                    location={{ lat: locationLat, lon: locationLon, address }}
+                    onLocationSelect={(loc) => {
+                      setAddress(loc.address || '')
+                      if (loc.lat) setLocationLat(loc.lat)
+                      if (loc.lon) setLocationLon(loc.lon)
+                      if (loc.area && !locationArea) setLocationArea(loc.area)
+                    }}
+                  />
+
+                  <GlassInput label="Full address" placeholder="Flat no., building, street…" value={address} onChange={e => setAddress(e.target.value)} icon={MapPin} />
                   <GlassInput label="Area / locality" placeholder="e.g. Baner, Kothrud…" value={locationArea} onChange={e => setLocationArea(e.target.value)} />
                   <GlassInput label="Landmark (optional)" placeholder="Near blue gate, 3rd floor…" value={locationNote} onChange={e => setLocationNote(e.target.value)} />
                 </div>

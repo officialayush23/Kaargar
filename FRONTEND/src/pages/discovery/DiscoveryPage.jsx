@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
+import { useGeoLocation } from '@/hooks/useGeoLocation'
 import { WorkerCard } from '@/components/kaargar/WorkerCard'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -513,16 +514,31 @@ export default function DiscoveryPage() {
   const [query, setQuery]             = useState(searchParams.get('q') || '')
   const [sort, setSort]               = useState('rating')
   const [showFilters, setShowFilters] = useState(false)
+  const [coords, setCoords]           = useState(null)
+  const { getLocation, loading: geoLoading, error: geoError } = useGeoLocation()
 
   const currentQuery = searchParams.get('q') || ''
 
+  // "Nearest" needs the customer's coordinates — fetch them lazily the first
+  // time that sort is picked (not on every render/mount) and cache in state.
+  async function handleSortChange(value) {
+    setSort(value)
+    if (value === 'distance' && !coords) {
+      const loc = await getLocation()
+      if (loc) setCoords({ lat: loc.lat, lon: loc.lon })
+    }
+  }
+
   const { data: workers = [], isLoading, isFetching } = useQuery({
-    queryKey: ['search', currentQuery, sort],
+    queryKey: ['search', currentQuery, sort, sort === 'distance' ? coords : null],
     queryFn: async () => {
       if (!currentQuery) return []
-      const { data } = await api.get('/search', {
-        params: { q: currentQuery, mode: 'discovery', sort },
-      })
+      const params = { q: currentQuery, mode: 'discovery', sort }
+      if (sort === 'distance' && coords) {
+        params.lat = coords.lat
+        params.lon = coords.lon
+      }
+      const { data } = await api.get('/search', { params })
       const rows = data.results ?? data ?? []
       const normalized = rows.map(item => ({
         ...item,
@@ -613,16 +629,22 @@ export default function DiscoveryPage() {
                 {SORT_OPTIONS.map(opt => (
                   <motion.button key={opt.value} type="button"
                     whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-                    onClick={() => setSort(opt.value)}
+                    onClick={() => handleSortChange(opt.value)}
+                    disabled={opt.value === 'distance' && geoLoading}
                     className="flex-shrink-0 px-3 py-1.5 rounded-xl text-xs font-medium whitespace-nowrap transition-all"
                     style={{
                       background: sort === opt.value ? '#e99f2f' : 'var(--bg-elevated)',
                       border: `1px solid ${sort === opt.value ? '#B45309' : 'var(--border)'}`,
                       color: sort === opt.value ? '#000000' : 'var(--text-muted)',
                     }}>
-                    {opt.label}
+                    {opt.value === 'distance' && geoLoading ? 'Locating…' : opt.label}
                   </motion.button>
                 ))}
+                {sort === 'distance' && geoError && (
+                  <span className="flex-shrink-0 text-[11px] self-center" style={{ color: 'var(--text-muted)' }}>
+                    {geoError} — showing default order
+                  </span>
+                )}
               </motion.div>
             )}
           </AnimatePresence>
