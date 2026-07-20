@@ -22,28 +22,28 @@ function StatCard({ label, value, sub, icon: Icon, accent, i }) {
   return (
     <motion.div {...CARD_ANIM(i)}
       style={{
-        background: '#0B0F1A',
-        border: '1px solid rgba(255,255,255,0.07)',
+        background: 'var(--bg-surface)',
+        border: '1px solid var(--card-border)',
         borderRadius: 16,
         padding: '18px 20px',
       }}
     >
       <div className="flex items-center justify-between mb-3">
-        <p style={{ color: '#475569', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        <p style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
           {label}
         </p>
         <div style={{
           width: 30, height: 30, borderRadius: 10,
-          background: 'rgba(255,255,255,0.06)',
+          background: 'var(--card-bg)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}>
           <Icon size={14} style={{ color: accent }} />
         </div>
       </div>
-      <p style={{ fontSize: 28, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color: '#F1F5F9', lineHeight: 1 }}>
+      <p style={{ fontSize: 28, fontWeight: 700, fontFamily: '"JetBrains Mono", monospace', color: 'var(--text-primary)', lineHeight: 1 }}>
         {value}
       </p>
-      {sub && <p style={{ color: '#334155', fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>{sub}</p>}
+      {sub && <p style={{ color: 'var(--text-secondary)', fontSize: 11, marginTop: 6, lineHeight: 1.4 }}>{sub}</p>}
     </motion.div>
   )
 }
@@ -55,29 +55,29 @@ function ActionRow({ icon: Icon, label, badge, badgeColor, to, desc }) {
       onClick={() => navigate(to)}
       className="w-full flex items-center gap-3 px-4 py-3 transition-all text-left rounded-xl group"
       style={{ background: 'none', border: 'none', cursor: 'pointer' }}
-      onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.04)'}
+      onMouseEnter={e => e.currentTarget.style.background = 'var(--card-bg)'}
       onMouseLeave={e => e.currentTarget.style.background = 'none'}
     >
       <div
-        style={{ width: 34, height: 34, borderRadius: 10, background: 'rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
+        style={{ width: 34, height: 34, borderRadius: 10, background: 'var(--card-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}
       >
-        <Icon size={15} style={{ color: '#64748B' }} />
+        <Icon size={15} style={{ color: 'var(--text-muted)' }} />
       </div>
       <div className="flex-1 min-w-0">
-        <p style={{ color: '#CBD5E1', fontSize: 13, fontWeight: 500 }}>{label}</p>
-        {desc && <p style={{ color: '#475569', fontSize: 11, marginTop: 1 }}>{desc}</p>}
+        <p style={{ color: 'var(--text-secondary)', fontSize: 13, fontWeight: 500 }}>{label}</p>
+        {desc && <p style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 1 }}>{desc}</p>}
       </div>
       <div className="flex items-center gap-2">
         {badge != null && badge > 0 && (
           <span style={{
             fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 100,
-            background: badgeColor ? `${badgeColor}20` : 'rgba(255,255,255,0.08)',
-            color: badgeColor || '#94A3B8',
+            background: badgeColor ? `${badgeColor}20` : 'var(--card-bg)',
+            color: badgeColor || 'var(--text-secondary)',
           }}>
             {badge}
           </span>
         )}
-        <ChevronRight size={14} style={{ color: '#334155' }} />
+        <ChevronRight size={14} style={{ color: 'var(--text-secondary)' }} />
       </div>
     </button>
   )
@@ -133,8 +133,8 @@ export default function AdminDashboard() {
 
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>Live Dashboard</h1>
-        <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>
+        <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Live Dashboard</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>
           Real-time metrics · auto-refreshes every 15 seconds
         </p>
       </div>
@@ -142,7 +142,7 @@ export default function AdminDashboard() {
       {/* Stat grid */}
       {isLoading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => <Skeleton key={i} className="h-28 rounded-2xl" style={{ background: 'rgba(255,255,255,0.04)' }} />)}
+          {[1,2,3,4].map(i => <Skeleton key={i} className="h-28 rounded-2xl" style={{ background: 'var(--card-bg)' }} />)}
         </div>
       ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -157,25 +157,25 @@ export default function AdminDashboard() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.2, type: 'spring', stiffness: 260, damping: 26 }}
-          style={{ background: '#0B0F1A', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '18px 20px' }}
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--card-border)', borderRadius: 16, padding: '18px 20px' }}
         >
-          <p style={{ color: '#475569', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 14 }}>
             Platform Health
           </p>
           <div className="space-y-3">
             {HEALTH_ITEMS(data).map(item => (
               <div key={item.label} className="flex items-center justify-between gap-4">
                 <div>
-                  <p style={{ color: '#94A3B8', fontSize: 12 }}>{item.label}</p>
-                  <p style={{ color: '#334155', fontSize: 10, marginTop: 1 }}>{item.desc}</p>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: 12 }}>{item.label}</p>
+                  <p style={{ color: 'var(--text-secondary)', fontSize: 10, marginTop: 1 }}>{item.desc}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 18, fontWeight: 700, color: '#F1F5F9' }}>
+                  <span style={{ fontFamily: '"JetBrains Mono", monospace', fontSize: 18, fontWeight: 700, color: 'var(--text-primary)' }}>
                     {isLoading ? '—' : item.value}
                   </span>
                   <div style={{
                     width: 8, height: 8, borderRadius: '50%',
-                    background: isLoading ? '#334155' : item.ok ? '#22c55e' : '#f87171',
+                    background: isLoading ? 'var(--text-secondary)' : item.ok ? '#22c55e' : '#f87171',
                     boxShadow: isLoading ? 'none' : item.ok ? '0 0 6px #22c55e80' : '0 0 6px #f8717180',
                   }} />
                 </div>
@@ -189,9 +189,9 @@ export default function AdminDashboard() {
           initial={{ opacity: 0, y: 16 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.25, type: 'spring', stiffness: 260, damping: 26 }}
-          style={{ background: '#0B0F1A', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '18px 4px' }}
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--card-border)', borderRadius: 16, padding: '18px 4px' }}
         >
-          <p style={{ color: '#475569', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, paddingLeft: 16 }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8, paddingLeft: 16 }}>
             Quick Navigation
           </p>
           <ActionRow to="/admin/workers"    icon={Shield}      label="Worker Verifications" badge={data?.pending_verifications} badgeColor="#f59e0b" desc="Approve pending workers" />

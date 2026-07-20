@@ -19,35 +19,35 @@ function TicketCard({ ticket, onResolve, resolving }) {
   const isOpen = ticket.status === 'open'
 
   return (
-    <div style={{ background: 'rgba(13,17,23,0.8)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, overflow: 'hidden' }}>
+    <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 14, overflow: 'hidden' }}>
       <button className="w-full text-left p-4" onClick={() => setExpanded(e => !e)}>
         <div className="flex items-start justify-between gap-3">
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="text-[10px] font-medium px-1.5 py-0.5 rounded"
-                style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--text-secondary)' }}>
+                style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)' }}>
                 {TYPE_LABELS[ticket.type] || 'General'}
               </span>
               <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full`}
                 style={{
-                  background: isOpen ? 'var(--accent-deep)' : 'rgba(255,255,255,0.06)',
+                  background: isOpen ? 'var(--accent-deep)' : 'var(--card-bg)',
                   color: isOpen ? 'var(--accent)' : 'var(--text-secondary)',
                 }}>
                 {isOpen ? 'Open' : 'Resolved'}
               </span>
             </div>
-            <p className="text-sm font-medium" style={{ color: '#F1F5F9' }}>{ticket.title}</p>
-            <p className="text-[11px] mt-0.5" style={{ color: '#475569' }}>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{ticket.title}</p>
+            <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
               {ticket.user?.full_name || ticket.user?.email || 'Unknown user'} · {formatRelativeTime(ticket.created_at)}
             </p>
           </div>
-          {expanded ? <ChevronUp size={16} style={{ color: '#475569', flexShrink: 0 }} /> : <ChevronDown size={16} style={{ color: '#475569', flexShrink: 0 }} />}
+          {expanded ? <ChevronUp size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} /> : <ChevronDown size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />}
         </div>
       </button>
 
       {expanded && (
-        <div style={{ padding: '0 16px 16px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <p className="text-sm mt-3 leading-relaxed" style={{ color: '#94A3B8' }}>{ticket.description}</p>
+        <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--card-border)' }}>
+          <p className="text-sm mt-3 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{ticket.description}</p>
           {isOpen && (
             <div className="flex justify-end mt-4">
               <Button
@@ -97,8 +97,8 @@ export default function AdminSupport() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold font-syne" style={{ color: '#F1F5F9' }}>Support</h1>
-        <p className="text-sm mt-1" style={{ color: '#475569' }}>Manage user and worker support tickets</p>
+        <h1 className="text-2xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>Support</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Manage user and worker support tickets</p>
       </div>
 
       <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
@@ -109,20 +109,20 @@ export default function AdminSupport() {
           </TabsList>
         </Tabs>
         <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#475569' }} />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
           <Input placeholder="Search tickets…" value={search} onChange={e => setSearch(e.target.value)}
-            className="pl-8 w-52 h-9 text-xs" style={{ background: 'rgba(13,17,23,0.8)' }} />
+            className="pl-8 w-52 h-9 text-xs" style={{ background: 'var(--card-bg)' }} />
         </div>
       </div>
 
       {isLoading ? (
         <div className="space-y-3">
-          {[1,2,3].map(i => <Skeleton key={i} className="h-20 rounded-2xl" style={{ background: 'rgba(255,255,255,0.05)' }} />)}
+          {[1,2,3].map(i => <Skeleton key={i} className="h-20 rounded-2xl" style={{ background: 'var(--card-bg)' }} />)}
         </div>
       ) : filtered.length === 0 ? (
         <div className="text-center py-20">
-          <LifeBuoy size={36} style={{ color: '#334155', margin: '0 auto 12px' }} />
-          <p style={{ color: '#475569' }}>No {status} tickets</p>
+          <LifeBuoy size={36} style={{ color: 'var(--text-secondary)', margin: '0 auto 12px' }} />
+          <p style={{ color: 'var(--text-muted)' }}>No {status} tickets</p>
         </div>
       ) : (
         <div className="space-y-3">

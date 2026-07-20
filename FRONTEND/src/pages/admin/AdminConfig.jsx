@@ -116,45 +116,45 @@ function NewSettingDialog({ open, onClose, onSave, saving }) {
         </DialogHeader>
         <div className="space-y-3 pt-1">
           <div>
-            <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Key</label>
+            <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--text-muted)' }}>Key</label>
             <input
               value={key}
               onChange={e => setKey(e.target.value.toLowerCase().replace(/\s/g, '_'))}
               placeholder="e.g. commission_instant_rate"
               className="w-full px-3 py-2.5 rounded-xl text-sm font-mono outline-none"
               style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.10)',
-                color: '#F1F5F9',
+                background: 'var(--card-bg)',
+                border: '1px solid var(--card-border)',
+                color: 'var(--text-primary)',
               }}
             />
-            <p className="text-[11px] mt-1" style={{ color: '#475569' }}>Lowercase letters and underscores only</p>
+            <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Lowercase letters and underscores only</p>
           </div>
           <div>
-            <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Value</label>
+            <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--text-muted)' }}>Value</label>
             <input
               value={value}
               onChange={e => setValue(e.target.value)}
               placeholder="e.g. 0.15"
               className="w-full px-3 py-2.5 rounded-xl text-sm font-mono outline-none"
               style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.10)',
-                color: '#F1F5F9',
+                background: 'var(--card-bg)',
+                border: '1px solid var(--card-border)',
+                color: 'var(--text-primary)',
               }}
             />
           </div>
           <div>
-            <label className="text-xs font-medium mb-1.5 block" style={{ color: '#64748B' }}>Description <span style={{ color: '#334155' }}>(optional)</span></label>
+            <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--text-muted)' }}>Description <span style={{ color: 'var(--text-secondary)' }}>(optional)</span></label>
             <input
               value={desc}
               onChange={e => setDesc(e.target.value)}
               placeholder="What does this setting do?"
               className="w-full px-3 py-2.5 rounded-xl text-sm outline-none"
               style={{
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.10)',
-                color: '#F1F5F9',
+                background: 'var(--card-bg)',
+                border: '1px solid var(--card-border)',
+                color: 'var(--text-primary)',
               }}
             />
           </div>
@@ -162,7 +162,7 @@ function NewSettingDialog({ open, onClose, onSave, saving }) {
             <button
               onClick={handleClose}
               className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-all"
-              style={{ background: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: 'none', cursor: 'pointer' }}
+              style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: 'none', cursor: 'pointer' }}
             >
               Cancel
             </button>
@@ -194,7 +194,7 @@ function ConfigRow({ item, onEdit, onDelete, editKey, editValue, setEditValue, o
   return (
     <div
       className="flex items-center gap-3 px-4 py-3.5 group/row"
-      style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}
+      style={{ borderBottom: '1px solid var(--card-border)' }}
     >
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
@@ -205,7 +205,7 @@ function ConfigRow({ item, onEdit, onDelete, editKey, editValue, setEditValue, o
             {item.description}
           </p>
         )}
-        <p className="text-[10px] mt-0.5 font-mono" style={{ color: '#334155' }}>{item.key}</p>
+        <p className="text-[10px] mt-0.5 font-mono" style={{ color: 'var(--text-secondary)' }}>{item.key}</p>
       </div>
 
       <div className="flex items-center gap-1.5 shrink-0">
@@ -217,8 +217,8 @@ function ConfigRow({ item, onEdit, onDelete, editKey, editValue, setEditValue, o
               onKeyDown={e => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel() }}
               className="rounded-lg px-3 py-1.5 text-sm font-mono outline-none w-28 text-right"
               style={{
-                background: 'rgba(255,255,255,0.07)',
-                border: '1.5px solid rgba(255,255,255,0.15)',
+                background: 'var(--card-bg)',
+                border: '1.5px solid var(--g-border)',
                 color: 'var(--text-primary)',
               }}
               autoFocus
@@ -235,7 +235,7 @@ function ConfigRow({ item, onEdit, onDelete, editKey, editValue, setEditValue, o
         ) : (
           <>
             <span className="text-sm font-mono font-semibold px-3 py-1.5 rounded-lg"
-              style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-primary)', minWidth: 64, textAlign: 'right' }}>
+              style={{ background: 'var(--card-bg)', color: 'var(--text-primary)', minWidth: 64, textAlign: 'right' }}>
               {meta.transform(item.value)}
             </span>
             <button onClick={() => onEdit(item.key, item.value)}
@@ -245,7 +245,7 @@ function ConfigRow({ item, onEdit, onDelete, editKey, editValue, setEditValue, o
             </button>
             <button onClick={() => onDelete(item)}
               className="p-1.5 rounded-lg opacity-0 group-hover/row:opacity-100 transition-opacity hover:bg-red-500/10"
-              style={{ color: '#6B7280', background: 'none', border: 'none', cursor: 'pointer' }}>
+              style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer' }}>
               <Trash2 size={13} />
             </button>
           </>
@@ -264,23 +264,23 @@ function ConfigGroup({ group, items, ...rowProps }) {
 
   return (
     <div className="rounded-2xl overflow-hidden"
-      style={{ border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(13,17,23,0.7)' }}>
+      style={{ border: '1px solid var(--card-border)', background: 'var(--card-bg)' }}>
       <button
         onClick={() => setOpen(o => !o)}
         className="w-full flex items-center justify-between px-5 py-4"
         style={{
-          background: 'rgba(255,255,255,0.03)', border: 'none', cursor: 'pointer',
-          borderBottom: open ? '1px solid rgba(255,255,255,0.06)' : 'none',
+          background: 'var(--card-bg)', border: 'none', cursor: 'pointer',
+          borderBottom: open ? '1px solid var(--card-border)' : 'none',
         }}
       >
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.06)' }}>
+            style={{ background: 'var(--card-bg)' }}>
             <Icon size={15} style={{ color: 'var(--text-secondary)' }} />
           </div>
           <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{group.label}</span>
           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-            style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}>
+            style={{ background: 'var(--card-bg)', color: 'var(--text-muted)' }}>
             {groupItems.length}
           </span>
         </div>
@@ -288,7 +288,7 @@ function ConfigGroup({ group, items, ...rowProps }) {
       </button>
 
       {open && groupItems.map((item, i) => (
-        <div key={item.key} style={{ background: i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
+        <div key={item.key} style={{ background: i % 2 === 0 ? 'var(--card-bg)' : 'transparent' }}>
           <ConfigRow item={item} {...rowProps} />
         </div>
       ))}
@@ -357,8 +357,8 @@ export default function AdminConfig() {
       {/* Header */}
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold" style={{ color: '#F1F5F9' }}>Platform Config</h1>
-          <p className="text-sm mt-1" style={{ color: '#475569' }}>
+          <h1 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>Platform Config</h1>
+          <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
             Changes take effect immediately across all services.
           </p>
         </div>
@@ -381,16 +381,16 @@ export default function AdminConfig() {
       {!isLoading && config.length === 0 && (
         <div
           className="rounded-2xl p-8 flex flex-col items-center gap-4 text-center"
-          style={{ background: 'rgba(13,17,23,0.7)', border: '1px dashed rgba(255,255,255,0.1)' }}
+          style={{ background: 'var(--card-bg)', border: '1px dashed var(--card-border)' }}
         >
           <div className="w-12 h-12 rounded-2xl flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <Settings size={20} style={{ color: '#475569' }} />
+            style={{ background: 'var(--card-bg)' }}>
+            <Settings size={20} style={{ color: 'var(--text-muted)' }} />
           </div>
           <div>
-            <p className="text-sm font-semibold" style={{ color: '#94A3B8' }}>No settings yet</p>
-            <p className="text-xs mt-1" style={{ color: '#475569' }}>
-              Add settings manually or run <code className="px-1.5 py-0.5 rounded text-[11px] font-mono" style={{ background: 'rgba(255,255,255,0.08)' }}>backend/seed_platform_config.sql</code> to populate defaults.
+            <p className="text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>No settings yet</p>
+            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+              Add settings manually or run <code className="px-1.5 py-0.5 rounded text-[11px] font-mono" style={{ background: 'var(--card-bg)' }}>backend/seed_platform_config.sql</code> to populate defaults.
             </p>
           </div>
           <button
@@ -407,7 +407,7 @@ export default function AdminConfig() {
       {isLoading && (
         <div className="space-y-4">
           {[1,2,3].map(i => (
-            <div key={i} className="h-32 rounded-2xl animate-pulse" style={{ background: 'rgba(255,255,255,0.04)' }} />
+            <div key={i} className="h-32 rounded-2xl animate-pulse" style={{ background: 'var(--card-bg)' }} />
           ))}
         </div>
       )}
@@ -422,18 +422,18 @@ export default function AdminConfig() {
           {/* Ungrouped */}
           {ungrouped.length > 0 && (
             <div className="rounded-2xl overflow-hidden"
-              style={{ border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(13,17,23,0.7)' }}>
+              style={{ border: '1px solid var(--card-border)', background: 'var(--card-bg)' }}>
               <div className="flex items-center gap-3 px-5 py-4"
-                style={{ borderBottom: '1px solid rgba(255,255,255,0.06)', background: 'rgba(255,255,255,0.03)' }}>
+                style={{ borderBottom: '1px solid var(--card-border)', background: 'var(--card-bg)' }}>
                 <Settings size={15} style={{ color: 'var(--text-secondary)' }} />
                 <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Other</span>
                 <span className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                  style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-muted)' }}>
+                  style={{ background: 'var(--card-bg)', color: 'var(--text-muted)' }}>
                   {ungrouped.length}
                 </span>
               </div>
               {ungrouped.map((item, i) => (
-                <div key={item.key} style={{ background: i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
+                <div key={item.key} style={{ background: i % 2 === 0 ? 'var(--card-bg)' : 'transparent' }}>
                   <ConfigRow item={item} {...rowProps} />
                 </div>
               ))}
@@ -456,7 +456,7 @@ export default function AdminConfig() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete setting?</AlertDialogTitle>
             <AlertDialogDescription>
-              <code className="font-mono text-sm px-1.5 py-0.5 rounded" style={{ background: 'rgba(255,255,255,0.08)' }}>
+              <code className="font-mono text-sm px-1.5 py-0.5 rounded" style={{ background: 'var(--card-bg)' }}>
                 {deleteTarget?.key}
               </code> will be permanently removed from the platform.
             </AlertDialogDescription>

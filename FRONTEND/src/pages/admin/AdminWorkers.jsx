@@ -62,23 +62,23 @@ function WorkerRow({ worker, onView }) {
         <div className="flex items-center gap-3">
           <Avatar className="h-8 w-8">
             <AvatarImage src={worker.avatar_url || worker.user?.avatar_url} />
-            <AvatarFallback className="text-xs font-bold" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--text-secondary)' }}>
+            <AvatarFallback className="text-xs font-bold" style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)' }}>
               {initials}
             </AvatarFallback>
           </Avatar>
           <div>
-            <p className="text-sm font-medium" style={{ color: '#F1F5F9' }}>{name}</p>
-            <p className="text-[11px]" style={{ color: '#475569' }}>{worker.user?.email || worker.email}</p>
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{name}</p>
+            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{worker.user?.email || worker.email}</p>
           </div>
         </div>
       </TableCell>
-      <TableCell style={{ color: '#94A3B8', fontSize: 13 }}>{worker.primary_category || '—'}</TableCell>
-      <TableCell style={{ color: '#94A3B8', fontSize: 13 }}>{worker.pune_area || '—'}</TableCell>
+      <TableCell style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{worker.primary_category || '—'}</TableCell>
+      <TableCell style={{ color: 'var(--text-secondary)', fontSize: 13 }}>{worker.pune_area || '—'}</TableCell>
       <TableCell><StatusBadge status={worker.verification_status} /></TableCell>
-      <TableCell style={{ color: '#475569', fontSize: 12 }}>{formatRelativeTime(worker.created_at)}</TableCell>
+      <TableCell style={{ color: 'var(--text-muted)', fontSize: 12 }}>{formatRelativeTime(worker.created_at)}</TableCell>
       <TableCell>
         <div className="flex items-center justify-end">
-          <ChevronRight size={16} style={{ color: '#475569' }} />
+          <ChevronRight size={16} style={{ color: 'var(--text-muted)' }} />
         </div>
       </TableCell>
     </TableRow>
@@ -92,12 +92,12 @@ function DetailField({ label, value, icon: Icon }) {
     <div style={{
       display: 'flex', alignItems: 'flex-start', gap: '10px',
       padding: '10px 12px', borderRadius: '10px',
-      background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+      background: 'var(--card-bg)', border: '1px solid var(--card-border)',
     }}>
-      {Icon && <Icon size={14} style={{ color: '#475569', flexShrink: 0, marginTop: '2px' }} />}
+      {Icon && <Icon size={14} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: '2px' }} />}
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: '11px', color: '#475569', marginBottom: '2px' }}>{label}</p>
-        <p style={{ fontSize: '13px', color: '#F1F5F9', fontWeight: 500, wordBreak: 'break-word' }}>
+        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginBottom: '2px' }}>{label}</p>
+        <p style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 500, wordBreak: 'break-word' }}>
           {value || '—'}
         </p>
       </div>
@@ -113,8 +113,8 @@ function DocCard({ doc }) {
   return (
     <div style={{
       borderRadius: '12px', overflow: 'hidden',
-      border: '1px solid rgba(255,255,255,0.07)',
-      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid var(--card-border)',
+      background: 'var(--card-bg)',
     }}>
       {isVideo ? (
         <div style={{ background: '#000', position: 'relative' }}>
@@ -137,14 +137,14 @@ function DocCard({ doc }) {
         </a>
       ) : (
         <a href={doc.url} target="_blank" rel="noreferrer"
-          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80px', gap: '8px', textDecoration: 'none', color: '#94A3B8' }}>
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '80px', gap: '8px', textDecoration: 'none', color: 'var(--text-secondary)' }}>
           <FileText size={24} />
           <span style={{ fontSize: 13 }}>View file</span>
           <ExternalLink size={12} />
         </a>
       )}
       <div style={{ padding: '8px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
-        <span style={{ fontSize: '12px', color: '#94A3B8', fontWeight: 500 }}>{label}</span>
+        <span style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{label}</span>
         <a href={doc.url} target="_blank" rel="noreferrer"
           style={{ fontSize: '11px', color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: '3px', textDecoration: 'none', flexShrink: 0 }}>
           Open <ExternalLink size={10} />
@@ -190,8 +190,8 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
         style={{
           position: 'fixed', top: 0, right: 0, bottom: 0,
           width: '560px', maxWidth: '100vw',
-          background: '#0D1117',
-          borderLeft: '1px solid rgba(255,255,255,0.08)',
+          background: 'var(--bg-surface)',
+          borderLeft: '1px solid var(--card-border)',
           zIndex: 51,
           display: 'flex', flexDirection: 'column',
           overflowY: 'hidden',
@@ -200,26 +200,26 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
         {/* Panel header */}
         <div style={{
           padding: '20px 24px',
-          borderBottom: '1px solid rgba(255,255,255,0.07)',
+          borderBottom: '1px solid var(--card-border)',
           display: 'flex', alignItems: 'center', gap: '16px',
-          background: '#0D1117', flexShrink: 0,
+          background: 'var(--bg-surface)', flexShrink: 0,
         }}>
           <button
             onClick={onClose}
             style={{
               width: 32, height: 32, borderRadius: 8, flexShrink: 0,
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.07)',
+              background: 'var(--card-bg)', border: '1px solid var(--card-border)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               cursor: 'pointer',
             }}
           >
-            <X size={15} style={{ color: '#94A3B8' }} />
+            <X size={15} style={{ color: 'var(--text-secondary)' }} />
           </button>
           <div style={{ flex: 1, minWidth: 0 }}>
-            <h2 style={{ fontSize: '16px', fontWeight: 700, color: '#F1F5F9' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: 700, color: 'var(--text-primary)' }}>
               Worker Details
             </h2>
-            <p style={{ fontSize: '12px', color: '#475569', marginTop: '2px' }}>
+            <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '2px' }}>
               Verification review
             </p>
           </div>
@@ -232,7 +232,7 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
           {isLoading ? (
             <div className="space-y-3">
               {[1,2,3,4,5].map(i => (
-                <Skeleton key={i} className="h-14 rounded-xl" style={{ background: 'rgba(255,255,255,0.05)' }} />
+                <Skeleton key={i} className="h-14 rounded-xl" style={{ background: 'var(--card-bg)' }} />
               ))}
             </div>
           ) : detail ? (
@@ -241,19 +241,19 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
               <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
                 <Avatar className="h-16 w-16">
                   <AvatarImage src={detail.avatar_url} />
-                  <AvatarFallback className="text-xl font-bold" style={{ background: 'rgba(255,255,255,0.07)', color: 'var(--text-secondary)' }}>
+                  <AvatarFallback className="text-xl font-bold" style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)' }}>
                     {initials}
                   </AvatarFallback>
                 </Avatar>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#F1F5F9' }}>
+                  <h3 style={{ fontSize: '18px', fontWeight: 700, color: 'var(--text-primary)' }}>
                     {detail.full_name}
                   </h3>
-                  <p style={{ fontSize: '13px', color: '#475569', marginTop: '3px' }}>{detail.email}</p>
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)', marginTop: '3px' }}>{detail.email}</p>
                   {detail.phone && (
-                    <p style={{ fontSize: '13px', color: '#475569' }}>{detail.phone}</p>
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>{detail.phone}</p>
                   )}
-                  <p style={{ fontSize: '12px', color: '#334155', marginTop: '4px' }}>
+                  <p style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '4px' }}>
                     Joined {formatRelativeTime(detail.created_at)}
                   </p>
                 </div>
@@ -272,11 +272,11 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
               {/* Bio */}
               {detail.bio && (
                 <div>
-                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Bio
                   </p>
-                  <div style={{ padding: '12px 14px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                    <p style={{ fontSize: '13px', color: '#94A3B8', lineHeight: '1.6' }}>{detail.bio}</p>
+                  <div style={{ padding: '12px 14px', borderRadius: '12px', background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                    <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: '1.6' }}>{detail.bio}</p>
                   </div>
                 </div>
               )}
@@ -284,7 +284,7 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
               {/* Categories */}
               {detail.categories?.length > 0 && (
                 <div>
-                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Categories ({detail.categories.length})
                   </p>
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
@@ -292,14 +292,14 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
                       <span key={cat.id} style={{
                         display: 'inline-flex', alignItems: 'center', gap: '5px',
                         padding: '4px 10px', borderRadius: '20px',
-                        background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.08)',
-                        fontSize: '12px', color: '#94A3B8',
+                        background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+                        fontSize: '12px', color: 'var(--text-secondary)',
                       }}>
                         {cat.icon_emoji && <span>{cat.icon_emoji}</span>}
                         {cat.name}
                         <span style={{
                           fontSize: '10px',
-                          color: cat.mode === 'instant' ? '#22C55E' : cat.mode === 'discovery' ? 'var(--accent)' : '#94A3B8',
+                          color: cat.mode === 'instant' ? '#22C55E' : cat.mode === 'discovery' ? 'var(--accent)' : 'var(--text-secondary)',
                         }}>
                           {cat.mode === 'instant' ? '⚡' : cat.mode === 'discovery' ? '🔍' : '⚡🔍'}
                         </span>
@@ -312,7 +312,7 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
               {/* Services */}
               {detail.services?.length > 0 && (
                 <div>
-                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Services ({detail.services.length})
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
@@ -320,10 +320,10 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
                       <div key={svc.id} style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         padding: '8px 12px', borderRadius: '10px',
-                        background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)',
+                        background: 'var(--card-bg)', border: '1px solid var(--card-border)',
                       }}>
-                        <span style={{ fontSize: '13px', color: '#94A3B8' }}>{svc.title}</span>
-                        <span style={{ fontSize: '13px', color: '#F1F5F9', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
+                        <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>{svc.title}</span>
+                        <span style={{ fontSize: '13px', color: 'var(--text-primary)', fontWeight: 600, fontFamily: 'JetBrains Mono, monospace' }}>
                           ₹{svc.price}
                         </span>
                       </div>
@@ -335,7 +335,7 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
               {/* Intro video */}
               {videoDocs.length > 0 && (
                 <div>
-                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Intro Video
                   </p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
@@ -347,7 +347,7 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
               {/* Identity documents */}
               {identityDocs.length > 0 && (
                 <div>
-                  <p style={{ fontSize: '12px', fontWeight: 600, color: '#475569', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Identity Documents ({identityDocs.length})
                   </p>
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
@@ -357,9 +357,9 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
               )}
 
               {identityDocs.length === 0 && videoDocs.length === 0 && (
-                <div style={{ textAlign: 'center', padding: '24px', borderRadius: '12px', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.06)' }}>
-                  <FileText size={28} style={{ color: '#334155', margin: '0 auto 8px' }} />
-                  <p style={{ fontSize: '13px', color: '#475569' }}>No documents uploaded yet</p>
+                <div style={{ textAlign: 'center', padding: '24px', borderRadius: '12px', background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                  <FileText size={28} style={{ color: 'var(--text-secondary)', margin: '0 auto 8px' }} />
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No documents uploaded yet</p>
                 </div>
               )}
             </>
@@ -370,8 +370,8 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
         {detail && (
           <div style={{
             padding: '16px 24px',
-            borderTop: '1px solid rgba(255,255,255,0.07)',
-            background: '#0D1117', flexShrink: 0,
+            borderTop: '1px solid var(--card-border)',
+            background: 'var(--bg-surface)', flexShrink: 0,
             display: 'flex', flexDirection: 'column', gap: '10px',
           }}>
             {detail.verification_status === 'pending' && (
@@ -405,8 +405,8 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
                 onClick={() => onRequestReupload(detail)}
                 style={{
                   flex: 1, padding: '8px', borderRadius: '10px', cursor: 'pointer',
-                  background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
-                  color: '#94A3B8', fontSize: '12px', fontWeight: 500,
+                  background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+                  color: 'var(--text-secondary)', fontSize: '12px', fontWeight: 500,
                   display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '5px',
                 }}
               >
@@ -448,7 +448,7 @@ function RejectDialog({ open, onClose, onConfirm, loading }) {
           <DialogTitle>Reject Worker</DialogTitle>
         </DialogHeader>
         <div className="space-y-3 py-2">
-          <p className="text-sm" style={{ color: '#475569' }}>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
             Provide a reason (will be sent to the worker by email).
           </p>
           <textarea
@@ -458,8 +458,8 @@ function RejectDialog({ open, onClose, onConfirm, loading }) {
             placeholder="e.g. Identity documents are not legible. Please resubmit clear photos."
             style={{
               width: '100%', padding: '10px 12px', borderRadius: '10px',
-              background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)',
-              color: '#F1F5F9', fontSize: '13px', resize: 'vertical', outline: 'none',
+              background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+              color: 'var(--text-primary)', fontSize: '13px', resize: 'vertical', outline: 'none',
             }}
           />
         </div>
@@ -548,8 +548,8 @@ export default function AdminWorkers() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold font-syne" style={{ color: '#F1F5F9' }}>Workers</h1>
-        <p className="text-sm mt-1" style={{ color: '#475569' }}>Manage worker verification and profiles</p>
+        <h1 className="text-2xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>Workers</h1>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>Manage worker verification and profiles</p>
       </div>
 
       <div className="flex items-center justify-between gap-4 mb-5 flex-wrap">
@@ -568,26 +568,26 @@ export default function AdminWorkers() {
         </Tabs>
 
         <div className="relative">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: '#475569' }} />
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: 'var(--text-muted)' }} />
           <Input
             placeholder="Search workers…"
             value={search}
             onChange={e => setSearch(e.target.value)}
             className="pl-8 w-56 h-9 text-xs"
-            style={{ background: 'rgba(13,17,23,0.8)' }}
+            style={{ background: 'var(--card-bg)' }}
           />
         </div>
       </div>
 
-      <div className="rounded-2xl overflow-hidden" style={{ background: 'rgba(13,17,23,0.8)', border: '1px solid rgba(255,255,255,0.07)' }}>
+      <div className="rounded-2xl overflow-hidden" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
         {isLoading ? (
           <div className="p-6 space-y-3">
-            {[1,2,3,4].map(i => <Skeleton key={i} className="h-12" style={{ background: 'rgba(255,255,255,0.05)' }} />)}
+            {[1,2,3,4].map(i => <Skeleton key={i} className="h-12" style={{ background: 'var(--card-bg)' }} />)}
           </div>
         ) : filtered.length === 0 ? (
           <div className="text-center py-16">
-            <AlertTriangle size={32} style={{ color: '#334155', margin: '0 auto 12px' }} />
-            <p style={{ color: '#475569' }}>No workers found</p>
+            <AlertTriangle size={32} style={{ color: 'var(--text-secondary)', margin: '0 auto 12px' }} />
+            <p style={{ color: 'var(--text-muted)' }}>No workers found</p>
           </div>
         ) : (
           <Table>

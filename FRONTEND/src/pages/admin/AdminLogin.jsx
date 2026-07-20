@@ -17,7 +17,7 @@ function PasswordInput({ value, onChange, onKeyDown }) {
   return (
     <div className="relative">
       <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-        style={{ color: '#475569' }} />
+        style={{ color: 'var(--text-muted)' }} />
       <input
         type={show ? 'text' : 'password'}
         value={value}
@@ -26,19 +26,19 @@ function PasswordInput({ value, onChange, onKeyDown }) {
         placeholder="Your password"
         className="w-full rounded-xl pl-9 pr-10 py-3 text-sm outline-none transition-all"
         style={{
-          background: 'rgba(255,255,255,0.06)',
-          border: '1px solid rgba(255,255,255,0.1)',
-          color: '#F1F5F9',
+          background: 'var(--card-bg)',
+          border: '1px solid var(--card-border)',
+          color: 'var(--text-primary)',
         }}
         onFocus={e  => e.target.style.borderColor = '#D97706'}
-        onBlur={e   => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+        onBlur={e   => e.target.style.borderColor = 'var(--card-border)'}
       />
       <button
         type="button"
         tabIndex={-1}
         onClick={() => setShow(v => !v)}
         className="absolute right-3 top-1/2 -translate-y-1/2"
-        style={{ color: '#475569' }}
+        style={{ color: 'var(--text-muted)' }}
       >
         {show ? <EyeOff size={15} /> : <Eye size={15} />}
       </button>
@@ -110,7 +110,7 @@ export default function AdminLogin() {
   return (
     <div
       className="min-h-screen flex items-center justify-center px-4"
-      style={{ background: '#07090F' }}
+      style={{ background: 'var(--bg-base)' }}
     >
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -121,20 +121,20 @@ export default function AdminLogin() {
         <div className="text-center mb-10">
           <h1
             className="text-4xl font-bold mb-1"
-            style={{ fontFamily: '"Playwrite NO", cursive', color: '#F1F5F9' }}
+            style={{ fontFamily: '"Playwrite NO", cursive', color: 'var(--text-primary)' }}
           >
             Kaargar
           </h1>
-          <p className="text-sm" style={{ color: '#475569' }}>Admin Console</p>
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Admin Console</p>
         </div>
 
         <form
           onSubmit={handleSignIn}
           className="rounded-3xl p-6 space-y-4"
           style={{
-            background: 'rgba(13,17,23,0.9)',
+            background: 'var(--card-bg)',
             backdropFilter: 'blur(32px)',
-            border: '1px solid rgba(255,255,255,0.08)',
+            border: '1px solid var(--card-border)',
             boxShadow: '0 8px 40px rgba(0,0,0,0.5)',
           }}
         >
@@ -145,12 +145,12 @@ export default function AdminLogin() {
           </div>
 
           <div>
-            <label className="text-xs font-medium mb-1.5 block" style={{ color: '#94A3B8' }}>
+            <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>
               Email address
             </label>
             <div className="relative">
               <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                style={{ color: '#475569' }} />
+                style={{ color: 'var(--text-muted)' }} />
               <input
                 type="email"
                 value={email}
@@ -161,18 +161,18 @@ export default function AdminLogin() {
                 autoFocus
                 className="w-full rounded-xl pl-9 py-3 text-sm outline-none transition-all"
                 style={{
-                  background: 'rgba(255,255,255,0.06)',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  color: '#F1F5F9',
+                  background: 'var(--card-bg)',
+                  border: '1px solid var(--card-border)',
+                  color: 'var(--text-primary)',
                 }}
                 onFocus={e => e.target.style.borderColor = '#D97706'}
-                onBlur={e  => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
+                onBlur={e  => e.target.style.borderColor = 'var(--card-border)'}
               />
             </div>
           </div>
 
           <div>
-            <label className="text-xs font-medium mb-1.5 block" style={{ color: '#94A3B8' }}>
+            <label className="text-xs font-medium mb-1.5 block" style={{ color: 'var(--text-secondary)' }}>
               Password
             </label>
             <PasswordInput

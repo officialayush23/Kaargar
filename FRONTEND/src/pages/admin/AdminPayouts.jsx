@@ -33,19 +33,19 @@ function SummaryCard({ label, value, sub, color, delay }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, type: 'spring', stiffness: 260, damping: 24 }}
       style={{
-        background: 'rgba(13,17,23,0.85)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        background: 'var(--card-bg)',
+        border: '1px solid var(--card-border)',
         borderRadius: 16,
         padding: '18px 20px',
       }}
     >
-      <p style={{ color: '#475569', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
+      <p style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
         {label}
       </p>
-      <p style={{ fontSize: 24, fontWeight: 700, fontFamily: 'monospace', color: color || '#F1F5F9', lineHeight: 1 }}>
+      <p style={{ fontSize: 24, fontWeight: 700, fontFamily: 'monospace', color: color || 'var(--text-primary)', lineHeight: 1 }}>
         {value}
       </p>
-      {sub && <p style={{ color: '#475569', fontSize: 11, marginTop: 6 }}>{sub}</p>}
+      {sub && <p style={{ color: 'var(--text-muted)', fontSize: 11, marginTop: 6 }}>{sub}</p>}
     </motion.div>
   )
 }
@@ -76,8 +76,8 @@ export default function AdminPayouts() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold font-syne" style={{ color: '#F1F5F9' }}>Payouts</h1>
-        <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>Worker earnings disbursement ledger</p>
+        <h1 className="text-2xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>Payouts</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>Worker earnings disbursement ledger</p>
       </div>
 
       {/* Summary cards */}
@@ -90,17 +90,17 @@ export default function AdminPayouts() {
       </div>
 
       {/* Filter + table */}
-      <div style={{ background: 'rgba(13,17,23,0.85)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16 }}>
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 16 }}>
         {/* Toolbar */}
-        <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <p style={{ color: '#475569', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 'auto' }}>
+        <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid var(--card-border)' }}>
+          <p style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 'auto' }}>
             {total} payouts
           </p>
           <select
             value={status}
             onChange={e => { setStatus(e.target.value); setPage(1) }}
             className="px-3 py-1.5 rounded-lg text-xs"
-            style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#94A3B8' }}
+            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--text-secondary)' }}
           >
             <option value="">All statuses</option>
             <option value="pending">Pending</option>
@@ -114,10 +114,10 @@ export default function AdminPayouts() {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+              <tr style={{ background: 'var(--card-bg)' }}>
                 {['Worker', 'Job', 'Gross', 'Platform Fee', 'GST', 'TDS', 'Net Payout', 'Status', 'Date'].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-medium whitespace-nowrap"
-                    style={{ color: '#475569', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     {h}
                   </th>
                 ))}
@@ -129,35 +129,35 @@ export default function AdminPayouts() {
                   <tr key={i}>
                     {Array.from({ length: 9 }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
-                        <Skeleton style={{ height: 14, background: 'rgba(255,255,255,0.04)', borderRadius: 4 }} />
+                        <Skeleton style={{ height: 14, background: 'var(--card-bg)', borderRadius: 4 }} />
                       </td>
                     ))}
                   </tr>
                 ))
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center" style={{ color: '#334155' }}>
+                  <td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--text-secondary)' }}>
                     No payouts found
                   </td>
                 </tr>
               ) : items.map((p, idx) => (
                 <tr key={p.id}
-                  style={{ borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}
+                  style={{ borderTop: idx > 0 ? '1px solid var(--card-border)' : 'none' }}
                   className="hover:bg-white/[0.02] transition-colors"
                 >
-                  <td className="px-4 py-3 font-medium whitespace-nowrap" style={{ color: '#F1F5F9' }}>
+                  <td className="px-4 py-3 font-medium whitespace-nowrap" style={{ color: 'var(--text-primary)' }}>
                     {p.worker_name}
                   </td>
-                  <td className="px-4 py-3 max-w-[140px] truncate" style={{ color: '#64748B', fontSize: 12 }}>
+                  <td className="px-4 py-3 max-w-[140px] truncate" style={{ color: 'var(--text-muted)', fontSize: 12 }}>
                     <span title={p.job_title}>{p.job_title || p.job_id.slice(0, 8)}</span>
                   </td>
-                  <td className="px-4 py-3 font-mono text-xs" style={{ color: '#94A3B8' }}>{fmt(p.gross_amount)}</td>
+                  <td className="px-4 py-3 font-mono text-xs" style={{ color: 'var(--text-secondary)' }}>{fmt(p.gross_amount)}</td>
                   <td className="px-4 py-3 font-mono text-xs" style={{ color: '#f87171' }}>-{fmt(p.platform_fee)}</td>
                   <td className="px-4 py-3 font-mono text-xs" style={{ color: '#f87171' }}>-{fmt(p.gst_on_fee)}</td>
                   <td className="px-4 py-3 font-mono text-xs" style={{ color: '#f87171' }}>-{fmt(p.tds_deducted)}</td>
                   <td className="px-4 py-3 font-mono text-sm font-bold" style={{ color: '#22c55e' }}>{fmt(p.net_amount)}</td>
                   <td className="px-4 py-3"><StatusBadge status={p.status} /></td>
-                  <td className="px-4 py-3 whitespace-nowrap text-xs" style={{ color: '#475569' }}>
+                  <td className="px-4 py-3 whitespace-nowrap text-xs" style={{ color: 'var(--text-muted)' }}>
                     {p.processed_at
                       ? new Date(p.processed_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
                       : new Date(p.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
@@ -170,14 +170,14 @@ export default function AdminPayouts() {
 
         {/* Pagination */}
         {pages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ color: '#475569', fontSize: 12 }}>Page {page} of {pages}</span>
+          <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: '1px solid var(--card-border)' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Page {page} of {pages}</span>
             <div className="flex items-center gap-2">
               <button
                 disabled={page <= 1}
                 onClick={() => setPage(p => p - 1)}
                 className="px-3 py-1 rounded-lg text-xs disabled:opacity-30 transition-colors"
-                style={{ background: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}
+                style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: '1px solid var(--card-border)' }}
               >
                 Prev
               </button>
@@ -185,7 +185,7 @@ export default function AdminPayouts() {
                 disabled={page >= pages}
                 onClick={() => setPage(p => p + 1)}
                 className="px-3 py-1 rounded-lg text-xs disabled:opacity-30 transition-colors"
-                style={{ background: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}
+                style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: '1px solid var(--card-border)' }}
               >
                 Next
               </button>

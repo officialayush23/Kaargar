@@ -31,7 +31,7 @@ const ICON_OPTIONS = [
 
 const EMPTY_FORM = {
   name: '', slug: '', description: '', icon_name: 'Wrench', icon_emoji: '',
-  icon_url: '', color_hex: '#6B7280', mode: 'instant', is_featured: false,
+  icon_url: '', color_hex: 'var(--text-muted)', mode: 'instant', is_featured: false,
   sort_order: 99, min_price: 150,
 }
 
@@ -158,12 +158,12 @@ function CategoryForm({ initial, onSubmit, onCancel, loading }) {
             Color
           </label>
           <div className="flex items-center gap-2">
-            <input type="color" value={form.color_hex || '#6B7280'}
+            <input type="color" value={form.color_hex || 'var(--text-muted)'}
               onChange={e => set('color_hex', e.target.value)}
               className="h-9 w-12 rounded cursor-pointer"
               style={{ border: '1px solid var(--border)', background: 'none', padding: '2px' }} />
             <Input value={form.color_hex || ''} onChange={e => set('color_hex', e.target.value)}
-              placeholder="#6B7280" className="font-mono text-sm" />
+              placeholder="var(--text-muted)" className="font-mono text-sm" />
           </div>
         </div>
         <div className="space-y-1">
@@ -368,7 +368,7 @@ export default function AdminCategories() {
                 <tr key={cat.id}
                   style={{
                     borderBottom: idx < filtered.length - 1 ? '1px solid var(--border)' : 'none',
-                    background: cat.is_active ? 'transparent' : 'rgba(255,255,255,0.02)',
+                    background: cat.is_active ? 'transparent' : 'var(--card-bg)',
                     opacity: cat.is_active ? 1 : 0.5,
                   }}>
                   {/* Order */}
@@ -395,11 +395,11 @@ export default function AdminCategories() {
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-3">
                       <div className="h-8 w-8 rounded-lg flex items-center justify-center flex-shrink-0 overflow-hidden"
-                        style={{ background: (cat.color_hex || '#6B7280') + '22', flexShrink: 0 }}>
+                        style={{ background: (cat.color_hex || 'var(--text-muted)') + '22', flexShrink: 0 }}>
                         {cat.icon_url ? (
                           <img src={cat.icon_url} alt="" style={{ width: 24, height: 24, objectFit: 'contain' }} />
                         ) : (
-                          <span style={{ color: cat.color_hex || '#6B7280', fontSize: 14 }}>
+                          <span style={{ color: cat.color_hex || 'var(--text-muted)', fontSize: 14 }}>
                             {cat.icon_emoji || '⚙'}
                           </span>
                         )}
@@ -437,7 +437,7 @@ export default function AdminCategories() {
                     <span className="px-2 py-1 rounded-full text-xs font-medium"
                       style={{
                         background: cat.is_active ? 'rgba(34,197,94,0.12)' : 'rgba(107,114,128,0.12)',
-                        color: cat.is_active ? '#4ade80' : '#6b7280',
+                        color: cat.is_active ? '#4ade80' : 'var(--text-muted)',
                       }}>
                       {cat.is_active ? 'Active' : 'Inactive'}
                     </span>

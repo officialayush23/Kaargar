@@ -21,7 +21,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 
 const ROLE_CFG = {
-  user:   { label: 'User',   color: '#94A3B8', bg: 'rgba(148,163,184,0.1)', icon: User },
+  user:   { label: 'User',   color: 'var(--text-secondary)', bg: 'rgba(148,163,184,0.1)', icon: User },
   worker: { label: 'Worker', color: '#60a5fa', bg: 'rgba(96,165,250,0.1)',  icon: Briefcase },
   admin:  { label: 'Admin',  color: 'var(--accent)', bg: 'var(--accent-bg)',  icon: ShieldCheck },
 }
@@ -44,16 +44,16 @@ function StatCard({ label, value, color, delay }) {
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, type: 'spring', stiffness: 260, damping: 24 }}
       style={{
-        background: 'rgba(13,17,23,0.85)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        background: 'var(--card-bg)',
+        border: '1px solid var(--card-border)',
         borderRadius: 14,
         padding: '16px 18px',
       }}
     >
-      <p style={{ color: '#475569', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
+      <p style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 500, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
         {label}
       </p>
-      <p style={{ fontSize: 26, fontWeight: 700, fontFamily: 'monospace', color: color || '#F1F5F9' }}>
+      <p style={{ fontSize: 26, fontWeight: 700, fontFamily: 'monospace', color: color || 'var(--text-primary)' }}>
         {value}
       </p>
     </motion.div>
@@ -109,8 +109,8 @@ export default function AdminUsers() {
     <div className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold font-syne" style={{ color: '#F1F5F9' }}>Users</h1>
-        <p style={{ color: '#475569', fontSize: 13, marginTop: 4 }}>All registered platform accounts</p>
+        <h1 className="text-2xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>Users</h1>
+        <p style={{ color: 'var(--text-muted)', fontSize: 13, marginTop: 4 }}>All registered platform accounts</p>
       </div>
 
       {/* Quick stats */}
@@ -123,7 +123,7 @@ export default function AdminUsers() {
       {/* Filter row */}
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-48">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: '#475569' }} />
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4" style={{ color: 'var(--text-muted)' }} />
           <Input
             className="pl-9"
             placeholder="Search by name or email…"
@@ -145,13 +145,13 @@ export default function AdminUsers() {
       </div>
 
       {/* Table */}
-      <div style={{ background: 'rgba(13,17,23,0.85)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, overflow: 'hidden' }}>
+      <div style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', borderRadius: 16, overflow: 'hidden' }}>
         <table className="w-full text-sm">
           <thead>
-            <tr style={{ background: 'rgba(255,255,255,0.02)' }}>
+            <tr style={{ background: 'var(--card-bg)' }}>
               {['User', 'Role', 'Phone', 'Status', 'Joined', 'Last Seen', 'Actions'].map(h => (
                 <th key={h} className="px-4 py-3 text-left font-medium"
-                  style={{ color: '#475569', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   {h}
                 </th>
               ))}
@@ -163,20 +163,20 @@ export default function AdminUsers() {
                 <tr key={i}>
                   {Array.from({ length: 7 }).map((_, j) => (
                     <td key={j} className="px-4 py-3">
-                      <Skeleton style={{ height: 14, background: 'rgba(255,255,255,0.04)', borderRadius: 4 }} />
+                      <Skeleton style={{ height: 14, background: 'var(--card-bg)', borderRadius: 4 }} />
                     </td>
                   ))}
                 </tr>
               ))
             ) : items.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center" style={{ color: '#334155' }}>No users found</td>
+                <td colSpan={7} className="px-4 py-12 text-center" style={{ color: 'var(--text-secondary)' }}>No users found</td>
               </tr>
             ) : items.map((u, idx) => {
               const initials = (u.full_name || u.email).split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
               return (
                 <tr key={u.id}
-                  style={{ borderTop: idx > 0 ? '1px solid rgba(255,255,255,0.04)' : 'none', opacity: u.is_banned ? 0.5 : 1 }}
+                  style={{ borderTop: idx > 0 ? '1px solid var(--card-border)' : 'none', opacity: u.is_banned ? 0.5 : 1 }}
                   className="hover:bg-white/[0.02] transition-colors"
                 >
                   {/* User */}
@@ -184,20 +184,20 @@ export default function AdminUsers() {
                     <div className="flex items-center gap-3">
                       <Avatar className="h-8 w-8 shrink-0">
                         <AvatarFallback className="text-xs font-bold"
-                          style={{ background: 'rgba(255,255,255,0.07)', color: '#94A3B8' }}>
+                          style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)' }}>
                           {initials}
                         </AvatarFallback>
                       </Avatar>
                       <div className="min-w-0">
-                        <div className="font-medium truncate max-w-[160px]" style={{ color: '#F1F5F9' }}>
+                        <div className="font-medium truncate max-w-[160px]" style={{ color: 'var(--text-primary)' }}>
                           {u.full_name || '—'}
                         </div>
-                        <div className="text-xs truncate max-w-[160px]" style={{ color: '#475569' }}>{u.email}</div>
+                        <div className="text-xs truncate max-w-[160px]" style={{ color: 'var(--text-muted)' }}>{u.email}</div>
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-3"><RoleBadge role={u.role} /></td>
-                  <td className="px-4 py-3 text-xs" style={{ color: '#64748B' }}>{u.phone || '—'}</td>
+                  <td className="px-4 py-3 text-xs" style={{ color: 'var(--text-muted)' }}>{u.phone || '—'}</td>
                   <td className="px-4 py-3">
                     {u.is_banned ? (
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
@@ -211,13 +211,13 @@ export default function AdminUsers() {
                       </span>
                     ) : (
                       <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full"
-                        style={{ background: 'rgba(107,114,128,0.1)', color: '#6b7280' }}>
+                        style={{ background: 'rgba(107,114,128,0.1)', color: 'var(--text-muted)' }}>
                         <AlertTriangle size={9} /> Inactive
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: '#475569' }}>{fmtDate(u.created_at)}</td>
-                  <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: '#334155' }}>{fmtDate(u.last_seen_at)}</td>
+                  <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: 'var(--text-muted)' }}>{fmtDate(u.created_at)}</td>
+                  <td className="px-4 py-3 text-xs whitespace-nowrap" style={{ color: 'var(--text-secondary)' }}>{fmtDate(u.last_seen_at)}</td>
                   {/* Actions */}
                   <td className="px-4 py-3">
                     {u.role !== 'admin' && (
@@ -249,20 +249,20 @@ export default function AdminUsers() {
 
         {/* Pagination */}
         {pages > 1 && (
-          <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-            <span style={{ color: '#475569', fontSize: 12 }}>Showing {items.length} of {total} users</span>
+          <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: '1px solid var(--card-border)' }}>
+            <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>Showing {items.length} of {total} users</span>
             <div className="flex items-center gap-2">
               <button
                 disabled={page <= 1}
                 onClick={() => setPage(p => p - 1)}
                 className="px-3 py-1 rounded-lg text-xs disabled:opacity-30"
-                style={{ background: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}
+                style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: '1px solid var(--card-border)' }}
               >Prev</button>
               <button
                 disabled={page >= pages}
                 onClick={() => setPage(p => p + 1)}
                 className="px-3 py-1 rounded-lg text-xs disabled:opacity-30"
-                style={{ background: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.08)' }}
+                style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: '1px solid var(--card-border)' }}
               >Next</button>
             </div>
           </div>
@@ -271,26 +271,26 @@ export default function AdminUsers() {
 
       {/* Ban confirm dialog */}
       <AlertDialog open={!!banTarget} onOpenChange={v => !v && setBanTarget(null)}>
-        <AlertDialogContent style={{ background: '#0D1117', border: '1px solid rgba(255,255,255,0.1)' }}>
+        <AlertDialogContent style={{ background: 'var(--bg-surface)', border: '1px solid var(--card-border)' }}>
           <AlertDialogHeader>
-            <AlertDialogTitle style={{ color: '#F1F5F9' }}>
+            <AlertDialogTitle style={{ color: 'var(--text-primary)' }}>
               Ban "{banTarget?.full_name || banTarget?.email}"?
             </AlertDialogTitle>
-            <AlertDialogDescription style={{ color: '#475569' }}>
+            <AlertDialogDescription style={{ color: 'var(--text-muted)' }}>
               This will immediately block the user from logging in.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <div className="my-2">
             <input
               className="w-full px-3 py-2 rounded-lg text-sm outline-none"
-              style={{ background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.1)', color: '#F1F5F9' }}
+              style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--text-primary)' }}
               placeholder="Reason for ban (optional)"
               value={banReason}
               onChange={e => setBanReason(e.target.value)}
             />
           </div>
           <AlertDialogFooter>
-            <AlertDialogCancel style={{ background: 'rgba(255,255,255,0.05)', color: '#94A3B8', border: '1px solid rgba(255,255,255,0.1)' }}>
+            <AlertDialogCancel style={{ background: 'var(--card-bg)', color: 'var(--text-secondary)', border: '1px solid var(--card-border)' }}>
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction

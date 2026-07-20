@@ -120,7 +120,7 @@ function PackageCard({ pkg, onClick, index }) {
     >
       <div className="flex items-start justify-between">
         <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-          style={{ background: 'rgba(255,255,255,0.06)' }}>
+          style={{ background: 'var(--card-bg)' }}>
           <Package className="h-5 w-5 text-amber-400" />
         </div>
         {discount > 0 && (
@@ -220,7 +220,7 @@ function SectionHeader({ icon: Icon, title, subtitle, accent = 'var(--accent)', 
     <div className="flex items-start justify-between mb-4">
       <div className="flex items-start gap-3">
         <div className="w-8 h-8 rounded-xl flex items-center justify-center mt-0.5"
-          style={{ background: 'rgba(255,255,255,0.06)' }}>
+          style={{ background: 'var(--card-bg)' }}>
           <Icon className="h-4 w-4" style={{ color: accent }} />
         </div>
         <div>
@@ -454,7 +454,7 @@ function DiscoveryHome({ onSearch, navigate }) {
               style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
             >
               <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: 'rgba(255,255,255,0.06)' }}>
+                style={{ background: 'var(--card-bg)' }}>
                 <Icon className="h-4.5 w-4.5" style={{ color, width: 18, height: 18 }} />
               </div>
               <div>
