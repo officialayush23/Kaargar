@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, User, Tag, FileText,
   MapPin, Rocket, Upload, X, Check, Loader2,
-  IndianRupee, Clock, AlertCircle, Search, Calendar,
+  Clock, AlertCircle, Search, Calendar,
   Video, Play,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
@@ -12,6 +12,7 @@ import { Background } from '@/components/glass/Background'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput, GlassTextarea } from '@/components/glass/GlassInput'
+import { GlassSelect } from '@/components/glass/GlassSelect'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { PUNE_AREAS } from '@/lib/utils'
@@ -142,9 +143,8 @@ function AreaPicker({ value, onChange, error }) {
               right: 0,
               zIndex: 120,
               borderRadius: '14px',
-              background: 'var(--g-bg-mid)',
-              backdropFilter: 'blur(24px) saturate(180%)',
-              border: '1px solid var(--g-border)',
+              background: 'var(--elevated)',
+              border: '1px solid var(--card-border)',
               boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
               overflow: 'hidden',
             }}
@@ -234,8 +234,6 @@ export default function WorkerOnboardPage() {
   const [bio, setBio] = useState('')
   const [yearsExp, setYearsExp] = useState('')
   const [phone, setPhone] = useState(useAuthStore.getState().user?.phone?.replace(/^\+91/, '') || '')
-  const [minRate, setMinRate] = useState('')
-  const [maxRate, setMaxRate] = useState('')
 
   // Step 2: Categories
   const [selectedCats, setSelectedCats] = useState([])
@@ -386,11 +384,15 @@ export default function WorkerOnboardPage() {
         } catch (_) {}
       }
 
-      if (minRate || maxRate) {
+      // The intro video was uploaded to storage back in Step 4, before the
+      // WorkerProfile row existed — register it now so it actually shows up
+      // for admin review (registration silently no-ops without a profile).
+      if (videoUploaded) {
         try {
-          await api.patch('/workers/profile', {
-            min_rate: minRate ? Number(minRate) : undefined,
-            max_rate: maxRate ? Number(maxRate) : undefined,
+          await api.post('/workers/documents', {
+            type: 'verification_video',
+            cloudinary_url: videoUploaded.url,
+            cloudinary_id: videoUploaded.path,
           })
         } catch (_) {}
       }
@@ -432,12 +434,12 @@ export default function WorkerOnboardPage() {
   }
 
   return (
-    <div className="min-h-screen relative" style={{ background: 'var(--page-bg)' }}>
+    <div className="h-screen relative overflow-hidden flex flex-col" style={{ background: 'var(--page-bg)' }}>
       <Background />
 
-      <div className="max-w-sm mx-auto px-4 py-6 pb-10">
+      <div className="max-w-sm mx-auto px-4 pt-6 w-full flex-1 flex flex-col min-h-0">
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex items-center gap-3 mb-6 shrink-0">
           {stepIdx > 0 ? (
             <button
               onClick={prevStep}
@@ -474,7 +476,7 @@ export default function WorkerOnboardPage() {
         </div>
 
         {/* Step progress bars */}
-        <div className="flex items-center gap-1 mb-6">
+        <div className="flex items-center gap-1 mb-6 shrink-0">
           {STEP_META.map((s, i) => {
             const isActive = i === stepIdx
             const isDone = i < stepIdx
@@ -498,7 +500,8 @@ export default function WorkerOnboardPage() {
           })}
         </div>
 
-        {/* Step content */}
+        {/* Step content — scrollable, so header/progress/nav stay pinned on one screen */}
+        <div className="flex-1 min-h-0 overflow-y-auto pr-1 -mr-1 pb-3">
         <AnimatePresence mode="wait" custom={direction}>
 
           {/* ── STEP 1: Bio ── */}
@@ -565,32 +568,6 @@ export default function WorkerOnboardPage() {
                   </div>
                 </div>
               </GlassCard>
-
-              <GlassCard className="p-5 space-y-4" style={{ position: 'relative', zIndex: 30 }}>
-                <h3 className="text-sm font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
-                  Rate range <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
-                </h3>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
-                  <GlassInput
-                    label="Min (₹/hr)"
-                    placeholder="300"
-                    type="number"
-                    min="0"
-                    value={minRate}
-                    onChange={e => setMinRate(e.target.value)}
-                    icon={IndianRupee}
-                  />
-                  <GlassInput
-                    label="Max (₹/hr)"
-                    placeholder="800"
-                    type="number"
-                    min="0"
-                    value={maxRate}
-                    onChange={e => setMaxRate(e.target.value)}
-                    icon={IndianRupee}
-                  />
-                </div>
-              </GlassCard>
             </motion.div>
           )}
 
@@ -626,7 +603,7 @@ export default function WorkerOnboardPage() {
                     <Loader2 size={24} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gridAutoRows: '1fr', gap: '8px', alignItems: 'stretch' }}>
                     {categories.map(cat => {
                       const selected = selectedCats.find(c => c.id === cat.id)
                       return (
@@ -637,6 +614,11 @@ export default function WorkerOnboardPage() {
                           style={{
                             padding: '12px',
                             borderRadius: '12px',
+                            width: '100%',
+                            minWidth: 0,
+                            maxWidth: '100%',
+                            overflow: 'hidden',
+                            boxSizing: 'border-box',
                             border: selected
                               ? `1.5px solid ${cat.color_hex || 'var(--amber)'}`
                               : '1px solid var(--card-border)',
@@ -727,6 +709,7 @@ export default function WorkerOnboardPage() {
                         whileTap={{ scale: 0.96 }}
                         style={{
                           padding: '9px 12px', borderRadius: '10px',
+                          width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box',
                           border: docType === dt.value
                             ? '1.5px solid var(--azure)'
                             : '1px solid var(--card-border)',
@@ -1028,6 +1011,7 @@ export default function WorkerOnboardPage() {
                         whileTap={{ scale: 0.94 }}
                         style={{
                           padding: '10px 6px', borderRadius: '10px',
+                          width: '100%', minWidth: 0, maxWidth: '100%', boxSizing: 'border-box',
                           border: radius === opt.value
                             ? '1.5px solid var(--amber)'
                             : '1px solid var(--card-border)',
@@ -1117,34 +1101,22 @@ export default function WorkerOnboardPage() {
                       <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center' }}>
                         <div style={{ flex: 1 }}>
                           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>From</p>
-                          <select
+                          <GlassSelect
+                            size="sm"
                             value={day.start_time}
-                            onChange={e => setDayTime(i, 'start_time', e.target.value)}
-                            style={{
-                              width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: 13,
-                              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-                              color: 'var(--text-primary)', cursor: 'pointer',
-                            }}>
-                            {TIME_OPTS.map(t => (
-                              <option key={t} value={t}>{to12h(t)}</option>
-                            ))}
-                          </select>
+                            onChange={v => setDayTime(i, 'start_time', v)}
+                            options={TIME_OPTS.map(t => ({ value: t, label: to12h(t) }))}
+                          />
                         </div>
                         <div style={{ paddingTop: 18, color: 'var(--text-muted)', fontSize: 14 }}>—</div>
                         <div style={{ flex: 1 }}>
                           <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>To</p>
-                          <select
+                          <GlassSelect
+                            size="sm"
                             value={day.end_time}
-                            onChange={e => setDayTime(i, 'end_time', e.target.value)}
-                            style={{
-                              width: '100%', padding: '7px 10px', borderRadius: 8, fontSize: 13,
-                              background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-                              color: 'var(--text-primary)', cursor: 'pointer',
-                            }}>
-                            {TIME_OPTS.filter(t => t > day.start_time).map(t => (
-                              <option key={t} value={t}>{to12h(t)}</option>
-                            ))}
-                          </select>
+                            onChange={v => setDayTime(i, 'end_time', v)}
+                            options={TIME_OPTS.filter(t => t > day.start_time).map(t => ({ value: t, label: to12h(t) }))}
+                          />
                         </div>
                       </div>
                     )}
@@ -1225,9 +1197,10 @@ export default function WorkerOnboardPage() {
           )}
 
         </AnimatePresence>
+        </div>
 
-        {/* Navigation */}
-        <div style={{ display: 'flex', gap: 12, padding: '20px 0 32px' }}>
+        {/* Navigation — pinned, always visible */}
+        <div className="shrink-0" style={{ display: 'flex', gap: 12, padding: '14px 0' }}>
           {stepIdx > 0 && (
             <GlassButton variant="ghost" size="lg" style={{ flex: 1 }} onClick={prevStep}>
               Back

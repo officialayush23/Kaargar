@@ -1,6 +1,7 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Edit3, Loader2, Check, MapPin, Store, Tag, X } from 'lucide-react'
+import { Plus, Trash2, Edit3, Loader2, Check, MapPin, Store, Tag, X, Package, ChevronRight } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
@@ -162,6 +163,17 @@ function TagInput({ selectedTags, onChange }) {
   )
 }
 
+// ── Section label ────────────────────────────────────────────────────────────
+function SectionLabel({ children }) {
+  return (
+    <p className="text-[11px] font-semibold mb-2" style={{
+      color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em',
+    }}>
+      {children}
+    </p>
+  )
+}
+
 // ── Service form ──────────────────────────────────────────────────────────────
 function ServiceForm({ initial, onSave, onCancel, minPrice }) {
   const [title, setTitle]             = useState(initial?.title || '')
@@ -174,90 +186,151 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
   const [priceError, setPriceError]   = useState('')
   const showVisitFee = serviceMode === 'onsite' || serviceMode === 'both'
 
+  // Live price validation — checks against category floor on every keystroke,
+  // not just on submit, so the red warning shows up immediately.
+  useEffect(() => {
+    if (minPrice && hourlyRate !== '' && !isNaN(Number(hourlyRate)) && Number(hourlyRate) < Number(minPrice)) {
+      setPriceError(`Must be at least ₹${minPrice} — the platform minimum for this category`)
+    } else {
+      setPriceError('')
+    }
+  }, [hourlyRate, minPrice])
+
+  const isPriceInvalid = !!priceError
+  const canSubmit = !!title.trim() && !isPriceInvalid && !loading
+
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!title.trim()) return
-    // Frontend price floor guard (mirrors backend)
-    if (minPrice && hourlyRate && Number(hourlyRate) < Number(minPrice)) {
-      setPriceError(`Minimum price for this category is ₹${minPrice}`)
-      return
-    }
-    setPriceError('')
+    if (!canSubmit) return
     setLoading(true)
     try {
       const payload = { title: title.trim(), service_mode: serviceMode, _tags: tags }
       if (description.trim()) payload.description = description.trim()
       if (hourlyRate && !isNaN(Number(hourlyRate))) payload.hourly_rate = Number(hourlyRate)
       if (showVisitFee && visitFee && !isNaN(Number(visitFee))) payload.visit_fee = Number(visitFee)
+      // onSave must return the mutation's promise (mutateAsync) — awaiting it
+      // here is what keeps the button disabled + spinning for the full
+      // round-trip, instead of resetting instantly and inviting a double-click.
       await onSave(payload)
+    } catch (_) {
+      // error toast already surfaced by the mutation's onError
     } finally {
       setLoading(false)
     }
   }
 
-  const inp = "w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-all"
+  const inp = "w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-all disabled:opacity-60 disabled:cursor-not-allowed"
   const inpStyle = { background: 'var(--g-bg)', border: '1px solid var(--g-border)', color: 'var(--text-primary)' }
-  const inpErrorStyle = { ...inpStyle, border: '1px solid rgba(239,68,68,0.5)' }
+  const inpErrorStyle = { ...inpStyle, border: '1.5px solid rgba(239,68,68,0.55)' }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-2xl p-4 space-y-3"
-      style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--border)' }}>
-      <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-        {initial ? 'Edit service' : 'Add service'}
-      </p>
-      <input value={title} onChange={e => setTitle(e.target.value)}
-        placeholder="Service title (e.g. Plumbing repair)" required className={inp} style={inpStyle} />
-      <textarea value={description} onChange={e => setDescription(e.target.value)}
-        placeholder="Brief description (optional)" rows={2} className={inp + ' resize-none'} style={inpStyle} />
-      <div className="grid grid-cols-2 gap-2">
-        <div>
-          <div className="flex items-center justify-between mb-1.5">
-            <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Base rate ₹</p>
-            {minPrice && (
-              <span className="text-[12px] font-medium px-1.5 py-0.5 rounded-md"
-                style={{ background: 'var(--accent-deep)', color: 'var(--accent)' }}>
-                Min ₹{minPrice}
-              </span>
-            )}
+    <form onSubmit={handleSubmit} className="rounded-2xl p-5 space-y-5"
+      style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--border)', position: 'relative' }}>
+
+      {/* Full-form overlay while saving — blocks all input, no double-submits */}
+      {loading && (
+        <div className="absolute inset-0 rounded-2xl flex items-center justify-center z-10"
+          style={{ background: 'var(--modal-backdrop, rgba(0,0,0,0.35))', backdropFilter: 'blur(2px)' }}>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full"
+            style={{ background: 'var(--elevated)', border: '1px solid var(--g-border)' }}>
+            <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent)' }} />
+            <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Saving…</span>
           </div>
-          <input type="number" value={hourlyRate}
-            onChange={e => { setHourlyRate(e.target.value); setPriceError('') }}
-            placeholder={minPrice ? `Min ₹${minPrice}` : 'e.g. 499'}
-            min={minPrice || 0} className={inp}
-            style={priceError ? inpErrorStyle : inpStyle} />
-          {priceError && (
-            <p className="text-[12px] mt-1" style={{ color: '#f87171' }}>{priceError}</p>
-          )}
         </div>
-        <AnimatePresence>
-          {showVisitFee && (
-            <motion.div initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.15 }}>
-              <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Visit fee ₹</p>
-              <input type="number" value={visitFee} onChange={e => setVisitFee(e.target.value)}
-                placeholder="e.g. 99" min={0} className={inp} style={inpStyle} />
-            </motion.div>
-          )}
-        </AnimatePresence>
+      )}
+
+      <div className="flex items-center justify-between">
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+          {initial ? 'Edit service' : 'Add service'}
+        </p>
       </div>
-      <ServiceModeToggle value={serviceMode} onChange={setServiceMode} />
-      <TagInput selectedTags={tags} onChange={setTags} />
-      <div className="flex gap-2 pt-1">
-        <button type="button" onClick={onCancel} className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors"
-          style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)', color: 'var(--text-secondary)' }}>
-          Cancel
-        </button>
-        <button type="submit" disabled={loading || !title.trim()}
-          className="flex-1 py-2.5 rounded-xl btn-brand text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50">
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
-          Save
-        </button>
-      </div>
+
+      <fieldset disabled={loading} className="space-y-5 border-0 p-0 m-0">
+
+        {/* Basic info */}
+        <div className="space-y-2.5">
+          <SectionLabel>Basic info</SectionLabel>
+          <input value={title} onChange={e => setTitle(e.target.value)}
+            placeholder="Service title (e.g. Plumbing repair)" required className={inp} style={inpStyle} />
+          <textarea value={description} onChange={e => setDescription(e.target.value)}
+            placeholder="Brief description (optional)" rows={2} className={inp + ' resize-none'} style={inpStyle} />
+        </div>
+
+        {/* Pricing */}
+        <div>
+          <SectionLabel>Pricing</SectionLabel>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Base rate ₹</p>
+                {minPrice && (
+                  <span className="text-[12px] font-medium px-1.5 py-0.5 rounded-md"
+                    style={{ background: 'var(--accent-deep)', color: 'var(--accent)' }}>
+                    Min ₹{minPrice}
+                  </span>
+                )}
+              </div>
+              <input type="number" value={hourlyRate}
+                onChange={e => setHourlyRate(e.target.value)}
+                placeholder={minPrice ? `Min ₹${minPrice}` : 'e.g. 499'}
+                min={minPrice || 0} className={inp}
+                aria-invalid={isPriceInvalid}
+                style={isPriceInvalid ? inpErrorStyle : inpStyle} />
+            </div>
+            <AnimatePresence>
+              {showVisitFee && (
+                <motion.div initial={{ opacity: 0, x: 8 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 8 }} transition={{ duration: 0.15 }}>
+                  <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Visit fee ₹</p>
+                  <input type="number" value={visitFee} onChange={e => setVisitFee(e.target.value)}
+                    placeholder="e.g. 99" min={0} className={inp} style={inpStyle} />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+          <AnimatePresence>
+            {priceError && (
+              <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.15 }} style={{ overflow: 'hidden' }}>
+                <div className="flex items-center gap-1.5 mt-2 px-3 py-2 rounded-lg"
+                  style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+                  <span className="text-[12px] font-medium" style={{ color: '#f87171' }}>{priceError}</span>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Availability */}
+        <div>
+          <SectionLabel>Availability mode</SectionLabel>
+          <ServiceModeToggle value={serviceMode} onChange={setServiceMode} />
+        </div>
+
+        {/* Tags */}
+        <div>
+          <SectionLabel>Tags</SectionLabel>
+          <TagInput selectedTags={tags} onChange={setTags} />
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button type="button" onClick={onCancel} disabled={loading}
+            className="flex-1 py-2.5 rounded-xl text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)', color: 'var(--text-secondary)' }}>
+            Cancel
+          </button>
+          <button type="submit" disabled={!canSubmit}
+            className="flex-1 py-2.5 rounded-xl btn-brand text-sm font-medium flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed transition-transform active:scale-[0.98]">
+            {loading ? <Loader2 size={14} className="animate-spin" /> : <Check size={14} />}
+            {loading ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </fieldset>
     </form>
   )
 }
 
 // ── Service card ──────────────────────────────────────────────────────────────
-function ServiceCard({ svc, onEdit, onDelete, deleting }) {
+function ServiceCard({ svc, onEdit, onDelete, deleting, disabled }) {
   const modeColor = MODE_COLORS[svc.service_mode || 'both']
   const modeLabel = MODE_OPTIONS.find(o => o.value === (svc.service_mode || 'both'))?.label || 'Both'
   const tags = svc.tags || []
@@ -302,11 +375,13 @@ function ServiceCard({ svc, onEdit, onDelete, deleting }) {
           )}
         </div>
         <div className="flex gap-1 shrink-0">
-          <button onClick={onEdit} className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
+          <button onClick={onEdit} disabled={disabled}
+            className="w-8 h-8 rounded-xl flex items-center justify-center transition-transform active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}>
             <Edit3 size={13} style={{ color: 'var(--text-muted)' }} />
           </button>
-          <button onClick={onDelete} disabled={deleting} className="w-8 h-8 rounded-xl flex items-center justify-center transition-colors"
+          <button onClick={onDelete} disabled={deleting || disabled}
+            className="w-8 h-8 rounded-xl flex items-center justify-center transition-transform active:scale-90 disabled:opacity-40 disabled:cursor-not-allowed"
             style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
             {deleting ? <Loader2 size={13} className="animate-spin" style={{ color: '#f87171' }} /> : <Trash2 size={13} style={{ color: '#f87171' }} />}
           </button>
@@ -389,6 +464,10 @@ export default function WorkerServices() {
     onError: () => toast.error('Failed to delete'),
   })
 
+  // Any in-flight mutation — used to guard against opening a second form
+  // (e.g. Add + Edit at once) while one is still saving.
+  const anyPending = addMut.isPending || updateMut.isPending || deleteMut.isPending
+
   return (
     <div className="px-4 pt-5 pb-8 space-y-4">
       <div className="flex items-center justify-between">
@@ -397,16 +476,42 @@ export default function WorkerServices() {
             {services.length} service{services.length !== 1 ? 's' : ''} listed
           </p>
         </div>
-        <button onClick={() => { setShowAdd(true); setEditingId(null) }}
-          className="flex items-center gap-1.5 px-3 py-2 rounded-xl btn-brand text-sm font-medium">
+        <button
+          onClick={() => { setShowAdd(true); setEditingId(null) }}
+          disabled={anyPending}
+          className="flex items-center gap-1.5 px-3 py-2 rounded-xl btn-brand text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed transition-transform active:scale-[0.97]"
+        >
           <Plus size={15} /> Add
         </button>
       </div>
 
+      {/* Bundle several services into a package — surfaced here since it's a
+          natural next step after adding services, not just buried in the menu. */}
+      <Link to="/worker/packages">
+        <motion.div
+          whileHover={{ y: -1 }}
+          whileTap={{ scale: 0.98 }}
+          className="flex items-center gap-3 rounded-xl p-3.5 cursor-pointer transition-colors"
+          style={{ background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)' }}
+        >
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--accent-bg-md)' }}>
+            <Package size={16} style={{ color: 'var(--accent)' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>Create a package</p>
+            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Bundle your services together at a combined price</p>
+          </div>
+          <ChevronRight size={16} style={{ color: 'var(--accent)' }} className="shrink-0" />
+        </motion.div>
+      </Link>
+
       <AnimatePresence>
         {showAdd && (
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
-            <ServiceForm onSave={(data) => addMut.mutate(data)} onCancel={() => setShowAdd(false)} minPrice={minPrice} />
+            {/* mutateAsync (not mutate) so the form's own await actually spans
+                the full request — this is what keeps Save disabled/spinning
+                for the whole round-trip instead of resetting instantly. */}
+            <ServiceForm onSave={(data) => addMut.mutateAsync(data)} onCancel={() => setShowAdd(false)} minPrice={minPrice} />
           </motion.div>
         )}
       </AnimatePresence>
@@ -423,13 +528,14 @@ export default function WorkerServices() {
             {services.map((svc) =>
               editingId === svc.id ? (
                 <motion.div key={svc.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
-                  <ServiceForm initial={svc} onSave={(data) => updateMut.mutate({ id: svc.id, data })} onCancel={() => setEditingId(null)} minPrice={minPrice} />
+                  <ServiceForm initial={svc} onSave={(data) => updateMut.mutateAsync({ id: svc.id, data })} onCancel={() => setEditingId(null)} minPrice={minPrice} />
                 </motion.div>
               ) : (
                 <ServiceCard key={svc.id} svc={svc}
-                  onEdit={() => { setEditingId(svc.id); setShowAdd(false) }}
-                  onDelete={() => deleteMut.mutate(svc.id)}
+                  onEdit={() => { if (anyPending) return; setEditingId(svc.id); setShowAdd(false) }}
+                  onDelete={() => { if (deleteMut.isPending) return; deleteMut.mutate(svc.id) }}
                   deleting={deleteMut.isPending && deleteMut.variables === svc.id}
+                  disabled={anyPending}
                 />
               )
             )}

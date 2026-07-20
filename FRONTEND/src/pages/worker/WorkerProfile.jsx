@@ -7,6 +7,7 @@ import { useAuthStore } from '@/stores/auth'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { ProfilePhotoUpload } from '@/components/kaargar/MediaUpload'
 import { PUNE_AREAS, getInitials } from '@/lib/utils'
+import { GlassSelect } from '@/components/glass/GlassSelect'
 import { toast } from 'sonner'
 
 function Field({ label, icon: Icon, children }) {
@@ -133,14 +134,12 @@ export default function WorkerProfile() {
         </Field>
 
         <Field label="Service area" icon={MapPin}>
-          <select
+          <GlassSelect
             value={form.area}
-            onChange={set('area')}
-            className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] focus:outline-none appearance-none"
-          >
-            <option value="">Select area</option>
-            {PUNE_AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
+            onChange={(v) => setForm((f) => ({ ...f, area: v }))}
+            placeholder="Select area"
+            options={PUNE_AREAS}
+          />
         </Field>
 
         <div className="grid grid-cols-2 gap-3">

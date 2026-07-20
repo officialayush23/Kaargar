@@ -14,6 +14,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
+import { GlassSelect } from '@/components/glass/GlassSelect'
 
 const MODE_COLORS = {
   instant:   { bg: 'rgba(34,197,94,0.12)',  text: '#4ade80',  label: 'Instant'   },
@@ -126,13 +127,12 @@ function CategoryForm({ initial, onSubmit, onCancel, loading }) {
           <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
             Mode *
           </label>
-          <select value={form.mode} onChange={e => set('mode', e.target.value)}
-            className="w-full px-3 py-2 rounded-lg text-sm"
-            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-            <option value="instant">Instant</option>
-            <option value="discovery">Discovery</option>
-            <option value="both">Both</option>
-          </select>
+          <GlassSelect value={form.mode} onChange={v => set('mode', v)}
+            options={[
+              { value: 'instant', label: 'Instant' },
+              { value: 'discovery', label: 'Discovery' },
+              { value: 'both', label: 'Both' },
+            ]} />
         </div>
         <div className="space-y-1">
           <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
@@ -170,13 +170,9 @@ function CategoryForm({ initial, onSubmit, onCancel, loading }) {
           <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
             Icon (Lucide name)
           </label>
-          <select value={form.icon_name || ''} onChange={e => set('icon_name', e.target.value)}
-            className="w-full px-3 py-2 rounded-lg text-sm"
-            style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-            {ICON_OPTIONS.map(ic => (
-              <option key={ic} value={ic}>{ic}</option>
-            ))}
-          </select>
+          <GlassSelect value={form.icon_name || ''} onChange={v => set('icon_name', v)}
+            placeholder="Select icon"
+            options={ICON_OPTIONS} />
         </div>
       </div>
 
@@ -329,14 +325,13 @@ export default function AdminCategories() {
           <Input className="pl-9" placeholder="Search professions…"
             value={search} onChange={e => setSearch(e.target.value)} />
         </div>
-        <select value={modeFilter} onChange={e => setModeFilter(e.target.value)}
-          className="px-3 py-2 rounded-lg text-sm"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}>
-          <option value="all">All modes</option>
-          <option value="instant">Instant</option>
-          <option value="discovery">Discovery</option>
-          <option value="both">Both</option>
-        </select>
+        <GlassSelect value={modeFilter} onChange={setModeFilter}
+          options={[
+            { value: 'all', label: 'All modes' },
+            { value: 'instant', label: 'Instant' },
+            { value: 'discovery', label: 'Discovery' },
+            { value: 'both', label: 'Both' },
+          ]} />
         <label className="flex items-center gap-2 text-sm cursor-pointer select-none"
           style={{ color: 'var(--text-secondary)' }}>
           <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} />

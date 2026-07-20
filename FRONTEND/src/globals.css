@@ -91,6 +91,9 @@
   --card-bg:     rgba(255,255,255,0.045);
   --card-border: rgba(255,255,255,0.08);
   --card-hover:  rgba(255,255,255,0.07);
+
+  /* Modal / sheet backdrop — transparent, blur does the work */
+  --modal-backdrop: transparent;
 }
 
 /* ─── LIGHT MODE TOKENS ─── */
@@ -170,6 +173,9 @@
   --card-bg:     rgba(255,255,255,0.9);
   --card-border: rgba(0,0,0,0.07);
   --card-hover:  rgba(0,0,0,0.03);
+
+  /* Modal / sheet backdrop — transparent, blur does the work */
+  --modal-backdrop: transparent;
 }
 
 /* ================================================================
@@ -198,6 +204,64 @@ html, body, #root {
 [data-theme="light"] ::-webkit-scrollbar-thumb {
   background: rgba(0,0,0,0.12);
 }
+
+/* ================================================================
+   TOAST / ALERT NOTIFICATIONS (sonner)
+   Bigger, glassy, theme-matched alerts for both worker and user side.
+   ================================================================ */
+[data-sonner-toaster] {
+  --width: 380px !important;
+  font-family: 'Poppins', 'Arial', sans-serif !important;
+}
+
+[data-sonner-toast] {
+  padding: 18px 20px !important;
+  min-height: 68px !important;
+  border-radius: 18px !important;
+  gap: 14px !important;
+  align-items: center !important;
+  box-shadow: 0 14px 44px rgba(0,0,0,0.32), inset 0 1px 0 rgba(255,255,255,0.06) !important;
+  -webkit-backdrop-filter: blur(24px) saturate(180%) !important;
+  backdrop-filter: blur(24px) saturate(180%) !important;
+  border-left-width: 4px !important;
+}
+
+[data-sonner-toast] [data-icon] {
+  width: 22px !important;
+  height: 22px !important;
+  margin-right: 2px !important;
+}
+[data-sonner-toast] [data-icon] svg {
+  width: 20px !important;
+  height: 20px !important;
+}
+
+[data-sonner-toast] [data-title] {
+  font-size: 15px !important;
+  font-weight: 600 !important;
+  line-height: 1.45 !important;
+}
+
+[data-sonner-toast] [data-description] {
+  font-size: 13px !important;
+  line-height: 1.5 !important;
+  margin-top: 3px !important;
+  opacity: 0.75;
+}
+
+[data-sonner-toast] [data-close-button] {
+  width: 24px !important;
+  height: 24px !important;
+  background: var(--card-bg) !important;
+  border: 1px solid var(--card-border) !important;
+  color: var(--text-secondary) !important;
+}
+
+[data-sonner-toast][data-type="success"] { border-left-color: var(--emerald) !important; }
+[data-sonner-toast][data-type="error"]   { border-left-color: #f87171 !important; }
+[data-sonner-toast][data-type="warning"] { border-left-color: var(--amber) !important; }
+[data-sonner-toast][data-type="info"]    { border-left-color: var(--azure) !important; }
+[data-sonner-toast]:not([data-type])     { border-left-color: var(--accent) !important; }
 
 /* ================================================================
    LIQUID GLASS UTILITIES

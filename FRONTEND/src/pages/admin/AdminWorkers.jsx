@@ -5,6 +5,7 @@
  * Actions: Approve, Reject (+ reason), Suspend, Request Re-upload.
  */
 import { useState } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -167,7 +168,7 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
   const identityDocs = (detail?.documents || []).filter(d => d.type !== 'verification_video')
   const videoDocs = (detail?.documents || []).filter(d => d.type === 'verification_video')
 
-  return (
+  return createPortal(
     <>
       {/* Backdrop */}
       <motion.div
@@ -177,26 +178,34 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
         onClick={onClose}
         style={{
           position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
-          backdropFilter: 'blur(4px)', zIndex: 50,
+          backdropFilter: 'blur(6px)', zIndex: 50,
         }}
       />
 
-      {/* Panel */}
-      <motion.div
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ type: 'spring', stiffness: 320, damping: 32 }}
+      {/* Popup */}
+      <div
         style={{
-          position: 'fixed', top: 0, right: 0, bottom: 0,
-          width: '560px', maxWidth: '100vw',
-          background: 'var(--bg-surface)',
-          borderLeft: '1px solid var(--card-border)',
-          zIndex: 51,
-          display: 'flex', flexDirection: 'column',
-          overflowY: 'hidden',
+          position: 'fixed', inset: 0, zIndex: 51,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '24px', pointerEvents: 'none',
         }}
       >
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95, y: 12 }}
+          animate={{ opacity: 1, scale: 1, y: 0 }}
+          exit={{ opacity: 0, scale: 0.95, y: 12 }}
+          transition={{ type: 'spring', stiffness: 340, damping: 30 }}
+          style={{
+            width: '100%', maxWidth: '820px', maxHeight: '88vh',
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--card-border)',
+            borderRadius: '20px',
+            boxShadow: '0 24px 70px rgba(0,0,0,0.45)',
+            display: 'flex', flexDirection: 'column',
+            overflow: 'hidden',
+            pointerEvents: 'auto',
+          }}
+        >
         {/* Panel header */}
         <div style={{
           padding: '20px 24px',
@@ -350,7 +359,7 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
                   <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     Identity Documents ({identityDocs.length})
                   </p>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
                     {identityDocs.map(doc => <DocCard key={doc.id} doc={doc} />)}
                   </div>
                 </div>
@@ -428,8 +437,10 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
             </div>
           </div>
         )}
-      </motion.div>
-    </>
+        </motion.div>
+      </div>
+    </>,
+    document.body
   )
 }
 
@@ -491,7 +502,7 @@ export default function AdminWorkers() {
   })
 
   const approveMut = useMutation({
-    mutationFn: (detail) => api.post(`/admin/workers/${detail.user_id}/approve`),
+    mutationFn: (detail) => api.post(`/admin/workers/${detail.id}/approve`),
     onSuccess: () => {
       qc.invalidateQueries(['admin', 'workers'])
       qc.invalidateQueries(['admin', 'worker-detail', selectedId])
@@ -502,7 +513,7 @@ export default function AdminWorkers() {
   })
 
   const rejectMut = useMutation({
-    mutationFn: ({ detail, reason }) => api.post(`/admin/workers/${detail.user_id}/reject`, { reason }),
+    mutationFn: ({ detail, reason }) => api.post(`/admin/workers/${detail.id}/reject`, { reason }),
     onSuccess: () => {
       qc.invalidateQueries(['admin', 'workers'])
       qc.invalidateQueries(['admin', 'worker-detail', selectedId])
@@ -514,7 +525,7 @@ export default function AdminWorkers() {
   })
 
   const suspendMut = useMutation({
-    mutationFn: (detail) => api.post(`/admin/workers/${detail.user_id}/suspend`),
+    mutationFn: (detail) => api.post(`/admin/workers/${detail.id}/suspend`),
     onSuccess: () => {
       qc.invalidateQueries(['admin', 'workers'])
       qc.invalidateQueries(['admin', 'worker-detail', selectedId])
@@ -525,7 +536,7 @@ export default function AdminWorkers() {
   })
 
   const reuploadMut = useMutation({
-    mutationFn: (detail) => api.post(`/admin/workers/${detail.user_id}/request-reupload`),
+    mutationFn: (detail) => api.post(`/admin/workers/${detail.id}/request-reupload`),
     onSuccess: () => {
       toast.success('Re-upload request sent')
     },

@@ -27,7 +27,12 @@ export function NotificationDrawer({ open, onClose }) {
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
             transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-            className="fixed right-0 top-0 bottom-0 w-full max-w-sm glass-strong z-50 flex flex-col"
+            className="fixed right-0 top-0 bottom-0 w-full max-w-sm z-50 flex flex-col"
+            style={{
+              background: 'var(--elevated)',
+              borderLeft: '1px solid var(--g-border)',
+              boxShadow: '-12px 0 40px rgba(0,0,0,0.25)',
+            }}
           >
             <div className="flex items-center justify-between p-5" style={{ borderBottom: '1px solid var(--g-border)' }}>
               <h2 className="font-syne font-bold text-lg">Notifications</h2>
@@ -53,7 +58,8 @@ export function NotificationDrawer({ open, onClose }) {
                 notifs.map((n) => (
                   <div
                     key={n.id}
-                    className={`glass-light rounded-xl p-4 ${!n.is_read ? 'border-l-2 border-brand' : ''}`}
+                    className={`rounded-xl p-4 ${!n.is_read ? 'border-l-2 border-brand' : ''}`}
+                    style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
                   >
                     <div className="flex items-start justify-between gap-2">
                       <div>

@@ -7,6 +7,7 @@ import { motion } from 'framer-motion'
 import { IndianRupee, Clock, CheckCircle, XCircle, RefreshCw, AlertTriangle, ExternalLink } from 'lucide-react'
 import { api } from '@/lib/api'
 import { Skeleton } from '@/components/ui/skeleton'
+import { GlassSelect } from '@/components/glass/GlassSelect'
 
 const STATUS_CFG = {
   pending:    { label: 'Pending',    color: 'var(--accent)', bg: 'var(--accent-bg)',  icon: Clock },
@@ -96,18 +97,20 @@ export default function AdminPayouts() {
           <p style={{ color: 'var(--text-muted)', fontSize: 11, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', marginRight: 'auto' }}>
             {total} payouts
           </p>
-          <select
+          <GlassSelect
+            size="sm"
             value={status}
-            onChange={e => { setStatus(e.target.value); setPage(1) }}
-            className="px-3 py-1.5 rounded-lg text-xs"
-            style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: 'var(--text-secondary)' }}
-          >
-            <option value="">All statuses</option>
-            <option value="pending">Pending</option>
-            <option value="processing">Processing</option>
-            <option value="paid">Paid</option>
-            <option value="failed">Failed</option>
-          </select>
+            onChange={v => { setStatus(v); setPage(1) }}
+            placeholder="All statuses"
+            options={[
+              { value: '', label: 'All statuses' },
+              { value: 'pending', label: 'Pending' },
+              { value: 'processing', label: 'Processing' },
+              { value: 'paid', label: 'Paid' },
+              { value: 'failed', label: 'Failed' },
+            ]}
+            align="right"
+          />
         </div>
 
         {/* Table */}

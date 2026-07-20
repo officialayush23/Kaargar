@@ -35,7 +35,7 @@ from schemas import (
     TagResponse, TagCreate, ServiceTagsSet,
 )
 from dependencies import get_current_user
-from services.storage import get_public_url, BUCKET_DOCUMENTS
+from services.storage import get_public_url, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
 from services.translation import translate_and_store
 
 router = APIRouter()
@@ -222,18 +222,36 @@ async def upload_document(
     document_url = body.cloudinary_url.strip()
     document_path = body.cloudinary_id.strip().lstrip("/")
 
-    bucket_marker = f"/storage/v1/object/public/{BUCKET_DOCUMENTS}/"
+    # verification_video lives in its own bucket; everything else in documents.
+    # (Video is uploaded during onboarding, before the WorkerProfile row exists,
+    # so /upload/verification-video can't attach it yet — the frontend calls
+    # this endpoint afterwards, once the profile is created, to register it.)
+    bucket = BUCKET_VERIFICATION_VIDEO if document_type == "verification_video" else BUCKET_DOCUMENTS
+    bucket_marker = f"/storage/v1/object/public/{bucket}/"
     if not document_path and bucket_marker in document_url:
-        document_path = document_url.split(f"/{BUCKET_DOCUMENTS}/", 1)[1]
+        document_path = document_url.split(f"/{bucket}/", 1)[1]
     if document_path and bucket_marker not in document_url:
-        document_url = get_public_url(BUCKET_DOCUMENTS, document_path)
+        document_url = get_public_url(bucket, document_path)
     if bucket_marker not in document_url:
-        raise HTTPException(400, "Document URL must point to documents bucket")
+        raise HTTPException(400, f"Document URL must point to the {bucket} bucket")
 
     if not document_path:
         raise HTTPException(400, "Invalid document payload")
     if not document_path.startswith(f"{user.id}/"):
         raise HTTPException(403, "Document path does not belong to current user")
+
+    # Replace any existing verification video record for this worker
+    if document_type == "verification_video":
+        existing = await db.execute(
+            select(WorkerDocument).where(
+                WorkerDocument.worker_id == wp.id,
+                WorkerDocument.type == "verification_video",
+            )
+        )
+        old = existing.scalar_one_or_none()
+        if old:
+            await db.delete(old)
+            await db.flush()
 
     doc = WorkerDocument(
         worker_id=wp.id,

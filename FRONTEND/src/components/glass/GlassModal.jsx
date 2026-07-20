@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { X } from 'lucide-react'
 import { cn } from '@/lib/utils'
@@ -44,7 +45,7 @@ export function GlassModal({
     full: 'max-w-[95vw] max-h-[90vh]',
   }
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -58,9 +59,9 @@ export function GlassModal({
           <motion.div
             className="absolute inset-0"
             style={{
-              background: 'rgba(3,9,20,0.72)',
-              backdropFilter: 'blur(12px)',
-              WebkitBackdropFilter: 'blur(12px)',
+              background: 'var(--modal-backdrop)',
+              backdropFilter: 'blur(20px) saturate(140%)',
+              WebkitBackdropFilter: 'blur(20px) saturate(140%)',
             }}
             onClick={closeOnBackdrop ? onClose : undefined}
           />
@@ -71,7 +72,7 @@ export function GlassModal({
             aria-modal="true"
             className={cn(
               'glass-strong relative w-full rounded-2xl overflow-hidden',
-              'flex flex-col',
+              'flex flex-col max-h-[85vh]',
               sizes[size],
               className
             )}
@@ -126,7 +127,8 @@ export function GlassModal({
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }
 
@@ -140,7 +142,7 @@ export function GlassBottomSheet({ open, onClose, title, children, className }) 
     return () => { document.body.style.overflow = '' }
   }, [open])
 
-  return (
+  return createPortal(
     <AnimatePresence>
       {open && (
         <motion.div
@@ -151,7 +153,7 @@ export function GlassBottomSheet({ open, onClose, title, children, className }) 
         >
           <motion.div
             className="absolute inset-0"
-            style={{ background: 'rgba(3,9,20,0.65)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+            style={{ background: 'var(--modal-backdrop)', backdropFilter: 'blur(18px) saturate(140%)', WebkitBackdropFilter: 'blur(18px) saturate(140%)' }}
             onClick={onClose}
           />
           <motion.div
@@ -184,12 +186,13 @@ export function GlassBottomSheet({ open, onClose, title, children, className }) 
               </div>
             )}
 
-            <div className={cn('px-5 pb-6', contentClassName)}>
+            <div className="px-5 pb-6">
               {children}
             </div>
           </motion.div>
         </motion.div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   )
 }

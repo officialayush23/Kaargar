@@ -6,6 +6,7 @@ import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Badge } from '@/components/ui/badge'
+import { GlassSelect } from '@/components/glass/GlassSelect'
 import { toast } from 'sonner'
 
 const REDEMPTION_OPTIONS = [
@@ -77,15 +78,15 @@ function ServicePicker({ services, items, onChange }) {
                 </div>
                 <div className="flex-1">
                   <p className="text-[12px] mb-1" style={{ color: 'var(--text-muted)' }}>Redeem</p>
-                  <select
+                  <GlassSelect
+                    size="sm"
                     value={item.redeem_type}
-                    onChange={e => updateItem(item.service_id, { redeem_type: e.target.value })}
-                    className="w-full rounded-lg px-3 py-1.5 text-sm focus:outline-none"
-                    style={inputStyle()}
-                  >
-                    <option value="repeatable">Repeatable</option>
-                    <option value="once">Once only</option>
-                  </select>
+                    onChange={v => updateItem(item.service_id, { redeem_type: v })}
+                    options={[
+                      { value: 'repeatable', label: 'Repeatable' },
+                      { value: 'once', label: 'Once only' },
+                    ]}
+                  />
                 </div>
               </div>
             </motion.div>
@@ -95,17 +96,12 @@ function ServicePicker({ services, items, onChange }) {
 
       {/* Add service dropdown */}
       {unusedServices.length > 0 && (
-        <select
+        <GlassSelect
           value=""
-          onChange={e => { if (e.target.value) addItem(e.target.value) }}
-          className={inputClass}
-          style={inputStyle({ color: items.length === 0 ? 'var(--text-muted)' : 'var(--text-primary)' })}
-        >
-          <option value="">+ Add a service...</option>
-          {unusedServices.map(s => (
-            <option key={s.id} value={s.id}>{s.title}</option>
-          ))}
-        </select>
+          onChange={v => { if (v) addItem(v) }}
+          placeholder="+ Add a service..."
+          options={unusedServices.map(s => ({ value: s.id, label: s.title }))}
+        />
       )}
     </div>
   )
@@ -148,14 +144,30 @@ function PackageForm({ initial, services, onSave, onCancel }) {
       }
       if (description.trim()) payload.description = description.trim()
       if (validity) payload.validity_days = Number(validity)
+      // onSave must be wired to mutateAsync (not mutate) by the caller so this
+      // await spans the full round-trip — otherwise the button re-enables
+      // instantly and a second click fires a duplicate request.
       await onSave(payload)
+    } catch (_) {
+      // error toast already surfaced by the mutation's onError
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <form onSubmit={handleSubmit} className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--accent-mid)' }}>
+    <form onSubmit={handleSubmit} className="rounded-2xl p-4 space-y-4" style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--accent-mid)', position: 'relative' }}>
+      {loading && (
+        <div className="absolute inset-0 rounded-2xl flex items-center justify-center z-10"
+          style={{ background: 'var(--modal-backdrop, rgba(0,0,0,0.35))', backdropFilter: 'blur(2px)' }}>
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full"
+            style={{ background: 'var(--elevated)', border: '1px solid var(--g-border)' }}>
+            <Loader2 size={14} className="animate-spin" style={{ color: 'var(--accent)' }} />
+            <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Saving…</span>
+          </div>
+        </div>
+      )}
+      <fieldset disabled={loading} className="space-y-4 border-0 p-0 m-0">
       <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
         {initial ? 'Edit package' : 'New package'}
       </p>
@@ -276,6 +288,7 @@ function PackageForm({ initial, services, onSave, onCancel }) {
           Save package
         </button>
       </div>
+      </fieldset>
     </form>
   )
 }
@@ -432,6 +445,7 @@ export default function WorkerPackages() {
   })
 
   const editingPkg = packages.find(p => p.id === editingId)
+  const anyPending = addMut.isPending || updateMut.isPending || deleteMut.isPending
 
   return (
     <div className="px-4 pt-5 pb-8 space-y-4">
@@ -444,7 +458,7 @@ export default function WorkerPackages() {
         </div>
         <button
           onClick={() => { setShowAdd(true); setEditingId(null) }}
-          disabled={services.length === 0}
+          disabled={services.length === 0 || anyPending}
           className="flex items-center gap-1.5 px-3 py-2 rounded-xl btn-brand text-sm font-medium disabled:opacity-40"
           title={services.length === 0 ? 'Add services first' : undefined}
         >
@@ -466,7 +480,7 @@ export default function WorkerPackages() {
           <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -8 }}>
             <PackageForm
               services={services}
-              onSave={(data) => addMut.mutate(data)}
+              onSave={(data) => addMut.mutateAsync(data)}
               onCancel={() => setShowAdd(false)}
             />
           </motion.div>
@@ -476,7 +490,7 @@ export default function WorkerPackages() {
             <PackageForm
               initial={editingPkg}
               services={services}
-              onSave={(data) => updateMut.mutate({ id: editingId, data })}
+              onSave={(data) => updateMut.mutateAsync({ id: editingId, data })}
               onCancel={() => setEditingId(null)}
             />
           </motion.div>

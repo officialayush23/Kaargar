@@ -13,6 +13,7 @@ import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { GlassSelect } from '@/components/glass/GlassSelect'
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel,
   AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
@@ -131,17 +132,17 @@ export default function AdminUsers() {
             onChange={e => { setSearch(e.target.value); setPage(1) }}
           />
         </div>
-        <select
+        <GlassSelect
           value={role}
-          onChange={e => { setRole(e.target.value); setPage(1) }}
-          className="px-3 py-2 rounded-lg text-sm"
-          style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)', color: 'var(--text-primary)' }}
-        >
-          <option value="">All roles</option>
-          <option value="user">Users</option>
-          <option value="worker">Workers</option>
-          <option value="admin">Admins</option>
-        </select>
+          onChange={v => { setRole(v); setPage(1) }}
+          align="right"
+          options={[
+            { value: '', label: 'All roles' },
+            { value: 'user', label: 'Users' },
+            { value: 'worker', label: 'Workers' },
+            { value: 'admin', label: 'Admins' },
+          ]}
+        />
       </div>
 
       {/* Table */}

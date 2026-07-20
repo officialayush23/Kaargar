@@ -21,6 +21,7 @@ import { Background } from '@/components/glass/Background'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput } from '@/components/glass/GlassInput'
+import { GlassSelect } from '@/components/glass/GlassSelect'
 import { InfoButton } from '@/components/kaargar/InfoButton'
 import { api } from '@/lib/api'
 import { useAddresses } from '@/hooks/useAddresses'
@@ -147,16 +148,12 @@ function TimeSelect({ label, value, onChange, options, placeholder }) {
   return (
     <div style={{ flex: 1 }}>
       <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 500 }}>{label}</p>
-      <select value={value} onChange={e => onChange(e.target.value)}
-        style={{
-          width: '100%', padding: '10px 12px', borderRadius: 10, outline: 'none',
-          border: value ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
-          background: 'var(--card-bg)', color: value ? 'var(--text-primary)' : 'var(--text-muted)',
-          fontSize: 14, cursor: 'pointer', appearance: 'none',
-        }}>
-        <option value="">{placeholder}</option>
-        {options.map(t => <option key={t} value={t}>{to12h(t)}</option>)}
-      </select>
+      <GlassSelect
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+        options={options.map(t => ({ value: t, label: to12h(t) }))}
+      />
     </div>
   )
 }

@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
+import { GlassSelect } from '@/components/glass/GlassSelect'
 import { toast } from 'sonner'
 
 const inputClass = "w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none transition-all"
@@ -159,18 +160,14 @@ function OfferForm({ initial, services, packages, onSave, onCancel }) {
             ))}
           </div>
           {targetType === 'service' && (
-            <select value={targetId} onChange={e => setTargetId(e.target.value)}
-              className={inputClass} style={inputStyle()}>
-              <option value="">Select a service...</option>
-              {services.map(s => <option key={s.id} value={s.id}>{s.title}</option>)}
-            </select>
+            <GlassSelect value={targetId} onChange={setTargetId}
+              placeholder="Select a service..."
+              options={services.map(s => ({ value: s.id, label: s.title }))} />
           )}
           {targetType === 'package' && (
-            <select value={targetId} onChange={e => setTargetId(e.target.value)}
-              className={inputClass} style={inputStyle()}>
-              <option value="">Select a package...</option>
-              {packages.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
-            </select>
+            <GlassSelect value={targetId} onChange={setTargetId}
+              placeholder="Select a package..."
+              options={packages.map(p => ({ value: p.id, label: p.title }))} />
           )}
         </div>
       )}

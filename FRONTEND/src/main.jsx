@@ -27,17 +27,14 @@ createRoot(document.getElementById('root')).render(
       <App />
       <Toaster
         position="top-center"
+        expand
+        gap={12}
         toastOptions={{
           className: 'kaargar-toast',
           style: {
-            background: savedTheme === 'light'
-              ? 'rgba(255,255,255,0.96)'
-              : 'rgba(13,17,23,0.95)',
-            border: savedTheme === 'light'
-              ? '1px solid rgba(0,0,0,0.1)'
-              : '1px solid rgba(255,255,255,0.1)',
-            color: savedTheme === 'light' ? '#111827' : '#F0F4FF',
-            boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+            background: 'var(--elevated)',
+            border: '1px solid var(--g-border)',
+            color: 'var(--text-primary)',
           },
         }}
       />
