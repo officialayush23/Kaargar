@@ -491,7 +491,7 @@ export default function WorkerServices() {
         <motion.div
           whileHover={{ y: -1 }}
           whileTap={{ scale: 0.98 }}
-          className="flex items-center gap-3 rounded-xl p-3.5 cursor-pointer transition-colors"
+          className="flex items-center gap-3 rounded-xl m-1 p-3.5 cursor-pointer transition-colors"
           style={{ background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)' }}
         >
           <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--accent-bg-md)' }}>
