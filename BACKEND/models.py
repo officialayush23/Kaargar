@@ -142,6 +142,9 @@ class WorkerProfile(Base):
     updated_at: Mapped[datetime] = now()
     min_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     max_rate: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    # Discovery-mode: worker opts in to letting a customer book them across
+    # multiple days for the same service in one go.
+    allow_multi_day_booking: Mapped[bool] = mapped_column(Boolean, default=False)
 
     user = relationship("User", back_populates="worker_profile")
     services = relationship("Service", back_populates="worker")
@@ -204,6 +207,13 @@ class Service(Base):
     slot_duration_min: Mapped[int | None] = mapped_column(Integer)     # minutes per slot
     max_slots_per_day: Mapped[int | None] = mapped_column(Integer)     # daily cap
     base_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))  # alias for price
+
+    # Discovery-mode: this specific service can be booked across multiple
+    # days in one go (e.g. a recurring weekly cleaning service). Distinct
+    # from WorkerProfile.allow_multi_day_booking, which is the worker's
+    # overall opt-in — a booking only offers the multi-day option when BOTH
+    # the worker and the specific service allow it.
+    allow_multi_day_booking: Mapped[bool] = mapped_column(Boolean, default=False)
 
     worker = relationship("WorkerProfile", back_populates="services")
     category = relationship("Category")

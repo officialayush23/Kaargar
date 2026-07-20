@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Loader2, Save, User, MapPin, FileText, DollarSign } from 'lucide-react'
+import { Link } from 'react-router-dom'
+import { Loader2, Save, User, MapPin, FileText, Image, ChevronRight } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
@@ -34,10 +35,9 @@ export default function WorkerProfile() {
     full_name: '',
     bio: '',
     area: '',
-    min_rate: '',
-    max_rate: '',
     years_experience: '',
     instant_available: true,
+    allow_multi_day_booking: false,
   })
 
   useEffect(() => {
@@ -46,10 +46,11 @@ export default function WorkerProfile() {
         full_name: user?.full_name || '',
         bio: profile?.bio || '',
         area: profile?.pune_area || '',
-        min_rate: profile?.min_rate || '',
-        max_rate: profile?.max_rate || '',
-        years_experience: profile?.years_experience || '',
+        // API returns this field as `experience_years` (not `years_experience` —
+        // that name only exists as the write-side alias on the PATCH payload).
+        years_experience: profile?.experience_years ?? '',
         instant_available: profile?.is_instant_available ?? true,
+        allow_multi_day_booking: profile?.allow_multi_day_booking ?? false,
       })
     }
   }, [user, profile])
@@ -77,10 +78,9 @@ export default function WorkerProfile() {
       full_name: form.full_name.trim() || undefined,
       bio: form.bio.trim() || undefined,
       area: form.area || undefined,
-      min_rate: form.min_rate ? Number(form.min_rate) : undefined,
-      max_rate: form.max_rate ? Number(form.max_rate) : undefined,
       years_experience: form.years_experience ? Number(form.years_experience) : undefined,
       instant_available: form.instant_available,
+      allow_multi_day_booking: form.allow_multi_day_booking,
     })
   }
 
@@ -142,29 +142,6 @@ export default function WorkerProfile() {
           />
         </Field>
 
-        <div className="grid grid-cols-2 gap-3">
-          <Field label="Min rate ₹/hr" icon={DollarSign}>
-            <input
-              type="number"
-              value={form.min_rate}
-              onChange={set('min_rate')}
-              placeholder="200"
-              min={0}
-              className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none"
-            />
-          </Field>
-          <Field label="Max rate ₹/hr">
-            <input
-              type="number"
-              value={form.max_rate}
-              onChange={set('max_rate')}
-              placeholder="800"
-              min={0}
-              className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none"
-            />
-          </Field>
-        </div>
-
         <Field label="Years of experience">
           <input
             type="number"
@@ -189,7 +166,40 @@ export default function WorkerProfile() {
             <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${form.instant_available ? 'translate-x-7' : 'translate-x-1'}`} />
           </button>
         </div>
+
+        <div className="flex items-center justify-between py-1" style={{ borderTop: '1px solid var(--g-border)', paddingTop: 16 }}>
+          <div>
+            <p className="text-sm font-medium text-[--text-primary]">Allow multi-day booking</p>
+            <p className="text-xs text-[--text-muted] mt-0.5">Let Discovery customers book you across several days at once</p>
+          </div>
+          <button
+            onClick={() => setForm((f) => ({ ...f, allow_multi_day_booking: !f.allow_multi_day_booking }))}
+            className={`w-12 h-6 rounded-full transition-colors relative ${form.allow_multi_day_booking ? 'bg-instant' : 'bg-[--card-bg]'}`}
+          >
+            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${form.allow_multi_day_booking ? 'translate-x-7' : 'translate-x-1'}`} />
+          </button>
+        </div>
       </motion.div>
+
+      {/* Portfolio moved off the bottom nav to make room for Schedule — still
+          reachable here so workers can manage their photos/videos. */}
+      <Link to="/worker/media">
+        <motion.div
+          whileHover={{ y: -1 }}
+          whileTap={{ scale: 0.98 }}
+          className="flex items-center gap-3 rounded-xl p-3.5 cursor-pointer transition-colors"
+          style={{ background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)' }}
+        >
+          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--accent-bg-md)' }}>
+            <Image size={16} style={{ color: 'var(--accent)' }} />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>Portfolio</p>
+            <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Photos & videos of your work</p>
+          </div>
+          <ChevronRight size={16} style={{ color: 'var(--accent)' }} className="shrink-0" />
+        </motion.div>
+      </Link>
 
       <button
         onClick={handleSave}

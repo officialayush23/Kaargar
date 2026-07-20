@@ -234,6 +234,7 @@ export default function WorkerOnboardPage() {
   const [bio, setBio] = useState('')
   const [yearsExp, setYearsExp] = useState('')
   const [phone, setPhone] = useState(useAuthStore.getState().user?.phone?.replace(/^\+91/, '') || '')
+  const [allowMultiDay, setAllowMultiDay] = useState(false)
 
   // Step 2: Categories
   const [selectedCats, setSelectedCats] = useState([])
@@ -372,6 +373,7 @@ export default function WorkerOnboardPage() {
         pune_area: selectedArea,
         service_radius_km: radius,
         category_ids: selectedCats.map(c => c.id),
+        allow_multi_day_booking: allowMultiDay,
       })
 
       for (const doc of uploadedDocs) {
@@ -566,6 +568,26 @@ export default function WorkerOnboardPage() {
                       style={{ color: 'var(--text-primary)' }}
                     />
                   </div>
+                </div>
+
+                {/* Overall opt-in — a customer only sees the "book across
+                    multiple days" option in Discovery when this is on AND
+                    the specific service also has it enabled (Services page). */}
+                <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3"
+                  style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Allow multi-day booking</p>
+                    <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                      Let customers book you across several days at once (you can change this later, per service)
+                    </p>
+                  </div>
+                  <button type="button"
+                    onClick={() => setAllowMultiDay(v => !v)}
+                    className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${allowMultiDay ? 'bg-instant' : ''}`}
+                    style={!allowMultiDay ? { background: 'var(--g-bg)' } : undefined}
+                  >
+                    <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${allowMultiDay ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
                 </div>
               </GlassCard>
             </motion.div>

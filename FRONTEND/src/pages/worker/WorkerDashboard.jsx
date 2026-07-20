@@ -298,8 +298,12 @@ export default function WorkerDashboard() {
             />
             <StatCard
               label="Acceptance"
-              value={`${Math.round((analytics?.acceptance_rate || 0) * 100)}%`}
-              sub="of jobs offered"
+              value={
+                analytics?.jobs_offered > 0
+                  ? `${Math.round((analytics?.acceptance_rate || 0) * 100)}%`
+                  : '—'
+              }
+              sub={analytics?.jobs_offered > 0 ? 'of jobs offered' : 'No offers yet'}
               icon={CheckCircle}
               accentColor="#a78bfa"
             />

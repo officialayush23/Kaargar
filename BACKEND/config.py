@@ -70,6 +70,11 @@ class Settings(BaseSettings):
     # Groq (translation)
     groq_api_key: str = Field("", alias="GROQ_API_KEY")
 
+    # Phone-call masking — AES-256-GCM key (base64, 32 bytes) shared with the
+    # frontend's VITE_PHONE_CALL_KEY. Used only to encrypt the other party's
+    # phone number in the /jobs/{id}/contact response.
+    phone_call_cipher_key: str = Field("", alias="PHONE_CALL_CIPHER_KEY")
+
     model_config = {
         "env_file": ".env",
         "env_file_encoding": "utf-8",

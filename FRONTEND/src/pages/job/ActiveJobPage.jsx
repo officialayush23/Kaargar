@@ -13,6 +13,7 @@ import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassModal } from '@/components/glass/GlassModal'
 import { GlassTextarea } from '@/components/glass/GlassInput'
 import { useRazorpay } from '@/hooks/useRazorpay'
+import { decryptPhone } from '@/lib/phoneCipher'
 import { formatCurrency, getInitials } from '@/lib/utils'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
@@ -264,6 +265,7 @@ export default function ActiveJobPage() {
   const [paymentStatus, setPaymentStatus] = useState(null) // null | 'pending' | 'held' | 'refunded'
   const [actionLoading, setActionLoading] = useState(false)
   const [sosOpen, setSosOpen] = useState(false)
+  const [calling, setCalling] = useState(false)
 
   const isWorkerViewer = user?.role === 'worker'
 
@@ -319,6 +321,24 @@ export default function ActiveJobPage() {
     userEmail = auth?.state?.user?.email || ''
     userName = auth?.state?.user?.full_name || ''
   } catch {}
+
+  async function handleCall() {
+    if (calling) return
+    setCalling(true)
+    // The API never returns a plaintext number — only an AES-256-GCM
+    // ciphertext. It's decrypted here in memory and used ONLY to build the
+    // tel: link; it's never assigned to state, rendered, or logged, so it
+    // never appears in the DOM, React devtools, or console.
+    try {
+      const { data } = await api.get(`/jobs/${jobId}/contact`)
+      const phone = await decryptPhone(data)
+      window.location.href = `tel:${phone}`
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Number not available yet')
+    } finally {
+      setCalling(false)
+    }
+  }
 
   async function handleWorkerAction(endpoint, successMsg) {
     setActionLoading(true)
@@ -457,9 +477,12 @@ export default function ActiveJobPage() {
                 whileTap={{ scale: 0.95 }}
                 className="w-10 h-10 rounded-xl flex items-center justify-center"
                 style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}
-                onClick={() => toast.info('Call feature coming soon')}
+                onClick={handleCall}
+                disabled={calling}
               >
-                <Phone className="h-4 w-4" style={{ color: 'var(--text-secondary)' }} />
+                {calling
+                  ? <Loader2 className="h-4 w-4 animate-spin" style={{ color: 'var(--text-secondary)' }} />
+                  : <Phone className="h-4 w-4" style={{ color: 'var(--text-secondary)' }} />}
               </motion.button>
             </div>
           </div>

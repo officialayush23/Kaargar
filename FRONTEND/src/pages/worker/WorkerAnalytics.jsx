@@ -116,8 +116,12 @@ export default function WorkerAnalytics() {
             <StatBlock
               icon={Briefcase}
               label="Acceptance"
-              value={`${Math.round(Number(analytics?.acceptance_rate || 0) * 100)}%`}
-              sub="of offers accepted"
+              value={
+                analytics?.jobs_offered > 0
+                  ? `${Math.round(Number(analytics?.acceptance_rate || 0) * 100)}%`
+                  : '—'
+              }
+              sub={analytics?.jobs_offered > 0 ? 'of offers accepted' : 'No offers yet'}
               accent="brand"
             />
             <StatBlock

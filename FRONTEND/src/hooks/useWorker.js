@@ -57,6 +57,17 @@ export function useWorkerStatus() {
   })
 }
 
+export function useWorkerSchedule() {
+  return useQuery({
+    queryKey: ['worker', 'schedule'],
+    queryFn: async () => {
+      const { data } = await api.get('/jobs/me', { params: { status: 'active', as_role: 'worker' } })
+      return data
+    },
+    refetchInterval: 30_000,
+  })
+}
+
 export function useWorkerMedia(workerId) {
   return useQuery({
     queryKey: ['worker', workerId, 'media'],

@@ -121,10 +121,13 @@
   --emerald:    #16A34A;
   --violet:     #7C3AED;
 
-  /* Text — inverted */
+  /* Text — inverted.
+     --text-muted was #9CA3AF (too washed-out on white cards — this is what
+     made labels/sub-text on worker pages hard to read in light mode);
+     darkened so it still reads as "secondary" but stays legible. */
   --text-primary:   #111827;
   --text-secondary: #374151;
-  --text-muted:     #9CA3AF;
+  --text-muted:     #6B7280;
   --text-inverse:   #FFFFFF;
 
   /* Glass (lighter tint in light mode) */
@@ -135,16 +138,24 @@
   --g-shine:   rgba(255,255,255,0.95);
   --g-blur:    blur(20px) saturate(160%);
 
-  /* Accent system — same palette, stays amber in light mode */
+  /* Accent system — same palette, stays amber in light mode.
+     --accent-deep/-mid/-muted/-card were left at the DARK theme's near-black
+     brown values (#2D1A06 etc — meant to sit on a near-black page) because
+     this block never overrode them, so every chip/badge/card that used them
+     (worker badge, avatar fallback, booking summary panels, day picker...)
+     rendered as a muddy dark-brown "orange" on light backgrounds instead of
+     matching the bright amber used everywhere else. Replaced with light,
+     warm amber tints so they read as the same accent color family. */
   --accent-hex:    #F59E0B;
   --accent-dim-hex:#92400E;
   --accent:        var(--amber);
   --accent-hover:  var(--amber-lt);
   --accent-dim:    #92400E;
   --accent-soft:   #FDE68A;
-  --accent-deep:   #2D1A06;
-  --accent-mid:    #7C4A12;
-  --accent-muted:  #3D2508;
+  --accent-deep:   #FEF3C7;
+  --accent-mid:    #FBBF24;
+  --accent-muted:  #FDECC8;
+  --accent-card:   #FFFBEB;
   --accent-bg-sm:  rgba(245,158,11,0.06);
   --accent-bg:     rgba(245,158,11,0.10);
   --accent-bg-md:  rgba(245,158,11,0.15);

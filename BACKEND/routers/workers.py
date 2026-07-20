@@ -77,6 +77,7 @@ async def create_profile(
         experience_years=body.experience_years,
         pune_area=body.pune_area,
         service_radius_km=body.service_radius_km,
+        allow_multi_day_booking=body.allow_multi_day_booking,
     )
     if user.role != "admin":
         user.role = "worker"
@@ -610,6 +611,23 @@ async def get_analytics(
     if not wp:
         raise HTTPException(404, "Worker profile not found")
 
+    # Compute acceptance rate straight from dispatch history rather than
+    # trusting the stored wp.acceptance_rate column, which defaults to 1.0
+    # (100%) at profile creation and, historically, was never recomputed —
+    # so a brand-new worker with zero offers would show a false 100%.
+    # jobs_offered=0 lets the frontend show "No data yet" instead of a rate.
+    from models import JobWorkerRequest
+    resolved_result = await db.execute(
+        select(JobWorkerRequest.status)
+        .where(JobWorkerRequest.worker_id == wp.id, JobWorkerRequest.status != "pending")
+    )
+    statuses = [row[0] for row in resolved_result.all()]
+    jobs_offered = len(statuses)
+    acceptance_rate = (
+        Decimal(sum(1 for s in statuses if s == "accepted")) / Decimal(jobs_offered)
+        if jobs_offered > 0 else None
+    )
+
     result = await db.execute(
         select(WorkerAnalytics).where(WorkerAnalytics.worker_id == wp.id)
     )
@@ -627,7 +645,8 @@ async def get_analytics(
             avg_job_value=Decimal("0"),
             avg_rating=wp.avg_rating,
             total_reviews=wp.rating_count,
-            acceptance_rate=wp.acceptance_rate,
+            acceptance_rate=acceptance_rate,
+            jobs_offered=jobs_offered,
         )
     # Enrich analytics with live profile fields not stored in analytics table
     return WorkerAnalyticsResponse(
@@ -642,7 +661,8 @@ async def get_analytics(
         avg_job_value=analytics.avg_job_value,
         avg_rating=wp.avg_rating,
         total_reviews=wp.rating_count,
-        acceptance_rate=wp.acceptance_rate,
+        acceptance_rate=acceptance_rate,
+        jobs_offered=jobs_offered,
     )
 
 
@@ -1138,6 +1158,7 @@ async def get_worker(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     data.max_rate = wp.max_rate
     data.is_instant_available = wp.is_instant_available
     data.is_discovery_available = wp.is_discovery_available
+    data.allow_multi_day_booking = getattr(wp, "allow_multi_day_booking", False)
     # Rating breakdowns (if columns exist on the model)
     data.quality_rating = getattr(wp, "quality_rating", None)
     data.punctuality_rating = getattr(wp, "punctuality_rating", None)

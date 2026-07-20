@@ -23,6 +23,7 @@ from schemas import (
     ScheduledJobReschedule, ScheduledJobResponse, SlotBookingCreate,
     JobItemReceiptCreate, JobItemReceiptResponse, JobApprovalSummary,
     JobRejectRequest, JobOtpVerifyRequest, JobCompletionCodeResponse,
+    JobContactResponse,
 )
 from dependencies import get_current_user
 from services.storage import (
@@ -192,6 +193,63 @@ async def get_job(
     return resp
 
 
+@router.get("/{job_id}/contact", response_model=JobContactResponse)
+async def get_job_contact(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Returns the *other party's* phone number for an active job only.
+    Privacy-conscious counterpart to the in-chat phone-masking system:
+    numbers are only ever exposed here (never in chat text), only to the
+    two people actually on this job, and only while the job is in an
+    active/in-progress/just-completed state — never before assignment,
+    and not indefinitely afterwards.
+    """
+    from models import User as UserModel, WorkerProfile as WP
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404)
+
+    is_customer = job.user_id == user.id
+    if not is_customer:
+        wp_result = await db.execute(select(WP).where(WP.user_id == user.id))
+        wp = wp_result.scalar_one_or_none()
+        if not wp or job.worker_id != wp.id:
+            raise HTTPException(403)
+
+    contactable_statuses = {
+        "worker_assigned", "assigned", "en_route", "arrived", "started",
+        "pending_approval", "completed",
+    }
+    if job.status not in contactable_statuses:
+        raise HTTPException(400, "Contact number is only available for active jobs")
+
+    if is_customer:
+        if not job.worker_id:
+            raise HTTPException(404, "No worker assigned yet")
+        wrow = await db.execute(
+            select(UserModel.phone, UserModel.full_name)
+            .join(WP, WP.user_id == UserModel.id)
+            .where(WP.id == job.worker_id)
+        )
+        row = wrow.first()
+    else:
+        crow = await db.execute(
+            select(UserModel.phone, UserModel.full_name).where(UserModel.id == job.user_id)
+        )
+        row = crow.first()
+
+    if not row or not row.phone:
+        raise HTTPException(404, "Phone number not available")
+
+    from services.crypto import encrypt_phone
+    enc = encrypt_phone(row.phone)
+    return JobContactResponse(name=row.full_name, iv=enc["iv"], ciphertext=enc["ciphertext"])
+
+
 @router.post("/{job_id}/cancel", response_model=SuccessResponse)
 async def cancel_job(
     job_id: uuid.UUID,
@@ -337,6 +395,30 @@ async def _get_worker_for_job(job_id, user, db):
     return wp, job
 
 
+async def _recompute_acceptance_rate(db, wp):
+    """
+    Recompute and persist wp.acceptance_rate from actual dispatch history.
+
+    The column defaults to 1.0 (100%) at profile creation and was never
+    updated anywhere, so every worker showed a false 100% acceptance rate
+    regardless of real history. Rate = accepted / (accepted+rejected+expired),
+    excluding still-pending requests. Left untouched (still whatever it was)
+    if the worker has no resolved requests yet — callers that surface this to
+    users should treat 0 resolved requests as "no data yet", not 0%/100%.
+    """
+    from models import JobWorkerRequest
+    resolved_result = await db.execute(
+        select(JobWorkerRequest.status)
+        .where(JobWorkerRequest.worker_id == wp.id, JobWorkerRequest.status != "pending")
+    )
+    statuses = [row[0] for row in resolved_result.all()]
+    total = len(statuses)
+    if total == 0:
+        return
+    accepted = sum(1 for s in statuses if s == "accepted")
+    wp.acceptance_rate = Decimal(accepted) / Decimal(total)
+
+
 @router.post("/{job_id}/accept", response_model=SuccessResponse)
 async def accept_job(
     job_id: uuid.UUID,
@@ -359,11 +441,13 @@ async def accept_job(
     now_utc = datetime.now(timezone.utc)
     if req.expires_at and now_utc > req.expires_at:
         req.status = "expired"
+        await _recompute_acceptance_rate(db, wp)
         await db.commit()
         raise HTTPException(400, "This job request has expired — it was assigned to another worker")
 
     req.status = "accepted"
     req.responded_at = now_utc
+    await _recompute_acceptance_rate(db, wp)
     await db.commit()
     return SuccessResponse(message="Job accepted")
 
@@ -390,6 +474,7 @@ async def reject_job(
     req.status = "rejected"
     req.rejection_reason = body.reason[:50] if body.reason else None
     req.responded_at = datetime.now(timezone.utc)
+    await _recompute_acceptance_rate(db, wp)
 
     # Track consecutive rejects
     wp.consecutive_rejects = (wp.consecutive_rejects or 0) + 1

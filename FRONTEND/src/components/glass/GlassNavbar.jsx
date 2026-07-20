@@ -45,7 +45,7 @@ export function MobileBottomNav() {
   const workerLinks = [
     { to: '/worker',           label: 'Dashboard', emoji: '📊' },
     { to: '/worker/services',  label: 'Services',  emoji: '🛠️' },
-    { to: '/worker/media',     label: 'Portfolio', emoji: '📸' },
+    { to: '/worker/schedule',  label: 'Schedule',  emoji: '🗓️' },
     { to: '/worker/analytics', label: 'Earnings',  emoji: '💰' },
   ]
 
@@ -53,13 +53,19 @@ export function MobileBottomNav() {
 
   return (
     <motion.nav
-      className="fixed bottom-5 inset-x-0 z-40 flex justify-center px-6 pointer-events-none"
+      // z-[60] + explicit safe-area-aware bottom offset so this can never end up
+      // obscured or pushed under a device's home-indicator/gesture bar — on
+      // larger screens (iPad mini and up) it also sits a bit further from the
+      // edge and scales up (see sm: classes below) so it doesn't read as an
+      // afterthought on a much bigger canvas.
+      className="fixed inset-x-0 z-[60] flex justify-center px-6 pointer-events-none"
+      style={{ bottom: 'max(1.25rem, calc(env(safe-area-inset-bottom, 0px) + 0.75rem))' }}
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.2, type: 'spring', stiffness: 300, damping: 26 }}
     >
       <div
-        className="pointer-events-auto flex items-center gap-0.5 px-1.5 py-1.5"
+        className="pointer-events-auto flex items-center gap-0.5 sm:gap-1.5 px-1.5 py-1.5 sm:px-3 sm:py-2.5"
         style={{
           borderRadius: '9999px',
           background: 'var(--g-bg-hi)',
@@ -79,7 +85,7 @@ export function MobileBottomNav() {
               <motion.div
                 whileHover={{ scale: 1.06 }}
                 whileTap={{ scale: 0.92 }}
-                className="relative flex flex-col items-center gap-0.5 px-3 py-1"
+                className="relative flex flex-col items-center gap-0.5 sm:gap-1 px-3 py-1 sm:px-5 sm:py-2.5"
                 style={{ borderRadius: '9999px' }}
               >
                 {active && (
@@ -90,9 +96,9 @@ export function MobileBottomNav() {
                     transition={{ type: 'spring', stiffness: 400, damping: 28 }}
                   />
                 )}
-                <span className="text-sm relative leading-none">{link.emoji}</span>
+                <span className="text-sm sm:text-xl relative leading-none">{link.emoji}</span>
                 <span
-                  className="text-[11px] font-medium relative leading-none"
+                  className="text-[11px] sm:text-sm font-medium relative leading-none"
                   style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }}
                 >
                   {link.label}

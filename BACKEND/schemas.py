@@ -115,6 +115,7 @@ class WorkerProfileCreate(BaseModel):
     pune_area: Optional[str] = None
     service_radius_km: int = 5
     category_ids: list[UUID] = []
+    allow_multi_day_booking: bool = False
 
 # FIXED: Aliases added to match frontend UI payload
 class WorkerProfileUpdate(BaseModel):
@@ -127,6 +128,7 @@ class WorkerProfileUpdate(BaseModel):
     is_discovery_available: Optional[bool] = None
     min_rate: Optional[Decimal] = None
     max_rate: Optional[Decimal] = None
+    allow_multi_day_booking: Optional[bool] = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -152,6 +154,7 @@ class WorkerProfileResponse(KaargarBase):
     total_earnings: Decimal
     min_rate: Optional[Decimal] = None
     max_rate: Optional[Decimal] = None
+    allow_multi_day_booking: bool = False
     created_at: datetime
 
 
@@ -178,6 +181,7 @@ class WorkerPublicResponse(KaargarBase):
     punctuality_rating: Optional[Decimal] = None
     communication_rating: Optional[Decimal] = None
     value_rating: Optional[Decimal] = None
+    allow_multi_day_booking: bool = False
 
 
 class WorkerStatusUpdate(BaseModel):
@@ -224,6 +228,7 @@ class ServiceCreate(BaseModel):
     requires_slot: bool = False
     slot_duration_min: Optional[int] = Field(default=None, ge=15, le=480)
     max_slots_per_day: Optional[int] = Field(default=None, ge=1, le=50)
+    allow_multi_day_booking: bool = False
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -240,6 +245,7 @@ class ServiceUpdate(BaseModel):
     requires_slot: Optional[bool] = None
     slot_duration_min: Optional[int] = Field(default=None, ge=15, le=480)
     max_slots_per_day: Optional[int] = Field(default=None, ge=1, le=50)
+    allow_multi_day_booking: Optional[bool] = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -279,6 +285,7 @@ class ServiceResponse(KaargarBase):
     requires_slot: bool = False
     slot_duration_min: Optional[int] = None
     max_slots_per_day: Optional[int] = None
+    allow_multi_day_booking: bool = False
     tags: list[TagResponse] = []
     created_at: datetime
 
@@ -560,6 +567,17 @@ class JobCompletionCodeResponse(BaseModel):
     expires_at: datetime
 
 
+class JobContactResponse(BaseModel):
+    """
+    Never carries a plaintext phone number. `iv`/`ciphertext` are AES-256-GCM
+    output (base64) decryptable only with the shared PHONE_CALL_CIPHER_KEY /
+    VITE_PHONE_CALL_KEY — see services/crypto.py.
+    """
+    name: Optional[str] = None
+    iv: str
+    ciphertext: str
+
+
 # ── CHAT & MESSAGES ───────────────────────────────────────────
 class MessageCreate(BaseModel):
     content: str
@@ -720,6 +738,7 @@ class WorkerAnalyticsResponse(KaargarBase):
     avg_rating: Optional[Decimal] = None
     total_reviews: Optional[int] = None
     acceptance_rate: Optional[Decimal] = None
+    jobs_offered: Optional[int] = None  # total dispatch requests resolved (accepted+rejected+expired) — 0 means no data yet, distinct from a genuine 100%/0% rate
 
 
 # ── ADMIN ─────────────────────────────────────────────────────

@@ -182,6 +182,7 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
   const [serviceMode, setServiceMode] = useState(initial?.service_mode || 'both')
   const [visitFee, setVisitFee]       = useState(initial?.visit_fee || '')
   const [tags, setTags]               = useState(initial?.tags || [])
+  const [allowMultiDay, setAllowMultiDay] = useState(initial?.allow_multi_day_booking ?? false)
   const [loading, setLoading]         = useState(false)
   const [priceError, setPriceError]   = useState('')
   const showVisitFee = serviceMode === 'onsite' || serviceMode === 'both'
@@ -204,7 +205,7 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
     if (!canSubmit) return
     setLoading(true)
     try {
-      const payload = { title: title.trim(), service_mode: serviceMode, _tags: tags }
+      const payload = { title: title.trim(), service_mode: serviceMode, _tags: tags, allow_multi_day_booking: allowMultiDay }
       if (description.trim()) payload.description = description.trim()
       if (hourlyRate && !isNaN(Number(hourlyRate))) payload.hourly_rate = Number(hourlyRate)
       if (showVisitFee && visitFee && !isNaN(Number(visitFee))) payload.visit_fee = Number(visitFee)
@@ -306,6 +307,26 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
           <ServiceModeToggle value={serviceMode} onChange={setServiceMode} />
         </div>
 
+        {/* Recurring multi-day booking — per-service opt-in. A customer only
+            sees the "book across multiple days" option in Discovery when
+            BOTH this is on AND the worker's overall profile toggle is on. */}
+        <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3"
+          style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Allow multi-day booking</p>
+            <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              Let customers book you for this service across several days at once
+            </p>
+          </div>
+          <button type="button"
+            onClick={() => setAllowMultiDay(v => !v)}
+            className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${allowMultiDay ? 'bg-instant' : ''}`}
+            style={!allowMultiDay ? { background: 'var(--card-bg)' } : undefined}
+          >
+            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${allowMultiDay ? 'translate-x-6' : 'translate-x-1'}`} />
+          </button>
+        </div>
+
         {/* Tags */}
         <div>
           <SectionLabel>Tags</SectionLabel>
@@ -346,6 +367,12 @@ function ServiceCard({ svc, onEdit, onDelete, deleting, disabled }) {
               style={{ background: modeColor.bg, color: modeColor.color, border: `1px solid ${modeColor.border}` }}>
               {modeLabel}
             </span>
+            {svc.allow_multi_day_booking && (
+              <span className="text-[12px] px-2 py-0.5 rounded-full font-medium"
+                style={{ background: 'var(--accent-deep)', color: 'var(--accent-hover)', border: '1px solid var(--accent-mid)' }}>
+                Multi-day
+              </span>
+            )}
           </div>
           {svc.description && (
             <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{svc.description}</p>

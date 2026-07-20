@@ -30,6 +30,7 @@ import WorkerServices from '@/pages/worker/WorkerServices'
 import WorkerPackages from '@/pages/worker/WorkerPackages'
 import WorkerOffers from '@/pages/worker/WorkerOffers'
 import WorkerMedia from '@/pages/worker/WorkerMedia'
+import WorkerSchedule from '@/pages/worker/WorkerSchedule'
 import WorkerProfile from '@/pages/worker/WorkerProfile'
 import WorkerAnalytics from '@/pages/worker/WorkerAnalytics'
 import WorkerSupport from '@/pages/worker/WorkerSupport'
@@ -220,6 +221,7 @@ export default function App() {
           <Route path="packages" element={<WorkerPackages />} />
           <Route path="offers" element={<WorkerOffers />} />
           <Route path="media" element={<WorkerMedia />} />
+          <Route path="schedule" element={<WorkerSchedule />} />
           <Route path="profile" element={<WorkerProfile />} />
           <Route path="analytics" element={<WorkerAnalytics />} />
           <Route path="support" element={<WorkerSupport />} />

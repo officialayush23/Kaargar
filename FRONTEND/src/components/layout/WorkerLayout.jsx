@@ -342,7 +342,7 @@ export function WorkerLayout() {
       <Background />
 
       <motion.div
-        className="pb-28 max-w-3xl mx-auto"
+        className="pb-28 sm:pb-36 max-w-3xl mx-auto"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.22 }}
