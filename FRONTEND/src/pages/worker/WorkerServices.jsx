@@ -36,7 +36,7 @@ function ServiceModeToggle({ value, onChange }) {
           )
         })}
       </div>
-      <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+      <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
         {MODE_OPTIONS.find(o => o.value === value)?.tip}
       </p>
     </div>
@@ -155,7 +155,7 @@ function TagInput({ selectedTags, onChange }) {
           </motion.div>
         )}
       </AnimatePresence>
-      <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+      <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
         Press Enter or comma to add · Backspace to remove
       </p>
     </div>
@@ -214,7 +214,7 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
           <div className="flex items-center justify-between mb-1.5">
             <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Base rate ₹</p>
             {minPrice && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md"
+              <span className="text-[12px] font-medium px-1.5 py-0.5 rounded-md"
                 style={{ background: 'var(--accent-deep)', color: 'var(--accent)' }}>
                 Min ₹{minPrice}
               </span>
@@ -226,7 +226,7 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
             min={minPrice || 0} className={inp}
             style={priceError ? inpErrorStyle : inpStyle} />
           {priceError && (
-            <p className="text-[10px] mt-1" style={{ color: '#f87171' }}>{priceError}</p>
+            <p className="text-[12px] mt-1" style={{ color: '#f87171' }}>{priceError}</p>
           )}
         </div>
         <AnimatePresence>
@@ -269,7 +269,7 @@ function ServiceCard({ svc, onEdit, onDelete, deleting }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{svc.title}</p>
-            <span className="text-[10px] px-2 py-0.5 rounded-full font-medium"
+            <span className="text-[12px] px-2 py-0.5 rounded-full font-medium"
               style={{ background: modeColor.bg, color: modeColor.color, border: `1px solid ${modeColor.border}` }}>
               {modeLabel}
             </span>
@@ -293,7 +293,7 @@ function ServiceCard({ svc, onEdit, onDelete, deleting }) {
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1 mt-2">
               {tags.map(tag => (
-                <span key={tag.id} className="text-[10px] px-2 py-0.5 rounded-full"
+                <span key={tag.id} className="text-[12px] px-2 py-0.5 rounded-full"
                   style={{ background: 'var(--accent-bg)', color: 'var(--brand)', border: '1px solid var(--accent-border)' }}>
                   {tag.name}
                 </span>

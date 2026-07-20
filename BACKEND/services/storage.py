@@ -14,6 +14,8 @@ BUCKET_PROFILE = "profile_photos"
 BUCKET_POSTS = "worker_posts"
 BUCKET_DOCUMENTS = "documents"
 BUCKET_VERIFICATION_VIDEO = "verification_video_worker"
+BUCKET_JOB_BEFORE_AFTER = "job_before_after"
+BUCKET_JOB_ITEM_PHOTOS = "job_item_photos"
 
 
 def get_public_url(bucket: str, path: str) -> str:
@@ -50,6 +52,16 @@ def worker_document_path(user_id: str, doc_type: str, original_filename: str) ->
 def verification_video_path(user_id: str, original_filename: str) -> str:
     ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else "mp4"
     return f"{user_id}/intro_{int(time.time())}_{uuid.uuid4().hex[:6]}.{ext}"
+
+
+def job_before_after_path(user_id: str, job_id: str, phase: str, original_filename: str) -> str:
+    ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else "jpg"
+    return f"{user_id}/{job_id}/{phase}_{int(time.time())}_{uuid.uuid4().hex[:8]}.{ext}"
+
+
+def job_item_photo_path(user_id: str, job_id: str, kind: str, original_filename: str) -> str:
+    ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else "jpg"
+    return f"{user_id}/{job_id}/{kind}_{int(time.time())}_{uuid.uuid4().hex[:8]}.{ext}"
 
 
 def delete_worker_verification_files(user_id: str, doc_paths: list, video_path) -> None:

@@ -13,6 +13,7 @@ import HomePage from '@/pages/home/HomePage'
 import NewJobPage from '@/pages/job/NewJobPage'
 import SearchingPage from '@/pages/job/SearchingPage'
 import ActiveJobPage from '@/pages/job/ActiveJobPage'
+import JobApprovalPage from '@/pages/job/JobApprovalPage'
 import DiscoveryPage from '@/pages/discovery/DiscoveryPage'
 import WorkerProfilePage from '@/pages/discovery/WorkerProfilePage'
 import BookingsPage from '@/pages/bookings/BookingsPage'
@@ -207,6 +208,7 @@ export default function App() {
           <Route path="job/:jobId" element={<JobDetailPage />} />
           <Route path="job/:jobId/searching" element={<SearchingPage />} />
           <Route path="job/:jobId/active" element={<ActiveJobPage />} />
+          <Route path="job/:jobId/approve" element={<JobApprovalPage />} />
           <Route path="job/:jobId/review" element={<ReviewPage />} />
           <Route path="discover" element={<DiscoveryPage />} />
         </Route>
@@ -221,6 +223,8 @@ export default function App() {
           <Route path="profile" element={<WorkerProfile />} />
           <Route path="analytics" element={<WorkerAnalytics />} />
           <Route path="support" element={<WorkerSupport />} />
+          <Route path="job/:jobId/active" element={<ActiveJobPage />} />
+          <Route path="chat/:jobId" element={<ChatPage />} />
         </Route>
 
         {/* Admin portal */}

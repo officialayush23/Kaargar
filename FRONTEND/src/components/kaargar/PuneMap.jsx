@@ -240,7 +240,7 @@ export function PuneMap({
           }
         </div>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <p style={{ fontSize: 11, color: '#94A3B8', margin: 0, fontWeight: 500 }}>
+          <p style={{ fontSize: 13, color: '#94A3B8', margin: 0, fontWeight: 500 }}>
             {dragging ? 'Move map to adjust…' : resolving ? 'Finding address…' : 'Delivery address'}
           </p>
           <p style={{
@@ -260,7 +260,7 @@ export function PuneMap({
           background: 'rgba(0,0,0,0.6)', borderRadius: 20,
           padding: '5px 14px', zIndex: 20, pointerEvents: 'none',
         }}>
-          <p style={{ fontSize: 11, color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
+          <p style={{ fontSize: 13, color: '#fff', margin: 0, whiteSpace: 'nowrap' }}>
             Drag map to set your location
           </p>
         </div>

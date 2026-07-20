@@ -3,6 +3,13 @@ export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
   theme: {
     extend: {
+      fontSize: {
+        xs:   ['0.8125rem', { lineHeight: '1.3rem' }],   // 13px (was 12px)
+        sm:   ['0.9375rem', { lineHeight: '1.4rem' }],    // 15px (was 14px)
+        base: ['1.0625rem', { lineHeight: '1.6rem' }],    // 17px (was 16px)
+        lg:   ['1.1875rem', { lineHeight: '1.7rem' }],    // 19px (was 18px)
+        xl:   ['1.3125rem', { lineHeight: '1.8rem' }],    // 21px (was 20px)
+      },
       colors: {
         void:    '#030914',
         deep:    '#050E1C',

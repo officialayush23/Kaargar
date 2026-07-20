@@ -227,7 +227,7 @@
 //     >
 //       <span className="text-base">{emoji}</span>
 //       <div>
-//         <p className="text-[10px] leading-none" style={{ color: 'var(--text-muted)' }}>{label}</p>
+//         <p className="text-[12px] leading-none" style={{ color: 'var(--text-muted)' }}>{label}</p>
 //         <p className="text-sm font-bold font-mono leading-tight" style={{ color: 'var(--text-primary)' }}>{value}</p>
 //       </div>
 //     </div>
@@ -431,7 +431,7 @@
 //                     padding: '0 3px',
 //                     background: 'var(--accent)',
 //                     color: '#000',
-//                     fontSize: '9px',
+//                     fontSize: '11px',
 //                     fontWeight: 700,
 //                     display: 'flex',
 //                     alignItems: 'center',
@@ -811,7 +811,7 @@ function StatChip({ emoji, label, value }) {
     >
       <span className="text-base">{emoji}</span>
       <div>
-        <p className="text-[10px] leading-none" style={{ color: 'var(--text-muted)' }}>{label}</p>
+        <p className="text-[12px] leading-none" style={{ color: 'var(--text-muted)' }}>{label}</p>
         <p className="text-sm font-bold font-mono leading-tight" style={{ color: 'var(--text-primary)' }}>{value}</p>
       </div>
     </div>
@@ -996,7 +996,7 @@ export default function HomePage() {
                     padding: '0 3px',
                     background: 'var(--accent)',
                     color: '#000',
-                    fontSize: '9px',
+                    fontSize: '11px',
                     fontWeight: 700,
                     display: 'flex',
                     alignItems: 'center',
@@ -1047,7 +1047,7 @@ export default function HomePage() {
               Kaargar
             </span>
             <span
-              className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+              className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
               style={{ background: 'var(--accent)', color: '#000' }}
             >
               Pune
@@ -1058,45 +1058,47 @@ export default function HomePage() {
           </p>
         </motion.div>
 
-        {/* Search bar */}
-        <motion.div
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
-          className="relative"
-        >
-          <div
-            className="flex items-center gap-3 px-4 py-3.5"
-            style={{
-              borderRadius: '16px',
-              background: 'var(--g-bg-mid)',
-              backdropFilter: 'blur(24px) saturate(180%)',
-              WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-              border: '1px solid var(--g-border)',
-              boxShadow: '0 4px 20px rgba(0,0,0,0.15), inset 0 1px 0 var(--g-shine)',
-            }}
+        {/* Search bar — Discovery mode only; Instant jumps straight to categories */}
+        {mode !== 'instant' && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 }}
+            className="relative"
           >
-            <Search style={{ width: '18px', height: '18px', color: 'var(--text-muted)', flexShrink: 0 }} />
-            <input
-              type="text"
-              placeholder={mode === 'instant' ? 'What do you need help with?' : 'Search plumbers, electricians…'}
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              className="flex-1 bg-transparent outline-none text-sm"
-              style={{ color: 'var(--text-primary)' }}
-            />
-            {searchQuery && (
-              <button
-                onClick={handleSearch}
-                className="px-3 py-1 rounded-xl text-xs font-semibold"
-                style={{ background: 'var(--accent)', color: '#000' }}
-              >
-                Go
-              </button>
-            )}
-          </div>
-        </motion.div>
+            <div
+              className="flex items-center gap-3 px-4 py-3.5"
+              style={{
+                borderRadius: '16px',
+                background: 'var(--g-bg-mid)',
+                backdropFilter: 'blur(24px) saturate(180%)',
+                WebkitBackdropFilter: 'blur(24px) saturate(180%)',
+                border: '1px solid var(--g-border)',
+                boxShadow: '0 4px 20px rgba(0,0,0,0.15), inset 0 1px 0 var(--g-shine)',
+              }}
+            >
+              <Search style={{ width: '18px', height: '18px', color: 'var(--text-muted)', flexShrink: 0 }} />
+              <input
+                type="text"
+                placeholder="Search plumbers, electricians…"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleSearch()}
+                className="flex-1 bg-transparent outline-none text-sm"
+                style={{ color: 'var(--text-primary)' }}
+              />
+              {searchQuery && (
+                <button
+                  onClick={handleSearch}
+                  className="px-3 py-1 rounded-xl text-xs font-semibold"
+                  style={{ background: 'var(--accent)', color: '#000' }}
+                >
+                  Go
+                </button>
+              )}
+            </div>
+          </motion.div>
+        )}
 
         {/* Mode Toggle — inline, just below search */}
         <motion.div

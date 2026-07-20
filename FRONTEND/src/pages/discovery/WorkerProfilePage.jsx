@@ -302,19 +302,19 @@ export default function WorkerProfilePage() {
               {/* Badges */}
               <div className="flex gap-2 mt-3 flex-wrap">
                 {worker.status === 'online' && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                  <span className="inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-0.5 rounded-full"
                     style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
                     <Zap size={9} /> Available now
                   </span>
                 )}
                 {modeLabel && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full"
+                  <span className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full"
                     style={{ background: 'var(--g-bg)', color: 'var(--text-secondary)', border: '1px solid var(--g-border)' }}>
                     {modeIcon && <modeIcon.type size={9} />} {modeLabel}
                   </span>
                 )}
                 {isVerified && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full"
+                  <span className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full"
                     style={{ background: 'rgba(255,255,255,0.06)', color: 'var(--text-secondary)', border: '1px solid rgba(255,255,255,0.1)' }}>
                     Verified pro
                   </span>
@@ -367,13 +367,13 @@ export default function WorkerProfilePage() {
                       )}
                       <div className="flex gap-2 mt-2 flex-wrap">
                         {svc.service_mode && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full"
+                          <span className="text-[12px] px-2 py-0.5 rounded-full"
                             style={{ background: 'var(--g-bg)', color: 'var(--text-muted)', border: '1px solid var(--g-border)' }}>
                             {svc.service_mode === 'walkin' ? 'Walk-in' : svc.service_mode === 'onsite' ? 'On-site' : 'Walk-in & On-site'}
                           </span>
                         )}
                         {svc.duration_min && (
-                          <span className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
+                          <span className="text-[12px] px-2 py-0.5 rounded-full flex items-center gap-1"
                             style={{ background: 'var(--g-bg)', color: 'var(--text-muted)', border: '1px solid var(--g-border)' }}>
                             <Clock size={9} /> {svc.duration_min} min
                           </span>
@@ -385,7 +385,7 @@ export default function WorkerProfilePage() {
                         {formatCurrency(svc.price)}
                       </p>
                       {svc.visit_fee > 0 && (
-                        <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
                           +{formatCurrency(svc.visit_fee)} travel
                         </p>
                       )}
@@ -409,7 +409,7 @@ export default function WorkerProfilePage() {
                       <div className="flex items-center gap-2">
                         <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{pkg.title}</p>
                         {pkg.original_price > pkg.discounted_price && (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded"
+                          <span className="text-[12px] font-bold px-1.5 py-0.5 rounded"
                             style={{ background: 'rgba(34,197,94,0.15)', color: '#22c55e' }}>
                             {Math.round((1 - pkg.discounted_price / pkg.original_price) * 100)}% OFF
                           </span>
@@ -419,7 +419,7 @@ export default function WorkerProfilePage() {
                         <p className="text-xs mt-0.5 line-clamp-2" style={{ color: 'var(--text-muted)' }}>{pkg.description}</p>
                       )}
                       {pkg.validity_days && (
-                        <p className="text-[10px] mt-1.5" style={{ color: 'var(--text-muted)' }}>Valid for {pkg.validity_days} days</p>
+                        <p className="text-[12px] mt-1.5" style={{ color: 'var(--text-muted)' }}>Valid for {pkg.validity_days} days</p>
                       )}
                     </div>
                     <div className="text-right shrink-0">
@@ -461,7 +461,7 @@ export default function WorkerProfilePage() {
                         className={s <= Math.round(rating) ? 'fill-amber-400' : ''} />
                     ))}
                   </div>
-                  <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{reviews.length} reviews</p>
+                  <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>{reviews.length} reviews</p>
                 </div>
                 <div className="flex-1 space-y-1.5">
                   <RatingBar label="Quality" value={worker.quality_rating} />
@@ -492,7 +492,7 @@ export default function WorkerProfilePage() {
                         <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
                           {rv.reviewer_name || rv.reviewer?.full_name || 'User'}
                         </p>
-                        <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{formatRelativeTime(rv.created_at)}</p>
+                        <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>{formatRelativeTime(rv.created_at)}</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">

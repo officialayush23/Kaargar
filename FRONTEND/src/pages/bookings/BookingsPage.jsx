@@ -51,11 +51,11 @@ function JobCard({ job, onClick }) {
           </p>
           <div className="flex items-center gap-2 mt-1">
             <div className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.textColor }} />
-            <span className="text-[11px] font-medium" style={{ color: cfg.textColor }}>
+            <span className="text-[13px] font-medium" style={{ color: cfg.textColor }}>
               {JOB_STATUS_LABELS?.[job.status] || job.status}
             </span>
-            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>&#183;</span>
-            <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+            <span className="text-[13px]" style={{ color: 'var(--text-muted)' }}>&#183;</span>
+            <span className="text-[13px]" style={{ color: 'var(--text-muted)' }}>
               {formatRelativeTime(job.created_at)}
             </span>
           </div>
@@ -125,7 +125,7 @@ function PackageOrderCard({ order }) {
             <div className="flex items-center gap-2 mt-2 flex-wrap">
               {/* Status pill */}
               <span
-                className="text-[10px] font-semibold px-2 py-0.5 rounded-full"
+                className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
                 style={{ background: `${statusColor}20`, color: statusColor }}
               >
                 {statusLabel}
@@ -134,7 +134,7 @@ function PackageOrderCard({ order }) {
               {/* Uses remaining (multi_use) */}
               {!isBundle && (
                 <span
-                  className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
+                  className="text-[12px] px-2 py-0.5 rounded-full flex items-center gap-1"
                   style={{ background: 'var(--g-bg)', color: 'var(--text-secondary)', border: '1px solid var(--g-border)' }}
                 >
                   <Repeat className="h-2.5 w-2.5" />
@@ -145,7 +145,7 @@ function PackageOrderCard({ order }) {
               {/* Bundle progress */}
               {isBundle && (
                 <span
-                  className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
+                  className="text-[12px] px-2 py-0.5 rounded-full flex items-center gap-1"
                   style={{ background: 'var(--g-bg)', color: 'var(--text-secondary)', border: '1px solid var(--g-border)' }}
                 >
                   <CheckCheck className="h-2.5 w-2.5" />
@@ -156,7 +156,7 @@ function PackageOrderCard({ order }) {
               {/* Expiry */}
               {daysLeft !== null && !isExpired && (
                 <span
-                  className="text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"
+                  className="text-[12px] px-2 py-0.5 rounded-full flex items-center gap-1"
                   style={{
                     background: daysLeft <= 3 ? 'var(--accent-deep)' : 'var(--g-bg)',
                     color: daysLeft <= 3 ? 'var(--accent)' : 'var(--text-muted)',
@@ -169,7 +169,7 @@ function PackageOrderCard({ order }) {
               )}
               {isExpired && (
                 <span
-                  className="text-[10px] px-2 py-0.5 rounded-full"
+                  className="text-[12px] px-2 py-0.5 rounded-full"
                   style={{ background: 'rgba(248,113,113,0.1)', color: '#f87171', border: '1px solid rgba(248,113,113,0.2)' }}
                 >
                   Expired {formatRelativeTime(order.expires_at)}
@@ -204,7 +204,7 @@ function PackageOrderCard({ order }) {
             style={{ overflow: 'hidden', borderTop: '1px solid var(--g-border)' }}
           >
             <div className="p-4 pt-3 space-y-2">
-              <p className="text-[11px] font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-[13px] font-semibold uppercase tracking-wide mb-3" style={{ color: 'var(--text-muted)' }}>
                 Included services
               </p>
 
@@ -232,7 +232,7 @@ function PackageOrderCard({ order }) {
                       </p>
                     </div>
                     <span
-                      className="text-[10px] ml-2 shrink-0"
+                      className="text-[12px] ml-2 shrink-0"
                       style={{ color: isDone ? '#34d399' : 'var(--text-muted)' }}
                     >
                       {usedOf}
@@ -242,7 +242,7 @@ function PackageOrderCard({ order }) {
               })}
 
               {/* Purchased at */}
-              <p className="text-[10px] pt-1" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-[12px] pt-1" style={{ color: 'var(--text-muted)' }}>
                 Purchased {formatRelativeTime(order.created_at)}
               </p>
             </div>

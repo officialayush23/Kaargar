@@ -169,7 +169,7 @@ export function OnboardingWalkthrough({ onDone }) {
 
             {/* Subtitle */}
             <p style={{
-              fontSize: '11px',
+              fontSize: '13px',
               fontWeight: 600,
               color: 'var(--accent)',
               textTransform: 'uppercase',
@@ -282,7 +282,7 @@ export function OnboardingWalkthrough({ onDone }) {
         {/* Step counter */}
         <p style={{
           textAlign: 'center',
-          fontSize: '11px',
+          fontSize: '13px',
           color: 'var(--text-muted)',
           marginTop: '12px',
         }}>

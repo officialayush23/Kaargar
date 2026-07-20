@@ -80,7 +80,7 @@ export function WorkerCard({ worker, index = 0 }) {
                 <p className="text-xs font-semibold font-mono" style={{ color: 'var(--text-primary)' }}>
                   {minRate}{maxRate && maxRate !== minRate ? `–${maxRate}` : ''}
                 </p>
-                <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>/visit</p>
+                <p className="text-[12px]" style={{ color: 'var(--text-muted)' }}>/visit</p>
               </div>
             )}
           </div>
@@ -94,7 +94,7 @@ export function WorkerCard({ worker, index = 0 }) {
                 {rating > 0 ? rating.toFixed(1) : 'New'}
               </span>
               {ratingCount > 0 && (
-                <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>({ratingCount})</span>
+                <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>({ratingCount})</span>
               )}
             </div>
 
@@ -103,7 +103,7 @@ export function WorkerCard({ worker, index = 0 }) {
                 <span style={{ color: 'var(--g-border)' }}>&#183;</span>
                 <div className="flex items-center gap-1">
                   <Briefcase size={11} style={{ color: 'var(--text-muted)' }} />
-                  <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>{jobs} jobs</span>
+                  <span className="text-[13px]" style={{ color: 'var(--text-muted)' }}>{jobs} jobs</span>
                 </div>
               </>
             )}
@@ -113,7 +113,7 @@ export function WorkerCard({ worker, index = 0 }) {
                 <span style={{ color: 'var(--g-border)' }}>&#183;</span>
                 <div className="flex items-center gap-1">
                   <MapPin size={11} style={{ color: 'var(--text-muted)' }} />
-                  <span className="text-[11px] truncate" style={{ color: 'var(--text-muted)', maxWidth: '80px' }}>
+                  <span className="text-[13px] truncate" style={{ color: 'var(--text-muted)', maxWidth: '80px' }}>
                     {area}
                   </span>
                 </div>
@@ -126,25 +126,25 @@ export function WorkerCard({ worker, index = 0 }) {
       {/* Footer: service mode + instant badge */}
       <div className="flex items-center gap-2 mt-3 pt-3" style={{ borderTop: '1px solid var(--g-border)' }}>
         {isOnline && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-full"
+          <span className="inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-0.5 rounded-full"
             style={{ background: 'rgba(34,197,94,0.1)', color: '#22c55e', border: '1px solid rgba(34,197,94,0.2)' }}>
             <Zap size={9} /> Available now
           </span>
         )}
         {worker.accepts_instant && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full"
+          <span className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full"
             style={{ background: 'var(--accent-bg)', color: 'var(--accent)', border: '1px solid var(--accent-border)' }}>
             Instant
           </span>
         )}
         {worker.service_mode === 'walkin' && (
-          <span className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-0.5 rounded-full"
+          <span className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-0.5 rounded-full"
             style={{ background: 'rgba(168,85,247,0.08)', color: '#a855f7', border: '1px solid rgba(168,85,247,0.15)' }}>
             <Home size={9} /> Walk-in
           </span>
         )}
         <div className="ml-auto">
-          <span className="text-[10px] font-medium px-2.5 py-1 rounded-lg"
+          <span className="text-[12px] font-medium px-2.5 py-1 rounded-lg"
             style={{ background: 'var(--g-bg)', color: 'var(--text-secondary)', border: '1px solid var(--g-border)' }}>
             View profile &#8594;
           </span>

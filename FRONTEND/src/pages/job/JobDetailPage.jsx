@@ -111,7 +111,7 @@ function InfoRow({ icon: Icon, label, value, accent }) {
         <Icon size={15} style={{ color: accent ? 'var(--accent)' : 'var(--text-muted)' }} />
       </div>
       <div style={{ flex: 1 }}>
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 2 }}>{label}</p>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 2 }}>{label}</p>
         <p style={{ fontSize: 13, color: 'var(--text-primary)', fontWeight: 500, lineHeight: 1.4 }}>{value}</p>
       </div>
     </div>
@@ -120,7 +120,7 @@ function InfoRow({ icon: Icon, label, value, accent }) {
 
 function SectionTitle({ children }) {
   return (
-    <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase',
+    <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase',
       letterSpacing: '0.07em', marginBottom: 12 }}>
       {children}
     </p>
@@ -144,7 +144,7 @@ function StatusTimeline({ job }) {
             <p style={{ fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.4 }}>{job.cancellation_reason}</p>
           )}
           {job.cancelled_by && (
-            <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 3 }}>
               Cancelled by {job.cancelled_by}
               {job.cancelled_at ? ` · ${fmt(job.cancelled_at)}` : ''}
             </p>
@@ -189,7 +189,7 @@ function StatusTimeline({ job }) {
                 {stage.label}
               </p>
               {ts && (
-                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+                <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 1 }}>
                   {fmt(ts)}
                 </p>
               )}
@@ -336,7 +336,7 @@ function RescheduleModal({ open, onClose, currentDays, currentStart, currentEnd,
             </p>
 
             {/* Day picker */}
-            <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
               letterSpacing: '0.06em', marginBottom: 8 }}>Preferred days (up to 3)</p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 6, marginBottom: 18 }}>
               {futureDays.map(day => {
@@ -356,7 +356,7 @@ function RescheduleModal({ open, onClose, currentDays, currentStart, currentEnd,
                     <span style={{ fontWeight: 700, fontSize: 14 }}>
                       {dt.getDate()}
                     </span>
-                    <span style={{ fontSize: 10, opacity: 0.8 }}>
+                    <span style={{ fontSize: 12, opacity: 0.8 }}>
                       {dt.toLocaleDateString('en', { weekday: 'short' })}
                     </span>
                   </button>
@@ -450,7 +450,7 @@ export default function JobDetailPage() {
         {worker.id && (
           <div style={{ borderRadius: 20, padding: '16px 20px', background: 'var(--card-bg)',
             border: '1px solid var(--card-border)' }}>
-            <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
+            <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
               letterSpacing: '0.06em', marginBottom: 12 }}>Assigned Worker</p>
             <button onClick={() => navigate(`/worker/${worker.id}`)}
               style={{ width: '100%', background: 'none', border: 'none', cursor: 'pointer',
@@ -480,7 +480,7 @@ export default function JobDetailPage() {
         {/* Job info */}
         <div style={{ borderRadius: 20, padding: '16px 20px', background: 'var(--card-bg)',
           border: '1px solid var(--card-border)' }}>
-          <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
+          <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', textTransform: 'uppercase',
             letterSpacing: '0.06em', marginBottom: 12 }}>Details</p>
           <div className="space-y-3">
             <InfoRow icon={MapPin} label="Location" value={job.location_address || 'Not set'} />

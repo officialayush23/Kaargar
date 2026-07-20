@@ -11,7 +11,37 @@ import { Background } from '@/components/glass/Background'
 import { formatRelativeTime } from '@/lib/utils'
 import { cn } from '@/lib/utils'
 
+// Job-completion-flow system events get a distinct icon/tone on the pill.
+const SYSTEM_EVENT_META = {
+  bill_submitted: { icon: '🧾', tone: 'var(--text-secondary)' },
+  bill_approved:  { icon: '✅', tone: 'var(--emerald)' },
+  bill_disputed:  { icon: '⚠️', tone: '#f87171' },
+  job_completed:  { icon: '🎉', tone: 'var(--accent)' },
+}
+
+function SystemMessage({ msg }) {
+  const meta = SYSTEM_EVENT_META[msg.system_event] || { icon: 'ℹ️', tone: 'var(--text-muted)' }
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 4 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex justify-center py-1"
+    >
+      <div
+        className="flex items-center gap-2 px-3.5 py-1.5 rounded-full text-xs font-medium max-w-[90%] text-center"
+        style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)', color: meta.tone }}
+      >
+        <span>{meta.icon}</span>
+        <span>{msg.content}</span>
+      </div>
+    </motion.div>
+  )
+}
+
 function Message({ msg, isOwn }) {
+  if (msg.type === 'system' || msg.system_event) {
+    return <SystemMessage msg={msg} />
+  }
   return (
     <motion.div
       initial={{ opacity: 0, y: 6, scale: 0.97 }}
@@ -29,7 +59,7 @@ function Message({ msg, isOwn }) {
         <p className="text-sm leading-relaxed" style={{ color: isOwn ? '#000' : 'var(--text-primary)' }}>
           {msg.content}
         </p>
-        <p className="text-[10px] mt-1" style={{ color: isOwn ? 'rgba(0,0,0,0.5)' : 'var(--text-muted)' }}>
+        <p className="text-[12px] mt-1" style={{ color: isOwn ? 'rgba(0,0,0,0.5)' : 'var(--text-muted)' }}>
           {formatRelativeTime(msg.created_at)}
         </p>
       </div>

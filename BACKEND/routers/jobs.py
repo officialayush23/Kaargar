@@ -2,23 +2,34 @@
 Jobs router — create, status transitions, lifecycle endpoints.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, UploadFile, File, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete
+from sqlalchemy import select, delete, func as sa_func
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from decimal import Decimal
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from uuid import UUID
 import uuid
+import secrets
 
 from database import get_db
 from models import (
     User, Job, JobEvent, SOSEvent, ServiceSlot, Service,
     WorkerCategory, WorkerProfile, WorkerScheduleBlock,
-    CancellationPenalty, Payment, Notification,
+    CancellationPenalty, Payment, Notification, JobItemReceipt,
 )
-from schemas import JobCreate, JobResponse, JobCancel, SuccessResponse, ScheduledJobCreate, ScheduledJobReschedule, ScheduledJobResponse, SlotBookingCreate
+from schemas import (
+    JobCreate, JobResponse, JobCancel, SuccessResponse, ScheduledJobCreate,
+    ScheduledJobReschedule, ScheduledJobResponse, SlotBookingCreate,
+    JobItemReceiptCreate, JobItemReceiptResponse, JobApprovalSummary,
+    JobRejectRequest, JobOtpVerifyRequest, JobCompletionCodeResponse,
+)
 from dependencies import get_current_user
+from services.storage import (
+    upload_file, BUCKET_JOB_BEFORE_AFTER, BUCKET_JOB_ITEM_PHOTOS,
+    job_before_after_path, job_item_photo_path,
+)
+from services.notifications import post_system_message
 
 router = APIRouter()
 
@@ -84,6 +95,7 @@ async def _dispatch_instant_job(job_id: str):
 @router.get("/me", response_model=list[JobResponse])
 async def my_jobs(
     status: str = Query("active"),
+    as_role: str | None = Query(None, description="'worker' to list jobs assigned to the caller as a worker instead of as a customer"),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -95,10 +107,19 @@ async def my_jobs(
         "worker_assigned",
         "assigned", "en_route", "arrived", "started",
     ]
-    q = select(Job).where(Job.user_id == user.id)
+
+    if as_role == "worker":
+        wp_result = await db.execute(select(WP).where(WP.user_id == user.id))
+        wp = wp_result.scalar_one_or_none()
+        if not wp:
+            return []
+        q = select(Job).where(Job.worker_id == wp.id)
+    else:
+        q = select(Job).where(Job.user_id == user.id)
+
     if status == "active":
         q = q.where(Job.status.in_(active_statuses))
-    else:
+    elif status != "all":
         q = q.where(Job.status.notin_(active_statuses))
     q = q.order_by(Job.created_at.desc()).limit(50)
     result = await db.execute(q)
@@ -151,14 +172,23 @@ async def get_job(
     # Enrich with category name
     cat = await db.execute(select(CatModel.name).where(CatModel.id == job.category_id))
     resp.category_name = cat.scalar_one_or_none()
-    # Enrich with worker name
+    # Enrich with worker name + avatar
     if job.worker_id:
-        wname = await db.execute(
-            select(UserModel.full_name)
+        wrow = await db.execute(
+            select(UserModel.full_name, UserModel.avatar_url)
             .join(WP, WP.user_id == UserModel.id)
             .where(WP.id == job.worker_id)
         )
-        resp.worker_name = wname.scalar_one_or_none()
+        w = wrow.first()
+        if w:
+            resp.worker_name = w.full_name
+            resp.worker_avatar_url = w.avatar_url
+    # Enrich with client (customer) name + avatar
+    crow = await db.execute(select(UserModel.full_name, UserModel.avatar_url).where(UserModel.id == job.user_id))
+    c = crow.first()
+    if c:
+        resp.client_name = c.full_name
+        resp.client_avatar_url = c.avatar_url
     return resp
 
 
@@ -407,20 +437,15 @@ async def start_job(
     return SuccessResponse(message="Job started")
 
 
-@router.post("/{job_id}/complete", response_model=SuccessResponse)
-async def complete_job(
-    job_id: uuid.UUID,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    wp, job = await _get_worker_for_job(job_id, user, db)
-    if job.worker_id != wp.id:
-        raise HTTPException(403)
-    if job.status == "completed":
-        raise HTTPException(409, "Job is already completed")
-    if job.status not in ("arrived", "started", "assigned", "confirmed", "en_route"):
-        raise HTTPException(409, f"Cannot complete a job in '{job.status}' status")
-
+async def _finalize_job_completion(db, job, wp, user_id):
+    """
+    Shared "mark this job completed" logic. Used by both the direct
+    /complete path (jobs with no bill-approval step) and /verify-otp
+    (jobs that went through submit-for-approval → approve → OTP).
+    Caller is responsible for setting job.final_price to the amount that
+    should be commissioned BEFORE calling this (approved_total for the
+    bill-approval path, quoted_price fallback for the direct path).
+    """
     now = datetime.now(timezone.utc)
     job.completed_at = now
     job.status = "completed"
@@ -441,45 +466,435 @@ async def complete_job(
     wp.consecutive_rejects = 0
 
     wp.total_jobs_completed = (wp.total_jobs_completed or 0) + 1
-    # Recalculate completion_rate against total_jobs_requested (floor at 1 to avoid div/0)
     total_requested = max(wp.total_jobs_requested or 0, wp.total_jobs_completed)
     wp.completion_rate = Decimal(str(round(wp.total_jobs_completed / max(total_requested, 1), 4)))
 
-    # Accumulate earnings
     if job.worker_payout:
         wp.total_earnings = (wp.total_earnings or Decimal("0")) + job.worker_payout
         wp.pending_payout = (wp.pending_payout or Decimal("0")) + job.worker_payout
 
-    # Recover cancellation score slightly for each completed job (+0.02, cap 1.0)
     new_score = min(Decimal("1.00"), (wp.cancellation_score or Decimal("1.00")) + Decimal("0.02"))
     wp.cancellation_score = new_score
 
-    # ── Free any schedule block for this job ──────────────────────────────────
     await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
 
-    # ── Notify user that job is done ──────────────────────────────────────────
     db.add(Notification(
         user_id = job.user_id,
         type    = "job_completed",
         title   = "Service completed!",
-        body    = f"Your service has been completed. Please rate your experience.",
+        body    = "Your service has been completed. Please rate your experience.",
         data    = {"job_id": str(job.id)},
     ))
 
-    await _log_event(db, job.id, "completed", "worker", user.id)
-    await db.commit()
+    await _log_event(db, job.id, "completed", "worker", user_id)
 
-    # Refresh analytics for this worker in the background (non-blocking)
     import asyncio
     from tasks.decay_scores import refresh_worker_analytics_for
     asyncio.create_task(refresh_worker_analytics_for(wp.id))
 
+
+@router.post("/{job_id}/complete", response_model=SuccessResponse)
+async def complete_job(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp, job = await _get_worker_for_job(job_id, user, db)
+    if job.worker_id != wp.id:
+        raise HTTPException(403)
+    if job.status == "completed":
+        raise HTTPException(409, "Job is already completed")
+    if job.status not in ("arrived", "started", "assigned", "confirmed", "en_route"):
+        raise HTTPException(409, f"Cannot complete a job in '{job.status}' status")
+
+    await _finalize_job_completion(db, job, wp, user.id)
+    await db.commit()
     return SuccessResponse(message="Job completed")
+
+
+# ── Job completion flow: photos, extra items, approval, OTP ──────────────────
+
+ALLOWED_MEDIA_TYPES = {"image/jpeg", "image/png", "image/webp"}
+MAX_MEDIA_SIZE = 10 * 1024 * 1024  # 10MB
+
+
+@router.post("/{job_id}/media")
+async def upload_job_media(
+    job_id: uuid.UUID,
+    kind: str = Query(..., pattern="^(before|after|item_photo|receipt_photo)$"),
+    file: UploadFile = File(...),
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Uploads a single photo for the job-completion flow.
+    kind='before'|'after'   → job_before_after bucket; URL is appended directly
+                               to job.before_photos / job.after_photos.
+    kind='item_photo'|'receipt_photo' → job_item_photos bucket; URL is only
+                               returned — the client attaches it when calling
+                               POST /jobs/{job_id}/items.
+    """
+    wp, job = await _get_worker_for_job(job_id, user, db)
+    if job.worker_id != wp.id:
+        raise HTTPException(403)
+    if job.status not in ("arrived", "started"):
+        raise HTTPException(409, f"Cannot add job media while status is '{job.status}'")
+
+    if file.content_type not in ALLOWED_MEDIA_TYPES:
+        raise HTTPException(400, "Only JPEG/PNG/WebP images allowed")
+    data = await file.read()
+    if len(data) > MAX_MEDIA_SIZE:
+        raise HTTPException(400, "Image must be under 10MB")
+
+    if kind in ("before", "after"):
+        path = job_before_after_path(str(user.id), str(job_id), kind, file.filename or "photo.jpg")
+        url = upload_file(BUCKET_JOB_BEFORE_AFTER, path, data, file.content_type)
+        if kind == "before":
+            job.before_photos = [*(job.before_photos or []), url]
+        else:
+            job.after_photos = [*(job.after_photos or []), url]
+        await db.commit()
+    else:
+        path = job_item_photo_path(str(user.id), str(job_id), kind, file.filename or "photo.jpg")
+        url = upload_file(BUCKET_JOB_ITEM_PHOTOS, path, data, file.content_type)
+
+    return {"url": url, "path": path}
+
+
+@router.get("/{job_id}/items", response_model=list[JobItemReceiptResponse])
+async def list_job_items(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    job_result = await db.execute(select(Job).where(Job.id == job_id))
+    job = job_result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404)
+
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if job.user_id != user.id and not (wp and job.worker_id == wp.id):
+        raise HTTPException(403)
+
+    result = await db.execute(
+        select(JobItemReceipt).where(JobItemReceipt.job_id == job_id).order_by(JobItemReceipt.created_at)
+    )
+    items = result.scalars().all()
+    return [
+        JobItemReceiptResponse(
+            id=i.id, job_id=i.job_id, name=i.name, amount=i.amount,
+            item_photo_url=i.item_photo_path, receipt_photo_url=i.receipt_photo_path,
+            is_approved=i.is_approved, created_at=i.created_at,
+        )
+        for i in items
+    ]
+
+
+@router.post("/{job_id}/items", response_model=JobItemReceiptResponse)
+async def add_job_item(
+    job_id: uuid.UUID,
+    body: JobItemReceiptCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp, job = await _get_worker_for_job(job_id, user, db)
+    if job.worker_id != wp.id:
+        raise HTTPException(403)
+    if job.status != "started":
+        raise HTTPException(409, "Extra items can only be added while the job is in progress")
+
+    # Cap: 20 items per job (sane ceiling, not a hard product limit)
+    count_result = await db.execute(
+        select(sa_func.count()).select_from(JobItemReceipt).where(JobItemReceipt.job_id == job_id)
+    )
+    if (count_result.scalar() or 0) >= 20:
+        raise HTTPException(400, "Maximum of 20 extra items per job")
+
+    item = JobItemReceipt(
+        job_id=job_id,
+        created_by=wp.id,
+        name=body.name,
+        amount=body.amount,
+        item_photo_path=body.item_photo_url,
+        receipt_photo_path=body.receipt_photo_url,
+    )
+    db.add(item)
+
+    # Recompute the denormalized total server-side (never trust a client-supplied total)
+    await db.flush()
+    total_result = await db.execute(
+        select(sa_func.coalesce(sa_func.sum(JobItemReceipt.amount), 0))
+        .where(JobItemReceipt.job_id == job_id)
+    )
+    job.extra_items_total = total_result.scalar() or Decimal("0")
+
+    await db.commit()
+    await db.refresh(item)
+    return JobItemReceiptResponse(
+        id=item.id, job_id=item.job_id, name=item.name, amount=item.amount,
+        item_photo_url=item.item_photo_path, receipt_photo_url=item.receipt_photo_path,
+        is_approved=item.is_approved, created_at=item.created_at,
+    )
+
+
+@router.delete("/{job_id}/items/{item_id}", response_model=SuccessResponse)
+async def delete_job_item(
+    job_id: uuid.UUID,
+    item_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp, job = await _get_worker_for_job(job_id, user, db)
+    if job.worker_id != wp.id:
+        raise HTTPException(403)
+    if job.status != "started":
+        raise HTTPException(409, "Extra items can only be edited while the job is in progress")
+
+    result = await db.execute(
+        select(JobItemReceipt).where(JobItemReceipt.id == item_id, JobItemReceipt.job_id == job_id)
+    )
+    item = result.scalar_one_or_none()
+    if not item:
+        raise HTTPException(404)
+    await db.delete(item)
+    await db.flush()
+
+    total_result = await db.execute(
+        select(sa_func.coalesce(sa_func.sum(JobItemReceipt.amount), 0))
+        .where(JobItemReceipt.job_id == job_id)
+    )
+    job.extra_items_total = total_result.scalar() or Decimal("0")
+    await db.commit()
+    return SuccessResponse(message="Item removed")
+
+
+@router.post("/{job_id}/submit-for-approval", response_model=SuccessResponse)
+async def submit_for_approval(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp, job = await _get_worker_for_job(job_id, user, db)
+    if job.worker_id != wp.id:
+        raise HTTPException(403)
+    if job.status != "started":
+        raise HTTPException(409, f"Cannot submit for approval from status '{job.status}'")
+    if not job.before_photos:
+        raise HTTPException(400, "At least one before-photo is required")
+    if not job.after_photos:
+        raise HTTPException(400, "At least one after-photo is required")
+
+    job.status = "awaiting_approval"
+    job.submitted_for_approval_at = datetime.now(timezone.utc)
+    await _log_event(db, job.id, "awaiting_approval", "worker", user.id)
+
+    db.add(Notification(
+        user_id=job.user_id,
+        type="job_bill_ready",
+        title="Bill ready for review",
+        body="Your service provider has submitted the job for your approval.",
+        data={"job_id": str(job.id)},
+    ))
+    await post_system_message(db, job, "bill_submitted", "Bill submitted — waiting for customer approval.")
+
+    await db.commit()
+    return SuccessResponse(message="Submitted for customer approval")
+
+
+@router.get("/{job_id}/approval-summary", response_model=JobApprovalSummary)
+async def get_approval_summary(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    job_result = await db.execute(select(Job).where(Job.id == job_id))
+    job = job_result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404)
+
+    wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+    wp = wp_result.scalar_one_or_none()
+    if job.user_id != user.id and not (wp and job.worker_id == wp.id):
+        raise HTTPException(403)
+
+    items_result = await db.execute(
+        select(JobItemReceipt).where(JobItemReceipt.job_id == job_id).order_by(JobItemReceipt.created_at)
+    )
+    items = items_result.scalars().all()
+
+    return JobApprovalSummary(
+        id=job.id,
+        status=job.status,
+        before_photos=job.before_photos or [],
+        after_photos=job.after_photos or [],
+        final_price=job.final_price,
+        extra_items_total=job.extra_items_total or Decimal("0"),
+        approved_total=job.approved_total,
+        items=[
+            JobItemReceiptResponse(
+                id=i.id, job_id=i.job_id, name=i.name, amount=i.amount,
+                item_photo_url=i.item_photo_path, receipt_photo_url=i.receipt_photo_path,
+                is_approved=i.is_approved, created_at=i.created_at,
+            )
+            for i in items
+        ],
+    )
+
+
+@router.post("/{job_id}/approve", response_model=SuccessResponse)
+async def approve_job_bill(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user.id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job.status != "awaiting_approval":
+        raise HTTPException(409, f"Cannot approve a job in '{job.status}' status")
+
+    base = job.final_price or job.quoted_price or Decimal("0")
+    job.approved_total = base + (job.extra_items_total or Decimal("0"))
+    job.approved_at = datetime.now(timezone.utc)
+    job.status = "approved"
+
+    # Generate the completion OTP — never returned to the worker's client.
+    job.completion_otp_code = f"{secrets.randbelow(1_000_000):06d}"
+    job.completion_otp_expires_at = job.approved_at + timedelta(hours=4)
+    job.completion_otp_attempts = 0
+    job.completion_otp_locked_until = None
+
+    await db.execute(
+        JobItemReceipt.__table__.update()
+        .where(JobItemReceipt.job_id == job_id)
+        .values(is_approved=True, approved_at=job.approved_at)
+    )
+
+    if job.worker_id:
+        wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
+        wp = wp_r.scalar_one_or_none()
+        if wp:
+            db.add(Notification(
+                user_id=wp.user_id,
+                type="job_bill_approved",
+                title="Bill approved!",
+                body="The customer approved the bill. Ask them for the completion code to finish the job.",
+                data={"job_id": str(job.id)},
+            ))
+    await post_system_message(db, job, "bill_approved", "Customer approved the bill.")
+
+    await _log_event(db, job.id, "approved", "user", user.id)
+    await db.commit()
+    return SuccessResponse(message="Approved — share the completion code with your service provider")
+
+
+@router.post("/{job_id}/reject-approval", response_model=SuccessResponse)
+async def reject_job_bill(
+    job_id: uuid.UUID,
+    body: JobRejectRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user.id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job.status != "awaiting_approval":
+        raise HTTPException(409, f"Cannot reject a job in '{job.status}' status")
+
+    job.status = "disputed"
+
+    # Reuse the existing SOS/dispute mechanism rather than a new table.
+    db.add(SOSEvent(
+        job_id=job_id,
+        triggered_by=user.id,
+        triggered_by_role="user",
+        status="active",
+        notes=f"Bill rejected: {body.reason}",
+    ))
+
+    if job.worker_id:
+        wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
+        wp = wp_r.scalar_one_or_none()
+        if wp:
+            db.add(Notification(
+                user_id=wp.user_id,
+                type="job_bill_disputed",
+                title="Bill disputed",
+                body=f"The customer disputed the bill: {body.reason}",
+                data={"job_id": str(job.id)},
+            ))
+    await post_system_message(db, job, "bill_disputed", f"Customer disputed the bill: {body.reason}")
+
+    await _log_event(db, job.id, "disputed", "user", user.id, {"reason": body.reason})
+    await db.commit()
+    return SuccessResponse(message="Dispute raised — support has been notified")
+
+
+@router.get("/{job_id}/completion-code", response_model=JobCompletionCodeResponse)
+async def get_completion_code(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Customer-only. Never reachable by the worker's account, even by guessing the URL."""
+    result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user.id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if job.status != "approved" or not job.completion_otp_code:
+        raise HTTPException(409, "No active completion code for this job")
+    return JobCompletionCodeResponse(code=job.completion_otp_code, expires_at=job.completion_otp_expires_at)
+
+
+@router.post("/{job_id}/verify-otp", response_model=SuccessResponse)
+async def verify_completion_otp(
+    job_id: uuid.UUID,
+    body: JobOtpVerifyRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    wp, job = await _get_worker_for_job(job_id, user, db)
+    if job.worker_id != wp.id:
+        raise HTTPException(403)
+    if job.status != "approved":
+        raise HTTPException(409, f"Cannot verify a code for a job in '{job.status}' status")
+
+    now = datetime.now(timezone.utc)
+    if job.completion_otp_locked_until and now < job.completion_otp_locked_until:
+        raise HTTPException(423, "Too many wrong attempts — try again later")
+    if not job.completion_otp_expires_at or now > job.completion_otp_expires_at:
+        raise HTTPException(410, "Completion code expired — ask the customer to re-approve")
+
+    if body.code != job.completion_otp_code:
+        job.completion_otp_attempts = (job.completion_otp_attempts or 0) + 1
+        if job.completion_otp_attempts >= 5:
+            job.completion_otp_locked_until = now + timedelta(minutes=15)
+            job.completion_otp_attempts = 0
+            await db.commit()
+            raise HTTPException(423, "Too many wrong attempts — locked for 15 minutes")
+        await db.commit()
+        raise HTTPException(400, f"Incorrect code ({5 - job.completion_otp_attempts} attempts left)")
+
+    # ── Match — finalize the job using the customer-approved total ───────────
+    job.final_price = job.approved_total
+    job.completion_otp_code = None
+    job.completion_otp_expires_at = None
+    job.completion_otp_attempts = 0
+    job.completion_otp_locked_until = None
+
+    await _finalize_job_completion(db, job, wp, user.id)
+    await post_system_message(db, job, "job_completed", "Job completed — payment is being processed.")
+    await db.commit()
+    return SuccessResponse(message="Job completed — payment will be requested from the customer")
 
 
 @router.post("/{job_id}/sos", response_model=SuccessResponse)
 async def trigger_sos(
     job_id: uuid.UUID,
+    body: dict | None = Body(default=None),
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -498,6 +913,7 @@ async def trigger_sos(
         triggered_by=user.id,
         triggered_by_role=role,
         status="active",
+        notes=(body or {}).get("notes"),
     )
     db.add(sos)
     await db.commit()

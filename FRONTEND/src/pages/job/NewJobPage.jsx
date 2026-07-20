@@ -54,7 +54,7 @@ function StepIndicator({ current }) {
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                fontSize: '10px',
+                fontSize: '12px',
                 fontWeight: 700,
                 transition: 'all 0.2s',
                 background: done
@@ -131,7 +131,7 @@ function SavedAddressPicker({ onSelect }) {
   if (!addresses.length) return null
   return (
     <div style={{ marginBottom: 4 }}>
-      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         Saved addresses
       </p>
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
@@ -283,7 +283,7 @@ function LocationStep({ location, onLocationSelect, category }) {
                           {s.main_text || s.description}
                         </p>
                         {s.secondary_text && (
-                          <p style={{ fontSize: 11, color: '#94A3B8', margin: 0 }}>{s.secondary_text}</p>
+                          <p style={{ fontSize: 13, color: '#94A3B8', margin: 0 }}>{s.secondary_text}</p>
                         )}
                       </div>
                     </button>
@@ -394,14 +394,14 @@ function EstimateStep({ category, mode }) {
         <GlassCard className="p-3 flex items-center gap-2">
           <Clock className="h-4 w-4 text-emerald-400 shrink-0" />
           <div>
-            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Worker ETA</p>
+            <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Worker ETA</p>
             <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>30–45 min</p>
           </div>
         </GlassCard>
         <GlassCard className="p-3 flex items-center gap-2">
           <TrendingUp className="h-4 w-4 text-azure shrink-0" />
           <div>
-            <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>Avg. rating</p>
+            <p className="text-[13px]" style={{ color: 'var(--text-muted)' }}>Avg. rating</p>
             <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>4.8 ★</p>
           </div>
         </GlassCard>
@@ -442,12 +442,12 @@ function ConfirmStep({ category, location, mode, description, loading, onSubmit 
               {mode === 'instant' ? (
                 <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: '#22C55E' }}>
                   <Zap className="h-2.5 w-2.5" style={{ color: '#000' }} />
-                  <span className="text-[10px] font-semibold" style={{ color: '#000' }}>Instant</span>
+                  <span className="text-[12px] font-semibold" style={{ color: '#000' }}>Instant</span>
                 </div>
               ) : (
                 <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: 'var(--accent)' }}>
                   <Compass className="h-2.5 w-2.5" style={{ color: '#000' }} />
-                  <span className="text-[10px] font-semibold" style={{ color: '#000' }}>Discovery</span>
+                  <span className="text-[12px] font-semibold" style={{ color: '#000' }}>Discovery</span>
                 </div>
               )}
             </div>
@@ -614,7 +614,7 @@ export default function NewJobPage() {
           </button>
 
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p style={{ fontSize: '11px', color: 'var(--text-muted)', lineHeight: 1 }}>
+            <p style={{ fontSize: '13px', color: 'var(--text-muted)', lineHeight: 1 }}>
               Step {STEPS.indexOf(step) + 1} of {STEPS.length}
             </p>
             <p style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.3, marginTop: '1px' }}>

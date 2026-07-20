@@ -64,7 +64,7 @@ export function NotificationDrawer({ open, onClose }) {
                         <div className="w-2 h-2 rounded-full bg-brand shrink-0 mt-1" />
                       )}
                     </div>
-                    <p className="text-[10px] text-[--text-muted] mt-2">
+                    <p className="text-[12px] text-[--text-muted] mt-2">
                       {formatRelativeTime(n.created_at)}
                     </p>
                   </div>

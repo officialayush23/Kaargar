@@ -120,7 +120,7 @@ export function InfoButton({ text, title, size = 16, side = 'top', className = '
         >
           {title && (
             <p style={{
-              fontSize: 11, fontWeight: 700, color: 'var(--accent)',
+              fontSize: 13, fontWeight: 700, color: 'var(--accent)',
               marginBottom: 5, textTransform: 'uppercase', letterSpacing: '0.06em',
             }}>
               {title}

@@ -64,7 +64,7 @@ function ServicePicker({ services, items, onChange }) {
               </div>
               <div className="flex gap-2">
                 <div className="flex-1">
-                  <p className="text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>Qty</p>
+                  <p className="text-[12px] mb-1" style={{ color: 'var(--text-muted)' }}>Qty</p>
                   <input
                     type="number"
                     min={1}
@@ -76,7 +76,7 @@ function ServicePicker({ services, items, onChange }) {
                   />
                 </div>
                 <div className="flex-1">
-                  <p className="text-[10px] mb-1" style={{ color: 'var(--text-muted)' }}>Redeem</p>
+                  <p className="text-[12px] mb-1" style={{ color: 'var(--text-muted)' }}>Redeem</p>
                   <select
                     value={item.redeem_type}
                     onChange={e => updateItem(item.service_id, { redeem_type: e.target.value })}
@@ -197,7 +197,7 @@ function PackageForm({ initial, services, onSave, onCancel }) {
           <p className="text-xs font-medium mb-1.5 flex items-center gap-1" style={{ color: 'var(--text-muted)' }}>
             Discounted price ₹
             {discount > 0 && (
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(52,211,153,0.15)', color: '#34d399' }}>
+              <span className="text-[12px] px-1.5 py-0.5 rounded-full font-bold" style={{ background: 'rgba(52,211,153,0.15)', color: '#34d399' }}>
                 -{discount}%
               </span>
             )}
@@ -235,7 +235,7 @@ function PackageForm({ initial, services, onSave, onCancel }) {
             </button>
           ))}
         </div>
-        <p className="text-[10px] mt-1" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
           {REDEMPTION_OPTIONS.find(o => o.value === redemption)?.desc}
         </p>
       </div>
@@ -300,12 +300,12 @@ function PackageCard({ pkg, onEdit, onDelete, deleting }) {
             <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{pkg.title}</p>
               {!pkg.is_active && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
+                <span className="text-[12px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
                   Inactive
                 </span>
               )}
               {discount > 0 && (
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399', border: '1px solid rgba(52,211,153,0.2)' }}>
+                <span className="text-[12px] px-2 py-0.5 rounded-full font-bold" style={{ background: 'rgba(52,211,153,0.12)', color: '#34d399', border: '1px solid rgba(52,211,153,0.2)' }}>
                   -{discount}% off
                 </span>
               )}
@@ -366,7 +366,7 @@ function PackageCard({ pkg, onEdit, onDelete, deleting }) {
             className="overflow-hidden"
           >
             <div className="px-4 pb-4 pt-0 space-y-1.5" style={{ borderTop: '1px solid var(--g-border)' }}>
-              <p className="text-[10px] uppercase tracking-widest font-medium pt-3" style={{ color: 'var(--text-muted)' }}>
+              <p className="text-[12px] uppercase tracking-widest font-medium pt-3" style={{ color: 'var(--text-muted)' }}>
                 {pkg.items.length} service{pkg.items.length !== 1 ? 's' : ''} included
               </p>
               {pkg.items.map((item, i) => (
@@ -375,10 +375,10 @@ function PackageCard({ pkg, onEdit, onDelete, deleting }) {
                     {item.service?.title || 'Service'}
                   </p>
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] px-1.5 py-0.5 rounded" style={{ background: 'var(--g-bg)', color: 'var(--text-muted)' }}>
+                    <span className="text-[12px] px-1.5 py-0.5 rounded" style={{ background: 'var(--g-bg)', color: 'var(--text-muted)' }}>
                       ×{item.quantity}
                     </span>
-                    <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                    <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
                       {item.redeem_type === 'once' ? 'once' : 'repeatable'}
                     </span>
                   </div>

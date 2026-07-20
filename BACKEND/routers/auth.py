@@ -107,6 +107,14 @@ async def provision_user(
             user.phone = body.phone
         user.last_seen_at = now
         user.email_verified = True
+        # Promote user -> worker if this call explicitly requests it
+        # (e.g. selected "I am a worker" at signup/signin). Never demote
+        # an existing worker/admin back to 'user'. This closes a race where
+        # an unrelated provision({}) call (e.g. on app mount, which sends
+        # no role) creates/updates the row before the worker-intent call
+        # lands, permanently sticking the account at role='user'.
+        if body.role == "worker" and user.role == "user":
+            user.role = "worker"
     else:
         # Create new user row
         allowed_role = body.role if body.role in ("user", "worker") else "user"

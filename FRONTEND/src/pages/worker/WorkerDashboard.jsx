@@ -236,7 +236,7 @@ export default function WorkerDashboard() {
             exit={{ opacity: 0, y: -8 }}
           >
             <GlassCard
-              onClick={() => navigate(`/job/${activeJob.id}/active`)}
+              onClick={() => navigate(`/worker/job/${activeJob.id}/active`)}
               hover
               glow
               glowColor="green"

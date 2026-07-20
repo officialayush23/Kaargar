@@ -386,10 +386,50 @@ class Job(Base):
     window_end   = mapped_column(Time)   # e.g. 18:00
     assigned_date = mapped_column(Date)  # which preferred_day was used
 
+    # ── Job completion flow (migration 010) ───────────────────
+    # before_photos/after_photos store paths within the `job_before_after` bucket.
+    before_photos = mapped_column(ARRAY(Text))
+    after_photos  = mapped_column(ARRAY(Text))
+    extra_items_total: Mapped[Decimal] = mapped_column(Numeric(10, 2), default=0)
+    # approved_total = base final_price + extra_items_total, locked at customer approval.
+    # This is the ONLY amount payments.create_order may charge once set.
+    approved_total: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    submitted_for_approval_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Completion OTP — separate from Supabase Auth OTP. Generated on customer approval,
+    # shown only to the customer, entered by the worker to trigger payment.
+    completion_otp_code: Mapped[str | None] = mapped_column(String(6))
+    completion_otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completion_otp_attempts: Mapped[int] = mapped_column(Integer, default=0)
+    completion_otp_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     user = relationship("User")
     worker = relationship("WorkerProfile")
     category = relationship("Category")
     service = relationship("Service")
+    item_receipts = relationship("JobItemReceipt", back_populates="job", cascade="all, delete-orphan")
+
+
+# ── 15b. JOB ITEM RECEIPTS (migration 010) ────────────────────
+# Connects a job to each worker-added extra item: its cost, a photo of the item
+# itself, and a photo of the purchase receipt/bill. Paths point into the
+# `job_item_photos` Supabase Storage bucket. is_approved flips true (denormalized,
+# not re-derived via join) the moment the customer approves the whole job bill.
+class JobItemReceipt(Base):
+    __tablename__ = "job_item_receipts"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("worker_profiles.id"))
+    name: Mapped[str] = mapped_column(String(200), nullable=False)
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    item_photo_path: Mapped[str] = mapped_column(Text, nullable=False)
+    receipt_photo_path: Mapped[str] = mapped_column(Text, nullable=False)
+    is_approved: Mapped[bool] = mapped_column(Boolean, default=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = now()
+
+    job = relationship("Job", back_populates="item_receipts")
 
 
 # ── 16. JOB WORKER REQUESTS ──────────────────────────────────

@@ -156,7 +156,7 @@ function SearchingStatus() {
                 background: 'var(--g-bg-mid)',
                 border: '1px solid var(--g-border)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 11,
+                fontSize: 13,
               }}
               animate={{ opacity: [0.4, 1, 0.4] }}
               transition={{ duration: 2, repeat: Infinity, delay: i * 0.35 }}
@@ -467,7 +467,7 @@ export default function SearchingPage() {
             whiteSpace: 'nowrap',
           }}
         >
-          <span style={{ color: 'var(--accent)', fontSize: 11, fontWeight: 600 }}>
+          <span style={{ color: 'var(--accent)', fontSize: 13, fontWeight: 600 }}>
             📍 Your location
           </span>
         </div>

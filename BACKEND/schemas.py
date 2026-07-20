@@ -487,6 +487,14 @@ class JobResponse(KaargarBase):
     # Populated by the endpoint, not stored on the model
     category_name: Optional[str] = None
     worker_name: Optional[str] = None
+    client_name: Optional[str] = None
+    client_avatar_url: Optional[str] = None
+    worker_avatar_url: Optional[str] = None
+    # Job-completion-flow fields
+    before_photos: Optional[List[str]] = None
+    after_photos: Optional[List[str]] = None
+    extra_items_total: Optional[Decimal] = None
+    approved_total: Optional[Decimal] = None
 
     # Coerce datetime.time → 'HH:MM' string for window fields
     @field_validator('window_start', 'window_end', mode='before')
@@ -501,6 +509,55 @@ class JobResponse(KaargarBase):
 
 class JobCancel(BaseModel):
     reason: str
+
+
+# ── JOB COMPLETION FLOW ──────────────────────────────────────
+class JobPhotoUpload(BaseModel):
+    phase: str = Field(..., pattern="^(before|after)$")
+    photo_url: str
+
+
+class JobItemReceiptCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=200)
+    amount: Decimal = Field(..., gt=0, le=50000)
+    item_photo_url: str
+    receipt_photo_url: str
+
+
+class JobItemReceiptResponse(KaargarBase):
+    id: UUID
+    job_id: UUID
+    name: str
+    amount: Decimal
+    item_photo_url: str
+    receipt_photo_url: str
+    is_approved: bool
+    created_at: datetime
+
+
+class JobApprovalSummary(KaargarBase):
+    """What the customer sees on the approval screen."""
+    id: UUID
+    status: str
+    before_photos: List[str] = []
+    after_photos: List[str] = []
+    final_price: Optional[Decimal] = None
+    extra_items_total: Decimal = 0
+    approved_total: Optional[Decimal] = None
+    items: List[JobItemReceiptResponse] = []
+
+
+class JobRejectRequest(BaseModel):
+    reason: str = Field(..., min_length=1, max_length=1000)
+
+
+class JobOtpVerifyRequest(BaseModel):
+    code: str = Field(..., min_length=4, max_length=6)
+
+
+class JobCompletionCodeResponse(BaseModel):
+    code: str
+    expires_at: datetime
 
 
 # ── CHAT & MESSAGES ───────────────────────────────────────────

@@ -168,6 +168,38 @@ async def notify_job_assigned(db, job):
     )
 
 
+async def post_system_message(db, job, event: str, text: str):
+    """
+    Insert a system_event chat message on the job's chat (created if missing).
+    Used for job-completion-flow transitions: bill submitted, approved,
+    disputed, payment confirmed. sender_id is required by the schema so we
+    attribute it to the job owner; the frontend renders based on `type='system'`
+    / `system_event`, not on sender, so this is invisible to the reader.
+    """
+    from sqlalchemy import select
+    from models import Chat, Message
+
+    result = await db.execute(select(Chat).where(Chat.job_id == job.id))
+    chat = result.scalar_one_or_none()
+    if not chat and job.worker_id:
+        chat = Chat(job_id=job.id, user_id=job.user_id, worker_id=job.worker_id)
+        db.add(chat)
+        await db.flush()
+    if not chat:
+        return  # no worker assigned yet — nothing to post to
+
+    db.add(Message(
+        chat_id=chat.id,
+        sender_id=job.user_id,
+        sender_role="system",
+        type="system",
+        system_event=event,
+        content=text,
+        raw_content=text,
+    ))
+    await db.flush()
+
+
 async def notify_worker_new_job(db, worker_user_id: uuid.UUID, job, request_id: uuid.UUID):
     await create_notification(
         db=db,

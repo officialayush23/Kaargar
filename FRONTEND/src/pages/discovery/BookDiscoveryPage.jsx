@@ -76,7 +76,7 @@ function SavedAddressPicker({ onSelect }) {
   if (!addresses.length) return null
   return (
     <div style={{ marginBottom: 10 }}>
-      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         Saved addresses
       </p>
       <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
@@ -124,16 +124,16 @@ function DayPicker({ selected, onChange }) {
                 position: 'absolute', top: 3, right: 3, width: 14, height: 14,
                 borderRadius: '50%', background: 'var(--amber)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 8, fontWeight: 700, color: '#000',
+                fontSize: 10, fontWeight: 700, color: '#000',
               }}>{order}</div>
             )}
-            <span style={{ fontSize: 9, color: active ? 'var(--amber)' : 'var(--text-muted)', fontWeight: 500 }}>
+            <span style={{ fontSize: 11, color: active ? 'var(--amber)' : 'var(--text-muted)', fontWeight: 500 }}>
               {dt.toLocaleDateString('en-IN', { weekday: 'short' })}
             </span>
             <span style={{ fontSize: 17, fontWeight: 700, color: active ? 'var(--amber)' : 'var(--text-primary)', lineHeight: 1 }}>
               {dt.getDate()}
             </span>
-            <span style={{ fontSize: 9, color: active ? 'var(--amber)' : 'var(--text-muted)' }}>
+            <span style={{ fontSize: 11, color: active ? 'var(--amber)' : 'var(--text-muted)' }}>
               {dt.toLocaleDateString('en-IN', { month: 'short' })}
             </span>
           </motion.button>
@@ -146,7 +146,7 @@ function DayPicker({ selected, onChange }) {
 function TimeSelect({ label, value, onChange, options, placeholder }) {
   return (
     <div style={{ flex: 1 }}>
-      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 500 }}>{label}</p>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 500 }}>{label}</p>
       <select value={value} onChange={e => onChange(e.target.value)}
         style={{
           width: '100%', padding: '10px 12px', borderRadius: 10, outline: 'none',
@@ -168,7 +168,7 @@ function SummaryRow({ icon: Icon, label, children }) {
         <Icon size={15} style={{ color: 'var(--amber)' }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 3 }}>{label}</p>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 3 }}>{label}</p>
         {children}
       </div>
     </div>
@@ -240,7 +240,7 @@ function SlotCalendar({ workerId, serviceId, selectedSlot, onSelect }) {
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
                 transition: 'all 0.15s',
               }}>
-              <span style={{ fontSize: 9, color: isSelected ? 'var(--amber)' : 'var(--text-muted)' }}>
+              <span style={{ fontSize: 11, color: isSelected ? 'var(--amber)' : 'var(--text-muted)' }}>
                 {dt.toLocaleDateString('en-IN', { weekday: 'short' })}
               </span>
               <span style={{ fontSize: 15, fontWeight: 700, color: isSelected ? 'var(--amber)' : 'var(--text-primary)' }}>
@@ -291,7 +291,7 @@ function SlotCalendar({ workerId, serviceId, selectedSlot, onSelect }) {
                 <span style={{ fontSize: 12, fontWeight: 600, color: isChosen ? 'var(--amber)' : 'var(--text-primary)' }}>
                   {to12h(slot.slot_start.slice(0, 5))}
                 </span>
-                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
                   {full ? 'Full' : `${slot.spots_left} left`}
                 </span>
                 {isChosen && <Check size={11} style={{ color: 'var(--amber)' }} />}
@@ -461,7 +461,7 @@ export default function BookDiscoveryPage() {
           {LABELS.map((label, i) => (
             <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
               <div style={{ height: 3, borderRadius: 2, width: '100%', background: i <= stepIdx ? 'var(--amber)' : 'var(--card-border)', transition: 'background 0.3s' }} />
-              <span style={{ fontSize: 9, color: i === stepIdx ? 'var(--amber)' : i < stepIdx ? 'var(--text-secondary)' : 'var(--text-muted)', fontWeight: i === stepIdx ? 600 : 400 }}>{label}</span>
+              <span style={{ fontSize: 11, color: i === stepIdx ? 'var(--amber)' : i < stepIdx ? 'var(--text-secondary)' : 'var(--text-muted)', fontWeight: i === stepIdx ? 600 : 400 }}>{label}</span>
             </div>
           ))}
         </div>
@@ -494,11 +494,11 @@ export default function BookDiscoveryPage() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
                           <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>{svc.title}</p>
                           {svc.requires_slot && (
-                            <span style={{ fontSize: 9, padding: '2px 6px', borderRadius: 6, background: 'rgba(59,130,246,0.15)', color: '#60A5FA', border: '1px solid rgba(59,130,246,0.3)', fontWeight: 600 }}>SLOT</span>
+                            <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, background: 'rgba(59,130,246,0.15)', color: '#60A5FA', border: '1px solid rgba(59,130,246,0.3)', fontWeight: 600 }}>SLOT</span>
                           )}
                         </div>
                         {svc.description && <p style={{ fontSize: 12, color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{svc.description}</p>}
-                        {svc.duration_min && <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 3 }}>~{svc.duration_min} min</p>}
+                        {svc.duration_min && <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 3 }}>~{svc.duration_min} min</p>}
                       </div>
                       <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
                         {svc.price > 0 && <p style={{ fontSize: 14, fontWeight: 700, color: 'var(--amber)' }}>₹{svc.price}</p>}
@@ -508,17 +508,17 @@ export default function BookDiscoveryPage() {
                     {/* Package sub-list */}
                     {isActive && svc.packages?.length > 0 && (
                       <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--card-border)' }}>
-                        <p style={{ fontSize: 11, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 8 }}>Packages (optional):</p>
+                        <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-muted)', marginBottom: 8 }}>Packages (optional):</p>
                         {svc.packages.map(pkg => (
                           <motion.button key={pkg.id} onClick={e => { e.stopPropagation(); setSelectedPackage(selectedPackage?.id === pkg.id ? null : pkg) }} whileTap={{ scale: 0.97 }}
                             style={{ width: '100%', padding: '10px 12px', borderRadius: 10, border: selectedPackage?.id === pkg.id ? '1.5px solid var(--amber)' : '1px solid var(--card-border)', background: selectedPackage?.id === pkg.id ? 'var(--accent-deep)' : 'transparent', display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: 'pointer', transition: 'all 0.15s', marginBottom: 6 }}>
                             <div style={{ textAlign: 'left' }}>
                               <p style={{ fontSize: 12, color: 'var(--text-secondary)', fontWeight: 500 }}>{pkg.title}</p>
-                              {pkg.description && <p style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2 }}>{pkg.description}</p>}
+                              {pkg.description && <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>{pkg.description}</p>}
                             </div>
                             <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 8 }}>
                               {pkg.discounted_price && <p style={{ fontSize: 13, fontWeight: 700, color: 'var(--amber)' }}>₹{pkg.discounted_price}</p>}
-                              {pkg.original_price && pkg.discounted_price && <p style={{ fontSize: 10, color: 'var(--text-muted)', textDecoration: 'line-through' }}>₹{pkg.original_price}</p>}
+                              {pkg.original_price && pkg.discounted_price && <p style={{ fontSize: 12, color: 'var(--text-muted)', textDecoration: 'line-through' }}>₹{pkg.original_price}</p>}
                             </div>
                           </motion.button>
                         ))}
@@ -575,7 +575,7 @@ export default function BookDiscoveryPage() {
                     style={{ marginTop: 14, padding: 12, borderRadius: 10, background: 'var(--accent-card)', border: '1px solid var(--accent-mid)' }}>
                     {preferredDays.map((d, i) => (
                       <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: i > 0 ? 4 : 0 }}>
-                        <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--amber)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 8, fontWeight: 700, color: '#000' }}>{i + 1}</div>
+                        <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--amber)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#000' }}>{i + 1}</div>
                         <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatShort(d)}</span>
                       </div>
                     ))}
@@ -602,7 +602,7 @@ export default function BookDiscoveryPage() {
                   <div style={{ paddingBottom: 12, color: 'var(--text-muted)', fontSize: 18 }}>–</div>
                   <TimeSelect label="Until" value={windowEnd} onChange={setWindowEnd} options={endOpts} placeholder="End" />
                 </div>
-                {windowStart && windowEnd && !windowValid && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: 10, fontSize: 11, color: '#F87171' }}>Window must be at least 1 hour</motion.p>}
+                {windowStart && windowEnd && !windowValid && <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ marginTop: 10, fontSize: 13, color: '#F87171' }}>Window must be at least 1 hour</motion.p>}
                 {windowValid && (
                   <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}
                     style={{ marginTop: 14, padding: '10px 14px', borderRadius: 10, background: 'var(--accent-card)', border: '1px solid var(--accent-mid)', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -612,9 +612,9 @@ export default function BookDiscoveryPage() {
                 )}
               </GlassCard>
               <GlassCard className="p-4">
-                <p style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Your days</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Your days</p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {preferredDays.map(d => <span key={d} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)', fontSize: 11, color: 'var(--amber)', fontWeight: 500 }}>{formatShort(d)}</span>)}
+                  {preferredDays.map(d => <span key={d} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)', fontSize: 13, color: 'var(--amber)', fontWeight: 500 }}>{formatShort(d)}</span>)}
                 </div>
               </GlassCard>
             </motion.div>
@@ -654,7 +654,7 @@ export default function BookDiscoveryPage() {
                   <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--amber)', marginBottom: 4 }}>
                     {isSlotMode ? 'Worker confirmed immediately' : 'Worker confirmed for your window'}
                   </p>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.55 }}>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', lineHeight: 1.55 }}>
                     {isSlotMode
                       ? 'Your slot is reserved. This specific worker is confirmed right away — no waiting or matching needed. Payment happens after the job is done.'
                       : 'This specific worker will arrive within your chosen window. You\'ll get a reminder 2 hours before — payment happens after the job is done.'}
@@ -680,7 +680,7 @@ export default function BookDiscoveryPage() {
                   <>
                     <SummaryRow icon={Calendar} label="Preferred days">
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
-                        {preferredDays.map(d => <span key={d} style={{ fontSize: 11, padding: '2px 8px', borderRadius: 20, background: 'var(--accent-deep)', color: 'var(--amber)', border: '1px solid var(--accent-mid)' }}>{formatShort(d)}</span>)}
+                        {preferredDays.map(d => <span key={d} style={{ fontSize: 13, padding: '2px 8px', borderRadius: 20, background: 'var(--accent-deep)', color: 'var(--amber)', border: '1px solid var(--accent-mid)' }}>{formatShort(d)}</span>)}
                       </div>
                     </SummaryRow>
                     <SummaryRow icon={Clock} label="Time window">
@@ -698,13 +698,13 @@ export default function BookDiscoveryPage() {
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                     <div>
                       <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Estimated price</p>
-                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>Collected after job completion</p>
+                      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 2 }}>Collected after job completion</p>
                     </div>
                     <p style={{ fontSize: 20, fontWeight: 700, color: 'var(--amber)' }}>₹{price}</p>
                   </div>
                 </GlassCard>
               )}
-              <p style={{ fontSize: 11, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>
+              <p style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', lineHeight: 1.5 }}>
                 {isSlotMode ? 'Cancellations more than 2 hours before the slot are free.' : 'Free cancellation before a worker is assigned.'}
               </p>
             </motion.div>

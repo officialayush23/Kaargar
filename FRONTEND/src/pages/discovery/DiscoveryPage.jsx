@@ -124,7 +124,7 @@ function PackageCard({ pkg, onClick, index }) {
           <Package className="h-5 w-5 text-amber-400" />
         </div>
         {discount > 0 && (
-          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+          <span className="text-[12px] font-bold px-2 py-0.5 rounded-full"
             style={{ background: 'rgba(74,222,128,0.15)', color: '#4ade80' }}>
             -{discount}%
           </span>
@@ -136,7 +136,7 @@ function PackageCard({ pkg, onClick, index }) {
           {pkg.name || pkg.title}
         </p>
         {pkg.worker_name && (
-          <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>
+          <p className="text-[13px] mt-1" style={{ color: 'var(--text-muted)' }}>
             by {pkg.worker_name}
           </p>
         )}
@@ -147,13 +147,13 @@ function PackageCard({ pkg, onClick, index }) {
             {formatCurrency(pkg.price)}
           </p>
           {pkg.original_price > pkg.price && (
-            <p className="text-[10px] line-through" style={{ color: 'var(--text-muted)' }}>
+            <p className="text-[12px] line-through" style={{ color: 'var(--text-muted)' }}>
               {formatCurrency(pkg.original_price)}
             </p>
           )}
         </div>
         {pkg.validity_days && (
-          <span className="text-[10px] px-2 py-1 rounded-lg"
+          <span className="text-[12px] px-2 py-1 rounded-lg"
             style={{ background: 'var(--bg-surface)', color: 'var(--text-muted)' }}>
             {pkg.validity_days}d
           </span>
@@ -197,16 +197,16 @@ function TrendingCard({ worker, onClick, index }) {
         <p className="text-xs font-semibold line-clamp-1" style={{ color: 'var(--text-primary)' }}>
           {worker.full_name || 'Worker'}
         </p>
-        <p className="text-[10px] mt-0.5 line-clamp-1" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-[12px] mt-0.5 line-clamp-1" style={{ color: 'var(--text-muted)' }}>
           {worker.primary_category || '—'}
         </p>
       </div>
       <div className="flex items-center gap-1">
         <Star className="h-3 w-3 fill-amber-400 text-amber-400 shrink-0" />
-        <span className="text-[11px] font-semibold text-amber-400">
+        <span className="text-[13px] font-semibold text-amber-400">
           {(worker.avg_rating || 4.8).toFixed(1)}
         </span>
-        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+        <span className="text-[12px]" style={{ color: 'var(--text-muted)' }}>
           ({worker.rating_count || 0})
         </span>
       </div>
@@ -302,7 +302,7 @@ function DiscoveryHome({ onSearch, navigate }) {
               }}
             >
               <span className="text-xl leading-none">{emoji}</span>
-              <span className="text-[10px] font-medium leading-tight"
+              <span className="text-[12px] font-medium leading-tight"
                 style={{ color: 'var(--text-secondary)' }}>
                 {label}
               </span>
@@ -378,7 +378,7 @@ function DiscoveryHome({ onSearch, navigate }) {
                 </div>
                 <div>
                   <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{name}</p>
-                  <p className="text-[11px] mt-1" style={{ color: 'var(--text-muted)' }}>Workers offering soon</p>
+                  <p className="text-[13px] mt-1" style={{ color: 'var(--text-muted)' }}>Workers offering soon</p>
                 </div>
                 <span className="text-xs px-2 py-1 rounded-lg inline-block"
                   style={{ background: '#e99f2f', color: '#000000' }}>
@@ -461,7 +461,7 @@ function DiscoveryHome({ onSearch, navigate }) {
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   {title}
                 </p>
-                <p className="text-[11px] mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                <p className="text-[13px] mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
                   {desc}
                 </p>
               </div>
@@ -552,7 +552,7 @@ export default function DiscoveryPage() {
 
         <div className="flex items-center gap-2 mb-1">
           <Compass className="h-3.5 w-3.5 text-amber-500" />
-          <span className="text-[11px] font-bold text-amber-500 uppercase tracking-widest">Discovery</span>
+          <span className="text-[13px] font-bold text-amber-500 uppercase tracking-widest">Discovery</span>
         </div>
         <h1 className="text-xl font-semibold mb-0.5"
           style={{ color: 'var(--text-primary)' }}>

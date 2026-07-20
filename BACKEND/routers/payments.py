@@ -36,10 +36,17 @@ async def create_order(
     job = job_result.scalar_one_or_none()
     if not job:
         raise HTTPException(404, "Job not found")
-    if not job.final_price:
+
+    # approved_total is the customer-approved bill (base + extra items) from the
+    # job-completion flow — always preferred over final_price when it's set, since
+    # it's the only amount that went through customer approval + completion OTP.
+    charge_amount = job.approved_total if job.approved_total is not None else job.final_price
+    if not charge_amount:
         raise HTTPException(400, "Job price not set yet")
 
-    amount_paise = int(job.final_price * 100)
+    amount_paise = int(charge_amount * 100)
+    if amount_paise < 100:
+        raise HTTPException(400, "Amount must be at least ₹1 (100 paise)")
     client = _razorpay_client()
     order = client.order.create({
         "amount": amount_paise,
@@ -51,12 +58,12 @@ async def create_order(
     payment = existing.scalar_one_or_none()
     if payment:
         payment.razorpay_order_id = order["id"]
-        payment.amount = job.final_price
+        payment.amount = charge_amount
     else:
         payment = Payment(
             job_id=job.id,
             user_id=user.id,
-            amount=job.final_price,
+            amount=charge_amount,
             currency="INR",
             status="pending",
             razorpay_order_id=order["id"],

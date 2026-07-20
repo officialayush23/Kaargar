@@ -70,7 +70,7 @@ function AddressForm({ initial, onSave, onCancel }) {
     <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Label presets */}
       <div>
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Label</p>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Label</p>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {PRESET_LABELS.map(p => (
             <button key={p} type="button"
@@ -101,7 +101,7 @@ function AddressForm({ initial, onSave, onCancel }) {
 
       {/* Address autocomplete */}
       <div style={{ position: 'relative' }}>
-        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Address</p>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>Address</p>
         <input
           value={query}
           onChange={e => {
@@ -137,7 +137,7 @@ function AddressForm({ initial, onSave, onCancel }) {
                     borderBottom: i < suggestions.length - 1 ? '1px solid var(--g-border)' : 'none',
                   }}>
                   <p style={{ fontSize: 13, color: 'var(--text-primary)', margin: 0 }}>{s.main_text}</p>
-                  <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0 }}>{s.secondary_text}</p>
+                  <p style={{ fontSize: 13, color: 'var(--text-muted)', margin: 0 }}>{s.secondary_text}</p>
                 </button>
               ))}
             </motion.div>
@@ -257,7 +257,7 @@ export function AddressBook({ picker = false, onSelect, selected }) {
                   <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>{addr.label}</span>
                   {addr.is_default && (
                     <span style={{
-                      fontSize: 10, padding: '1px 6px', borderRadius: 6,
+                      fontSize: 12, padding: '1px 6px', borderRadius: 6,
                       background: 'var(--accent-deep)', color: 'var(--accent-hover)',
                       fontWeight: 600, letterSpacing: '0.04em',
                     }}>DEFAULT</span>

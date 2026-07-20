@@ -73,7 +73,7 @@ function CategoryCard({ category, index, onClick }) {
       {/* Name */}
       <span
         style={{
-          fontSize: '10px',
+          fontSize: '12px',
           fontWeight: 500,
           color: 'var(--text-secondary)',
           textAlign: 'center',

@@ -53,7 +53,7 @@ function LangPill() {
             style={{
               padding: '3px 7px',
               borderRadius: '7px',
-              fontSize: 11,
+              fontSize: 13,
               fontWeight: active ? 700 : 500,
               cursor: 'pointer',
               border: 'none',
@@ -151,7 +151,7 @@ function WorkerMenu({ open, onClose }) {
                       {user?.email}
                     </p>
                     <span
-                      className="inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full mt-1"
+                      className="inline-block text-[12px] font-semibold px-2 py-0.5 rounded-full mt-1"
                       style={{ background: 'var(--accent-deep)', color: 'var(--accent-hover)' }}
                     >
                       ⚡ Worker
@@ -294,7 +294,7 @@ function WorkerPageHeader() {
                     padding: '0 3px',
                     background: 'var(--accent)',
                     color: '#000',
-                    fontSize: '9px',
+                    fontSize: '11px',
                     fontWeight: 700,
                     display: 'flex',
                     alignItems: 'center',

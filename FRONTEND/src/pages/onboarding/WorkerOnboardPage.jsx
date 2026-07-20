@@ -487,7 +487,7 @@ export default function WorkerOnboardPage() {
                   opacity: isActive ? 1 : isDone ? 0.7 : 0.4,
                 }} />
                 <span style={{
-                  fontSize: '8px',
+                  fontSize: '10px',
                   color: isActive ? 'var(--amber)' : isDone ? 'var(--text-secondary)' : 'var(--text-muted)',
                   fontWeight: isActive ? 600 : 400,
                 }}>
@@ -673,7 +673,7 @@ export default function WorkerOnboardPage() {
                               {cat.name}
                             </span>
                             <span style={{
-                              fontSize: '10px',
+                              fontSize: '12px',
                               color: cat.mode === 'instant' ? 'var(--instant)' : cat.mode === 'discovery' ? 'var(--discovery)' : '#94A3B8',
                               fontWeight: 500,
                             }}>
@@ -734,7 +734,7 @@ export default function WorkerOnboardPage() {
                             ? 'rgba(59,130,246,0.10)'
                             : 'var(--card-bg)',
                           color: docType === dt.value ? 'var(--azure)' : 'var(--text-secondary)',
-                          fontSize: '11px',
+                          fontSize: '13px',
                           fontWeight: docType === dt.value ? 600 : 400,
                           cursor: 'pointer',
                           transition: 'all 0.15s ease',
@@ -1104,7 +1104,7 @@ export default function WorkerOnboardPage() {
                         {DAYS[i]}
                       </span>
                       {day.enabled && (
-                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>
                           {to12h(day.start_time)} – {to12h(day.end_time)}
                         </span>
                       )}
@@ -1116,7 +1116,7 @@ export default function WorkerOnboardPage() {
                     {day.enabled && (
                       <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center' }}>
                         <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>From</p>
+                          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>From</p>
                           <select
                             value={day.start_time}
                             onChange={e => setDayTime(i, 'start_time', e.target.value)}
@@ -1132,7 +1132,7 @@ export default function WorkerOnboardPage() {
                         </div>
                         <div style={{ paddingTop: 18, color: 'var(--text-muted)', fontSize: 14 }}>—</div>
                         <div style={{ flex: 1 }}>
-                          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>To</p>
+                          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 4 }}>To</p>
                           <select
                             value={day.end_time}
                             onChange={e => setDayTime(i, 'end_time', e.target.value)}

@@ -231,6 +231,6 @@ function AddAddressForm({ onSave, onCancel }) {
           </button>
         ))}
       </div>
-    </div>
-  )
+    </motion.div>  )
 }
+

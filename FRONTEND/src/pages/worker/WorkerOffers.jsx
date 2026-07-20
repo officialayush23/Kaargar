@@ -220,7 +220,7 @@ function OfferCard({ offer, onEdit, onDelete, deleting }) {
               {offer.discount_type === 'percent' ? `${offer.discount_value}% off` : `₹${offer.discount_value} off`}
             </span>
             {!offer.is_active && (
-              <span className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
+              <span className="text-[12px] px-2 py-0.5 rounded-full" style={{ background: 'rgba(239,68,68,0.1)', color: '#f87171' }}>
                 Inactive
               </span>
             )}
