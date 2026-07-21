@@ -399,6 +399,22 @@ async def create_service(
                     f"You entered ₹{_price}."
                 )
 
+    # ── Booking mode: slot-based and multi-day are mutually exclusive ─────────
+    # requires_slot=True → strict per-slot booking (salon-style).
+    # allow_multi_day_booking=True → flexible multi-day window booking.
+    # A service is one or the other, never both.
+    if dump.get("requires_slot") and dump.get("allow_multi_day_booking"):
+        raise HTTPException(
+            400,
+            "A service can't be both slot-based (requires_slot) and multi-day "
+            "bookable (allow_multi_day_booking) — choose one booking mode.",
+        )
+
+    # ── Auto-recompute slot_duration_min from duration_min (+60min buffer) ────
+    # for slot-mode services, regardless of whatever the client sent.
+    if dump.get("requires_slot") and dump.get("duration_min") is not None:
+        dump["slot_duration_min"] = dump["duration_min"] + 60
+
     svc = Service(worker_id=wp.id, **dump)
     db.add(svc)
     await db.commit()
@@ -452,6 +468,24 @@ async def update_service(
                         f"You entered ₹{_price}."
                     )
 
+    # ── Booking mode: slot-based and multi-day are mutually exclusive ─────────
+    # Validate against the FINAL state (existing value unless overridden here).
+    final_requires_slot = updates.get("requires_slot", svc.requires_slot)
+    final_multi_day      = updates.get("allow_multi_day_booking", svc.allow_multi_day_booking)
+    if final_requires_slot and final_multi_day:
+        raise HTTPException(
+            400,
+            "A service can't be both slot-based (requires_slot) and multi-day "
+            "bookable (allow_multi_day_booking) — choose one booking mode.",
+        )
+
+    # ── Auto-recompute slot_duration_min when duration_min changes ────────────
+    # Fixed 60-minute buffer, for slot-mode services. Overrides any
+    # slot_duration_min the client tried to send directly.
+    duration_changed = "duration_min" in updates and updates["duration_min"] is not None
+    if final_requires_slot and duration_changed:
+        updates["slot_duration_min"] = updates["duration_min"] + 60
+
     for k, v in updates.items():
         setattr(svc, k, v)
     await db.commit()
@@ -464,7 +498,54 @@ async def update_service(
     if fields:
         background.add_task(translate_and_store, db, "service", str(svc.id), fields)
 
+    # ── Keep slot config + generated slots in sync with the new duration ──────
+    # If this service already has slot settings configured, mirror the
+    # recomputed slot_duration_min into ServiceSlotConfig and re-trigger
+    # generation so the rolling slot window reflects the new duration.
+    if final_requires_slot and duration_changed:
+        cfg_result = await db.execute(
+            select(ServiceSlotConfig)
+            .where(ServiceSlotConfig.service_id == svc.id, ServiceSlotConfig.worker_id == wp.id)
+        )
+        cfg = cfg_result.scalar_one_or_none()
+        if cfg:
+            cfg.slot_duration_min = svc.slot_duration_min
+            await db.commit()
+            await db.refresh(cfg)
+
+            from datetime import date as _date, timedelta as _timedelta
+            today = _date.today()
+            background.add_task(
+                _regenerate_slots_background, str(svc.id), str(wp.id), today, today + _timedelta(days=14)
+            )
+
     return svc
+
+
+async def _regenerate_slots_background(service_id_str: str, wp_id_str: str, from_date, to_date):
+    """
+    Background-task wrapper around _generate_slots_core — used when a
+    slot-mode service's duration changes and we need to re-seed the slot
+    window with a fresh DB session (FastAPI BackgroundTasks run after the
+    request's own session has closed).
+    """
+    from database import async_session
+    try:
+        async with async_session() as db:
+            cfg_result = await db.execute(
+                select(ServiceSlotConfig).where(
+                    ServiceSlotConfig.service_id == uuid.UUID(service_id_str),
+                    ServiceSlotConfig.worker_id == uuid.UUID(wp_id_str),
+                )
+            )
+            cfg = cfg_result.scalar_one_or_none()
+            if not cfg:
+                return
+            await _generate_slots_core(
+                db, uuid.UUID(wp_id_str), uuid.UUID(service_id_str), cfg, from_date, to_date
+            )
+    except Exception as exc:
+        print(f"[SLOTS] Failed to regenerate slots for service {service_id_str}: {exc}")
 
 
 @router.delete("/me/services/{service_id}", response_model=SuccessResponse)
@@ -1609,42 +1690,41 @@ async def get_my_slots(
     return result.scalars().all()
 
 
-@router.post("/me/services/{service_id}/slots/generate", response_model=list[SlotResponse])
-async def generate_slots(
+async def _generate_slots_core(
+    db: AsyncSession,
+    wp_id: uuid.UUID,
     service_id: uuid.UUID,
-    body: SlotGenerateRequest,
-    user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
+    cfg: "ServiceSlotConfig",
+    from_date,
+    to_date,
+) -> list:
     """
-    Auto-generate slots from worker_availability + slot_config for a date range.
-    Skips days already seeded. Respects max_slots_per_day and buffer_min.
+    Core slot-generation logic — walks worker_availability in
+    cfg.slot_duration_min increments (+ buffer_min) across [from_date, to_date],
+    respecting cfg.max_slots_per_day, and skipping days/slots already seeded
+    (idempotent — safe to call repeatedly / for overlapping ranges).
+
+    Shared by:
+      - POST /me/services/{service_id}/slots/generate (manual, worker-triggered)
+      - tasks/slot_rollover.py (APScheduler — keeps a rolling ~14 day window seeded)
+
+    Do not duplicate this loop elsewhere — reuse this function.
     """
-    from datetime import date as _date, timedelta, time as _time
-    wp = await _get_wp(user, db)
+    from datetime import timedelta, time as _time
 
-    # Get slot config
-    cfg_result = await db.execute(
-        select(ServiceSlotConfig)
-        .where(ServiceSlotConfig.service_id == service_id, ServiceSlotConfig.worker_id == wp.id)
-    )
-    cfg = cfg_result.scalar_one_or_none()
-    if not cfg:
-        raise HTTPException(400, "Configure slot settings first (PUT /slot-config)")
-
-    # Get worker availability (recurring weekly schedule)
+    # Worker's recurring weekly working hours
     avail_result = await db.execute(
-        select(WorkerAvailability).where(WorkerAvailability.worker_id == wp.id, WorkerAvailability.is_open == True)
+        select(WorkerAvailability).where(WorkerAvailability.worker_id == wp_id, WorkerAvailability.is_open == True)
     )
     availability = {row.day_of_week: row for row in avail_result.scalars().all()}
 
-    created: list[ServiceSlot] = []
-    current = body.from_date
+    created: list = []
+    current = from_date
     slot_dur = cfg.slot_duration_min
     buffer   = cfg.buffer_min
     capacity = cfg.capacity
 
-    while current <= body.to_date:
+    while current <= to_date:
         dow = current.weekday()  # 0=Mon
         if dow in availability:
             av = availability[dow]
@@ -1660,7 +1740,7 @@ async def generate_slots(
 
                 existing = await db.execute(
                     select(ServiceSlot).where(
-                        ServiceSlot.worker_id  == wp.id,
+                        ServiceSlot.worker_id  == wp_id,
                         ServiceSlot.service_id == service_id,
                         ServiceSlot.slot_date  == current,
                         ServiceSlot.slot_start == slot_start,
@@ -1669,7 +1749,7 @@ async def generate_slots(
                 if not existing.scalar_one_or_none():
                     slot = ServiceSlot(
                         service_id   = service_id,
-                        worker_id    = wp.id,
+                        worker_id    = wp_id,
                         slot_date    = current,
                         slot_start   = slot_start,
                         slot_end     = slot_end,
@@ -1688,6 +1768,31 @@ async def generate_slots(
     for s in created:
         await db.refresh(s)
     return created
+
+
+@router.post("/me/services/{service_id}/slots/generate", response_model=list[SlotResponse])
+async def generate_slots(
+    service_id: uuid.UUID,
+    body: SlotGenerateRequest,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Auto-generate slots from worker_availability + slot_config for a date range.
+    Skips days already seeded. Respects max_slots_per_day and buffer_min.
+    """
+    wp = await _get_wp(user, db)
+
+    # Get slot config
+    cfg_result = await db.execute(
+        select(ServiceSlotConfig)
+        .where(ServiceSlotConfig.service_id == service_id, ServiceSlotConfig.worker_id == wp.id)
+    )
+    cfg = cfg_result.scalar_one_or_none()
+    if not cfg:
+        raise HTTPException(400, "Configure slot settings first (PUT /slot-config)")
+
+    return await _generate_slots_core(db, wp.id, service_id, cfg, body.start_date, body.end_date)
 
 
 @router.patch("/me/services/{service_id}/slots/{slot_id}/block", response_model=SlotResponse)

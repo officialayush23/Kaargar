@@ -8,6 +8,7 @@ import {
 import { useTranslation } from 'react-i18next'
 import { Background } from '@/components/glass/Background'
 import { MobileBottomNav } from '@/components/glass/GlassNavbar'
+import { ActiveJobBar } from '@/components/kaargar/ActiveJobBar'
 import { NotificationDrawer } from '@/components/kaargar/NotificationDrawer'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore } from '@/stores/auth'
@@ -359,6 +360,7 @@ export function WorkerLayout() {
         </div>
       </motion.div>
 
+      <ActiveJobBar />
       <MobileBottomNav />
     </div>
   )

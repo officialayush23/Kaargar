@@ -4,7 +4,7 @@ from sqlalchemy import select, func
 import uuid
 
 from database import get_db
-from models import User, Job, Review, WorkerProfile
+from models import User, Job, Review, WorkerProfile, Service
 from schemas import ReviewCreate, ReviewResponse, ReviewReply, SuccessResponse
 from dependencies import get_current_user
 
@@ -53,14 +53,31 @@ async def create_review(
     )
     wp = wp_result.scalar_one_or_none()
     if wp:
-        agg_result = await db.execute(
-            select(func.avg(Review.rating), func.count(Review.id))
-            .where(Review.worker_id == job.worker_id, Review.is_visible == True)  # noqa: E712
-        )
-        avg_rating, rating_count = agg_result.one()
-        wp.avg_rating = avg_rating or 0
-        wp.rating_count = rating_count or 0
+        # Shared helper — recomputes the raw review average AND re-applies
+        # any standing no-show rating_penalty_total on top, so that penalty
+        # doesn't get silently wiped out by this recompute.
+        from services.penalties import recompute_worker_rating
+        await recompute_worker_rating(db, wp)
         await db.commit()
+
+    # ── Service-level rating aggregation ───────────────────────────────────────
+    # Separate from WorkerProfile.avg_rating above — this rolls the review up
+    # into the specific Service that was booked (when the job/review has one),
+    # so a worker's per-service ratings can differ from their overall rating.
+    if review.service_id:
+        svc_result = await db.execute(
+            select(Service).where(Service.id == review.service_id)
+        )
+        svc = svc_result.scalar_one_or_none()
+        if svc:
+            svc_agg_result = await db.execute(
+                select(func.avg(Review.rating), func.count(Review.id))
+                .where(Review.service_id == review.service_id, Review.is_visible == True)  # noqa: E712
+            )
+            svc_avg_rating, svc_rating_count = svc_agg_result.one()
+            svc.avg_rating = svc_avg_rating or 0
+            svc.rating_count = svc_rating_count or 0
+            await db.commit()
 
     return review
 

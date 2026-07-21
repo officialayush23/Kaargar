@@ -410,6 +410,22 @@ async def _assign_job(db: AsyncSession, job: Job, req: JobWorkerRequest):
     job.status = "assigned"
     job.assigned_at = now
 
+    # ── Set quoted_price from the service if it was never populated ──────────
+    # create_job only sets quoted_price from whatever the client sent (often
+    # nothing, for category-based instant bookings), so an instant job tied to
+    # a specific service could reach completion with quoted_price still NULL,
+    # which meant final_price/commission ended up 0. Mirror the same
+    # "base_price if set else price" fallback used everywhere else (book_slot,
+    # create_scheduled_job) before this job is finalized.
+    if job.quoted_price is None and job.service_id:
+        from models import Service
+        svc_result = await db.execute(select(Service).where(Service.id == job.service_id))
+        svc = svc_result.scalar_one_or_none()
+        if svc is not None:
+            unit_price = svc.base_price if svc.base_price is not None else svc.price
+            if unit_price is not None:
+                job.quoted_price = unit_price
+
     # Set worker to busy
     wp_result = await db.execute(
         select(WorkerProfile).where(WorkerProfile.id == req.worker_id)

@@ -11,7 +11,7 @@ const HIDE_NAV_PREFIXES = [
   '/admin',
 ]
 
-function shouldHideNav(pathname) {
+export function shouldHideNav(pathname) {
   return HIDE_NAV_PREFIXES.some((r) => pathname.startsWith(r))
 }
 

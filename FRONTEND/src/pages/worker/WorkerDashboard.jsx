@@ -115,7 +115,10 @@ export default function WorkerDashboard() {
   const { user } = useAuthStore()
   const { data: workerProfile, isLoading: profileLoading } = useWorkerProfile()
   const { data: analytics, isLoading: analyticsLoading } = useWorkerAnalytics('today')
-  const { data: activeJobs = [] } = useJobs('active')
+  // asRole: 'worker' is required — otherwise this queries jobs where the
+  // worker is the *customer* (booked a service themselves), not the job
+  // assigned to them as a worker, which is what this dashboard card means.
+  const { data: activeJobs = [] } = useJobs('active', { asRole: 'worker' })
   const [incomingJob, setIncomingJob] = useState(null)
   const [statusLoading, setStatusLoading] = useState(false)
   const { data: workerStatus, refetch: refetchStatus } = useWorkerStatus()
@@ -381,7 +384,8 @@ export default function WorkerDashboard() {
 }
 
 function RecentJobsList() {
-  const { data: jobs = [], isLoading } = useJobs('past')
+  const navigate = useNavigate()
+  const { data: jobs = [], isLoading } = useJobs('past', { asRole: 'worker' })
   const recent = jobs.slice(0, 5)
 
   if (isLoading) return (
@@ -400,7 +404,12 @@ function RecentJobsList() {
   return (
     <div className="space-y-2">
       {recent.map((job) => (
-        <GlassCard key={job.id} className="px-4 py-3 flex items-center justify-between">
+        <GlassCard
+          key={job.id}
+          hover
+          onClick={() => navigate(`/worker/job/${job.id}/active`)}
+          className="px-4 py-3 flex items-center justify-between cursor-pointer"
+        >
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
               {job.category?.name || 'Service'}
@@ -410,11 +419,14 @@ function RecentJobsList() {
               {formatRelativeTime(job.created_at)}
             </p>
           </div>
-          <div className="text-right">
-            <p className="text-sm font-mono font-semibold text-green-400">
-              {formatCurrency(job.worker_payout || 0)}
-            </p>
-            <p className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>{job.status}</p>
+          <div className="flex items-center gap-2">
+            <div className="text-right">
+              <p className="text-sm font-mono font-semibold text-green-400">
+                {formatCurrency(job.worker_payout || 0)}
+              </p>
+              <p className="text-xs capitalize" style={{ color: 'var(--text-muted)' }}>{job.status}</p>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0" style={{ color: 'var(--text-muted)' }} />
           </div>
         </GlassCard>
       ))}

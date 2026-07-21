@@ -518,6 +518,22 @@ class JobCancel(BaseModel):
     reason: str
 
 
+class JobNoShowReport(BaseModel):
+    """Customer reports the worker never arrived for a scheduled/discovery job."""
+    notes: Optional[str] = Field(None, max_length=500)
+
+
+class NoShowReportResponse(BaseModel):
+    success: bool = True
+    outcome: str  # 'confirmed' | 'escalated'
+    message: str
+
+
+class JobCustomerUnavailableFlag(BaseModel):
+    """Worker flags that they arrived but the customer wasn't there/reachable."""
+    notes: Optional[str] = Field(None, max_length=500)
+
+
 # ── JOB COMPLETION FLOW ──────────────────────────────────────
 class JobPhotoUpload(BaseModel):
     phase: str = Field(..., pattern="^(before|after)$")
@@ -925,14 +941,27 @@ class WorkerScheduleBlockResponse(KaargarBase):
 
 
 class ScheduledJobReschedule(BaseModel):
-    """Reschedule a failed scheduled job with new preferred days."""
-    preferred_days: List[str] = Field(..., min_length=1, max_length=3)
-    window_start: str = Field(..., pattern=r"^\d{2}:\d{2}$")
-    window_end: str   = Field(..., pattern=r"^\d{2}:\d{2}$")
+    """
+    Reschedule a scheduled/discovery/package job to a new time.
+
+    Window-mode bookings (job.slot_id is None): preferred_days +
+    window_start + window_end are required — the new window is validated
+    against the assigned worker's real availability (or, if no worker is
+    pinned yet, against whether any worker is actually open then).
+
+    Slot-mode bookings (job.slot_id is set): target_slot_id is required
+    instead — the target slot is validated for capacity/blocked state.
+    """
+    preferred_days: Optional[List[str]] = Field(None, min_length=1, max_length=3)
+    window_start: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
+    window_end: Optional[str] = Field(None, pattern=r"^\d{2}:\d{2}$")
+    target_slot_id: Optional[UUID] = None
 
     @field_validator("preferred_days")
     @classmethod
     def validate_days(cls, v):
+        if v is None:
+            return v
         today = date.today()
         for d_str in v:
             try:

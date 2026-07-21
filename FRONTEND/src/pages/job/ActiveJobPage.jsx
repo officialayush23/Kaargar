@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageSquare, Phone, MapPin, Shield, Star, CheckCircle, Clock, Zap, CreditCard, Loader2, AlertCircle, ShieldAlert, FileText, ArrowRight, ArrowLeft, PhoneCall, Siren, XCircle, Search, Calendar, HeadphonesIcon } from 'lucide-react'
+import { MessageSquare, Phone, MapPin, Shield, Star, CheckCircle, Clock, Zap, CreditCard, Loader2, AlertCircle, ShieldAlert, FileText, ArrowRight, ArrowLeft, PhoneCall, Siren, XCircle, Search, Calendar, HeadphonesIcon, Ban, RotateCcw, UserX, AlertTriangle } from 'lucide-react'
 import { api } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
@@ -13,6 +13,7 @@ import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassModal } from '@/components/glass/GlassModal'
 import { GlassTextarea } from '@/components/glass/GlassInput'
+import { GlassSelect } from '@/components/glass/GlassSelect'
 import { useRazorpay } from '@/hooks/useRazorpay'
 import { decryptPhone } from '@/lib/phoneCipher'
 import { formatCurrency, getInitials } from '@/lib/utils'
@@ -262,6 +263,190 @@ function SOSModal({ open, onClose, jobId, chatPath, navigate }) {
   )
 }
 
+function timeOptions() {
+  const o = []
+  for (let h = 6; h <= 22; h++) for (const m of [0, 30]) {
+    if (h === 22 && m === 30) continue
+    o.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+  }
+  return o
+}
+const RESCHED_TIME_OPTS = timeOptions()
+function to12h(hhmm) {
+  if (!hhmm) return ''
+  const [h, m] = hhmm.split(':').map(Number)
+  return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`
+}
+
+/* ─── Cancel booking modal ───────────────────────────────────────────────────
+ * Client has no way to know the customer's offense count in advance, so this
+ * doesn't try to predict the outcome — it just submits and surfaces whatever
+ * penalty/free-cancellation message the backend response includes. A 402
+ * (or 409 "blocked, contact support") response redirects to support instead
+ * of showing a raw error, since the backend is telling us this cancellation
+ * can't be completed in-app at all. */
+function CancelBookingModal({ open, onClose, jobId, onCancelled, navigate }) {
+  const [reason, setReason] = useState('')
+  const [loading, setLoading] = useState(false)
+
+  async function handleCancel() {
+    setLoading(true)
+    try {
+      const { data } = await api.post(`/jobs/${jobId}/cancel`, { reason: reason.trim() || 'Customer requested cancellation' })
+      toast.success(data?.message || 'Booking cancelled')
+      onCancelled()
+    } catch (err) {
+      const status = err.response?.status
+      if (status === 402 || status === 409) {
+        toast.error(err.response?.data?.detail || 'This cancellation needs to go through support')
+        onClose()
+        navigate(`/support?job_id=${jobId}`)
+        return
+      }
+      toast.error(err.response?.data?.detail || 'Could not cancel booking')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <GlassModal
+      open={open}
+      onClose={loading ? undefined : onClose}
+      title="Cancel booking"
+      size="sm"
+      footer={
+        <div className="flex gap-2">
+          <GlassButton variant="outline" size="lg" className="flex-1" onClick={onClose} disabled={loading}>
+            Keep booking
+          </GlassButton>
+          <GlassButton variant="danger" size="lg" className="flex-1" loading={loading} onClick={handleCancel}>
+            Cancel it
+          </GlassButton>
+        </div>
+      }
+    >
+      <div className="space-y-4">
+        <div className="flex items-start gap-2.5 p-3 rounded-xl" style={{ background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)' }}>
+          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" style={{ color: '#f59e0b' }} />
+          <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+            Your first cancellation is free. After that, cancelling less than 6 hours before arrival
+            may carry a 50% penalty, and repeat late cancellations may need to go through support instead.
+            We'll show you the exact outcome after you confirm.
+          </p>
+        </div>
+        <GlassTextarea
+          placeholder="Reason for cancelling (optional)"
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          rows={3}
+        />
+      </div>
+    </GlassModal>
+  )
+}
+
+/* ─── Reschedule modal ────────────────────────────────────────────────────── */
+function RescheduleModal({ open, onClose, job, jobId, onRescheduled }) {
+  const [date, setDate]   = useState('')
+  const [start, setStart] = useState(job?.window_start?.slice(0, 5) || '')
+  const [end, setEnd]     = useState(job?.window_end?.slice(0, 5) || '')
+  const [loading, setLoading] = useState(false)
+
+  const minDate = new Date().toISOString().split('T')[0]
+  const windowValid = (() => {
+    if (!start || !end) return false
+    const [sh, sm] = start.split(':').map(Number)
+    const [eh, em] = end.split(':').map(Number)
+    return (eh * 60 + em) - (sh * 60 + sm) >= 60
+  })()
+  const endOpts = RESCHED_TIME_OPTS.filter(t => {
+    if (!start) return true
+    const [sh, sm] = start.split(':').map(Number)
+    const [eh, em] = t.split(':').map(Number)
+    return (eh * 60 + em) - (sh * 60 + sm) >= 60
+  })
+  const canSubmit = !!date && windowValid && !loading
+
+  // Slot-based bookings can't be shifted with this generic reschedule —
+  // the backend rejects it outright, so this is caught up-front with a
+  // clearer message pointing at cancel + rebook instead.
+  if (job?.slot_id) {
+    return (
+      <GlassModal open={open} onClose={onClose} title="Reschedule" size="sm">
+        <div className="space-y-3 text-center py-2">
+          <Calendar className="h-8 w-8 mx-auto" style={{ color: 'var(--text-muted)' }} />
+          <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Slot bookings can't be rescheduled directly — cancel this booking and pick a new slot instead.
+          </p>
+        </div>
+      </GlassModal>
+    )
+  }
+
+  async function handleReschedule() {
+    if (!canSubmit) return
+    setLoading(true)
+    try {
+      await api.patch(`/jobs/${jobId}/reschedule`, {
+        preferred_days: [date],
+        window_start: start,
+        window_end: end,
+      })
+      toast.success('Booking rescheduled')
+      onRescheduled()
+    } catch (err) {
+      toast.error(err.response?.data?.detail || 'Could not reschedule — must be at least 2 hours before arrival and target an open window')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <GlassModal
+      open={open}
+      onClose={loading ? undefined : onClose}
+      title="Reschedule booking"
+      size="sm"
+      footer={
+        <GlassButton variant="brand" size="lg" className="w-full" loading={loading} disabled={!canSubmit} onClick={handleReschedule}>
+          Confirm new time
+        </GlassButton>
+      }
+    >
+      <div className="space-y-4">
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          Only available up to 2 hours before your current arrival window, and must target an open slot.
+        </p>
+        <div>
+          <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>New date</p>
+          <input
+            type="date"
+            value={date}
+            min={minDate}
+            onChange={e => setDate(e.target.value)}
+            className="w-full rounded-xl px-4 py-2.5 text-sm focus:outline-none"
+            style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)', color: 'var(--text-primary)' }}
+          />
+        </div>
+        <div className="flex gap-3 items-end">
+          <div className="flex-1">
+            <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>From</p>
+            <GlassSelect value={start} onChange={v => { setStart(v); if (end && end <= v) setEnd('') }} options={RESCHED_TIME_OPTS.map(t => ({ value: t, label: to12h(t) }))} placeholder="Start" />
+          </div>
+          <div className="flex-1">
+            <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>Until</p>
+            <GlassSelect value={end} onChange={setEnd} options={endOpts.map(t => ({ value: t, label: to12h(t) }))} placeholder="End" />
+          </div>
+        </div>
+        {start && end && !windowValid && (
+          <p className="text-xs" style={{ color: '#f87171' }}>Window must be at least 1 hour</p>
+        )}
+      </div>
+    </GlassModal>
+  )
+}
+
 /* ─── Main Page ───────────────────────────────────────────────────────────── */
 export default function ActiveJobPage() {
   const { jobId } = useParams()
@@ -274,6 +459,10 @@ export default function ActiveJobPage() {
   const [actionLoading, setActionLoading] = useState(false)
   const [sosOpen, setSosOpen] = useState(false)
   const [calling, setCalling] = useState(false)
+  const [cancelOpen, setCancelOpen] = useState(false)
+  const [rescheduleOpen, setRescheduleOpen] = useState(false)
+  const [noShowLoading, setNoShowLoading] = useState(false)
+  const [flagLoading, setFlagLoading] = useState(false)
 
   const isWorkerViewer = user?.role === 'worker'
 
@@ -326,6 +515,32 @@ export default function ActiveJobPage() {
   const isCompleted = job?.status === 'completed'
   const needsPayment = !isWorkerViewer && isCompleted && finalAmount && paymentStatus !== 'held' && paymentStatus !== 'released'
 
+  // ── Cancel / reschedule / no-show gating ──────────────────────────────────
+  // "Pre-arrival" = the worker hasn't arrived yet and the job hasn't reached
+  // a terminal state — this is the only window cancel/reschedule/no-show
+  // make sense in. Only discovery/scheduled bookings go through this flow;
+  // instant jobs are matched live and don't have a scheduled arrival window
+  // to cancel/reschedule/no-show against.
+  const PRE_ARRIVAL_STATUSES = ['requested', 'scheduled', 'searching', 'confirmed', 'worker_assigned', 'assigned', 'en_route']
+  const isScheduledBooking = job && job.source !== 'instant'
+  const isPreArrival = job && PRE_ARRIVAL_STATUSES.includes(job.status)
+
+  // Best-effort "expected arrival" time: slot bookings have scheduled_at;
+  // window/multi-day bookings have assigned_date + window_end (falls back to
+  // window_start if no assigned_date yet, or the booking's created date).
+  const arrivalDeadline = (() => {
+    if (!job) return null
+    if (job.scheduled_at) return new Date(job.scheduled_at)
+    if (job.assigned_date && job.window_end) return new Date(`${job.assigned_date}T${job.window_end}`)
+    return null
+  })()
+  const arrivalTimePassed = arrivalDeadline ? Date.now() > arrivalDeadline.getTime() : false
+
+  const canCancel = !isWorkerViewer && isScheduledBooking && isPreArrival
+  const canReschedule = !isWorkerViewer && isScheduledBooking && isPreArrival
+  const canReportNoShow = !isWorkerViewer && isScheduledBooking && isPreArrival && arrivalTimePassed
+  const canFlagCustomerUnavailable = isWorkerViewer && job?.status === 'arrived'
+
   // pull user info from store if available
   let userEmail = ''
   let userName = ''
@@ -363,6 +578,34 @@ export default function ActiveJobPage() {
       toast.error(err?.response?.data?.detail || 'Action failed')
     } finally {
       setActionLoading(false)
+    }
+  }
+
+  async function handleReportNoShow() {
+    if (noShowLoading) return
+    setNoShowLoading(true)
+    try {
+      const { data } = await api.post(`/jobs/${jobId}/report-no-show`, {})
+      toast.success(data?.message || 'Reported — we\'re looking into it')
+      fetchJob()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Could not submit report')
+    } finally {
+      setNoShowLoading(false)
+    }
+  }
+
+  async function handleFlagCustomerUnavailable() {
+    if (flagLoading) return
+    setFlagLoading(true)
+    try {
+      const { data } = await api.post(`/jobs/${jobId}/flag-customer-unavailable`, {})
+      toast.success(data?.message || 'Reported — support has been notified')
+      fetchJob()
+    } catch (err) {
+      toast.error(err?.response?.data?.detail || 'Could not submit report')
+    } finally {
+      setFlagLoading(false)
     }
   }
 
@@ -450,6 +693,49 @@ export default function ActiveJobPage() {
         </GlassCard>
       )}
 
+      {/* Customer: report no-show — only once the scheduled arrival window
+          has clearly passed and the worker still hasn't marked arrived. */}
+      {canReportNoShow && (
+        <GlassCard className="p-4" style={{ borderColor: 'rgba(245,158,11,0.25)', background: 'rgba(245,158,11,0.05)' }}>
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(245,158,11,0.15)' }}>
+              <AlertTriangle className="h-4 w-4" style={{ color: '#f59e0b' }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: '#f59e0b' }}>Worker hasn't arrived</p>
+              <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
+                Past your expected arrival time and no update? Let us know.
+              </p>
+              <button
+                onClick={handleReportNoShow}
+                disabled={noShowLoading}
+                className="mt-2.5 flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg transition-all disabled:opacity-60"
+                style={{ background: 'rgba(245,158,11,0.15)', color: '#f59e0b', border: '1px solid rgba(245,158,11,0.3)' }}
+              >
+                {noShowLoading ? <><Loader2 className="h-3 w-3 animate-spin" /> Reporting…</> : 'Report no-show'}
+              </button>
+            </div>
+          </div>
+        </GlassCard>
+      )}
+
+      {/* Customer: cancel / reschedule — pre-arrival, discovery/scheduled only */}
+      {(canCancel || canReschedule) && (
+        <div className="flex gap-2">
+          {canReschedule && (
+            <GlassButton variant="outline" size="sm" className="flex-1" icon={RotateCcw} onClick={() => setRescheduleOpen(true)}>
+              Reschedule
+            </GlassButton>
+          )}
+          {canCancel && (
+            <GlassButton variant="outline" size="sm" className="flex-1" icon={Ban} onClick={() => setCancelOpen(true)}
+              style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', color: '#f87171' }}>
+              Cancel booking
+            </GlassButton>
+          )}
+        </div>
+      )}
+
       {/* Worker: arrived / start-job actions */}
       {isWorkerViewer && job && ['assigned', 'confirmed', 'en_route', 'arrived'].includes(job.status) && (
         <GlassButton
@@ -459,6 +745,13 @@ export default function ActiveJobPage() {
             : handleWorkerAction('arrived', 'Marked as arrived')}
         >
           {job.status === 'arrived' ? 'Start job' : "I've arrived"}
+        </GlassButton>
+      )}
+
+      {/* Worker: flag that the customer wasn't there once arrived */}
+      {canFlagCustomerUnavailable && (
+        <GlassButton variant="outline" size="sm" className="w-full" icon={UserX} loading={flagLoading} onClick={handleFlagCustomerUnavailable}>
+          Customer not available
         </GlassButton>
       )}
 
@@ -736,6 +1029,22 @@ export default function ActiveJobPage() {
         jobId={jobId}
         chatPath={chatPath}
         navigate={navigate}
+      />
+
+      <CancelBookingModal
+        open={cancelOpen}
+        onClose={() => setCancelOpen(false)}
+        jobId={jobId}
+        navigate={navigate}
+        onCancelled={() => { setCancelOpen(false); fetchJob() }}
+      />
+
+      <RescheduleModal
+        open={rescheduleOpen}
+        onClose={() => setRescheduleOpen(false)}
+        job={job}
+        jobId={jobId}
+        onRescheduled={() => { setRescheduleOpen(false); fetchJob() }}
       />
 
       <RatingModal

@@ -18,13 +18,16 @@ async def lifespan(app: FastAPI):
     from tasks.escrow_release import start_escrow_scheduler
     from tasks.decay_scores import start_decay_scheduler
     from tasks.scheduling import start_scheduling_scheduler
+    from tasks.slot_rollover import start_slot_rollover_scheduler
     scheduler  = start_escrow_scheduler()
     scheduler2 = start_decay_scheduler()
     scheduler3 = start_scheduling_scheduler()   # runs every 3 min
+    scheduler4 = start_slot_rollover_scheduler()  # runs every 24h — rolls slot windows forward
     yield
     scheduler.shutdown(wait=False)
     scheduler2.shutdown(wait=False)
     scheduler3.shutdown(wait=False)
+    scheduler4.shutdown(wait=False)
 
 
 app = FastAPI(

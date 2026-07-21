@@ -129,6 +129,12 @@ class WorkerProfile(Base):
     completion_rate: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=1.0)
     avg_response_time_sec: Mapped[int] = mapped_column(Integer, default=0)
     cancellation_score: Mapped[Decimal] = mapped_column(Numeric(5, 4), default=1.0)
+    # Standing offset subtracted from the raw review average every time
+    # avg_rating is recomputed (see services/penalties.recompute_worker_rating).
+    # Exists so a no-show rating penalty persists instead of being silently
+    # wiped the next time a real review comes in and avg_rating is recomputed
+    # from scratch off the reviews table.
+    rating_penalty_total: Mapped[Decimal] = mapped_column(Numeric(3, 2), default=0)
     consecutive_rejects: Mapped[int] = mapped_column(Integer, default=0)
     auto_offline_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     total_earnings: Mapped[Decimal] = mapped_column(Numeric(12, 2), default=0)
@@ -412,6 +418,14 @@ class Job(Base):
     completion_otp_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completion_otp_attempts: Mapped[int] = mapped_column(Integer, default=0)
     completion_otp_locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # ── No-show tracking (migration 012) ───────────────────────
+    # no_show_status: 'reported' (customer reported, inconclusive/contested —
+    # sent to support) | 'confirmed' (GPS clearly showed worker nowhere near)
+    # | 'rejected' (admin manually rejected a report). No enum constraint —
+    # plain varchar, values enforced in application code.
+    no_show_reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    no_show_status: Mapped[str | None] = mapped_column(String(20))
 
     user = relationship("User")
     worker = relationship("WorkerProfile")

@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Edit3, Loader2, Check, MapPin, Store, Tag, X, Package, ChevronRight } from 'lucide-react'
+import { Plus, Trash2, Edit3, Loader2, Check, MapPin, Store, Tag, X, Package, ChevronRight, CalendarClock, CalendarRange } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
@@ -39,6 +39,61 @@ function ServiceModeToggle({ value, onChange }) {
       </div>
       <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
         {MODE_OPTIONS.find(o => o.value === value)?.tip}
+      </p>
+    </div>
+  )
+}
+
+// ── Booking mode toggle (slot-based vs multi-day) ──────────────────────────────
+// A service is always exactly one of these — never both, never neither. This
+// replaces the old standalone "allow multi-day booking" switch: booking mode
+// is now an explicit binary choice made up-front, since it changes what other
+// fields the form needs (duration for slot-mode, "per-day" pricing note for
+// multi-day).
+const BOOKING_MODE_OPTIONS = [
+  {
+    value: 'slot',
+    label: 'Slot-based',
+    icon: CalendarClock,
+    tip: 'Customers pick a specific time slot (e.g. a haircut, a repair visit)',
+  },
+  {
+    value: 'multi_day',
+    label: 'Multi-day',
+    icon: CalendarRange,
+    tip: 'Customers book you for a number of days at once (e.g. security guard, live-in help)',
+  },
+]
+
+function BookingModeToggle({ value, onChange }) {
+  return (
+    <div>
+      <div className="grid grid-cols-2 gap-2">
+        {BOOKING_MODE_OPTIONS.map(opt => {
+          const active = value === opt.value
+          const Icon = opt.icon
+          return (
+            <button
+              key={opt.value}
+              type="button"
+              onClick={() => onChange(opt.value)}
+              className="flex flex-col items-start gap-1.5 rounded-xl px-3.5 py-3 text-left transition-all duration-150"
+              style={active
+                ? { background: 'var(--accent-deep)', border: '1.5px solid var(--accent-mid)' }
+                : { background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}
+            >
+              <div className="flex items-center gap-1.5">
+                <Icon size={14} style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }} />
+                <span className="text-xs font-semibold" style={{ color: active ? 'var(--accent)' : 'var(--text-primary)' }}>
+                  {opt.label}
+                </span>
+              </div>
+            </button>
+          )
+        })}
+      </div>
+      <p className="text-[12px] mt-1.5" style={{ color: 'var(--text-muted)' }}>
+        {BOOKING_MODE_OPTIONS.find(o => o.value === value)?.tip}
       </p>
     </div>
   )
@@ -182,10 +237,22 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
   const [serviceMode, setServiceMode] = useState(initial?.service_mode || 'both')
   const [visitFee, setVisitFee]       = useState(initial?.visit_fee || '')
   const [tags, setTags]               = useState(initial?.tags || [])
-  const [allowMultiDay, setAllowMultiDay] = useState(initial?.allow_multi_day_booking ?? false)
+  // Booking mode — mutually exclusive slot-based vs multi-day. New services
+  // default to slot-based; editing an existing multi-day service preserves it.
+  const [bookingMode, setBookingMode] = useState(initial?.allow_multi_day_booking ? 'multi_day' : 'slot')
+  // Average time to complete one instance — only meaningful in slot mode,
+  // where it drives auto-generated slot availability. Split into hours +
+  // minutes for easier entry, combined into duration_min on submit.
+  const initialDuration = initial?.duration_min || 0
+  const [durationHours, setDurationHours]     = useState(initialDuration ? Math.floor(initialDuration / 60) : '')
+  const [durationMinutes, setDurationMinutes] = useState(initialDuration ? initialDuration % 60 : '')
   const [loading, setLoading]         = useState(false)
   const [priceError, setPriceError]   = useState('')
   const showVisitFee = serviceMode === 'onsite' || serviceMode === 'both'
+  const isSlotMode = bookingMode === 'slot'
+  const isMultiDayMode = bookingMode === 'multi_day'
+  const totalDurationMin = (Number(durationHours) || 0) * 60 + (Number(durationMinutes) || 0)
+  const durationMissing = isSlotMode && totalDurationMin <= 0
 
   // Live price validation — checks against category floor on every keystroke,
   // not just on submit, so the red warning shows up immediately.
@@ -198,14 +265,24 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
   }, [hourlyRate, minPrice])
 
   const isPriceInvalid = !!priceError
-  const canSubmit = !!title.trim() && !isPriceInvalid && !loading
+  const canSubmit = !!title.trim() && !isPriceInvalid && !durationMissing && !loading
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (!canSubmit) return
     setLoading(true)
     try {
-      const payload = { title: title.trim(), service_mode: serviceMode, _tags: tags, allow_multi_day_booking: allowMultiDay }
+      const payload = {
+        title: title.trim(),
+        service_mode: serviceMode,
+        _tags: tags,
+        requires_slot: isSlotMode,
+        allow_multi_day_booking: isMultiDayMode,
+        // duration_min only means something for slot-mode services (it drives
+        // slot auto-generation) — multi-day services don't have a single
+        // "instance" duration, so it's cleared instead of sent stale.
+        duration_min: isSlotMode ? totalDurationMin : null,
+      }
       if (description.trim()) payload.description = description.trim()
       if (hourlyRate && !isNaN(Number(hourlyRate))) payload.hourly_rate = Number(hourlyRate)
       if (showVisitFee && visitFee && !isNaN(Number(visitFee))) payload.visit_fee = Number(visitFee)
@@ -263,7 +340,9 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>Base rate ₹</p>
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  {isMultiDayMode ? 'Per-day rate ₹' : 'Base rate ₹'}
+                </p>
                 {minPrice && (
                   <span className="text-[12px] font-medium px-1.5 py-0.5 rounded-md"
                     style={{ background: 'var(--accent-deep)', color: 'var(--accent)' }}>
@@ -277,6 +356,11 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
                 min={minPrice || 0} className={inp}
                 aria-invalid={isPriceInvalid}
                 style={isPriceInvalid ? inpErrorStyle : inpStyle} />
+              {isMultiDayMode && (
+                <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
+                  Charged per day booked — a 5-day booking bills 5× this rate.
+                </p>
+              )}
             </div>
             <AnimatePresence>
               {showVisitFee && (
@@ -307,25 +391,44 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
           <ServiceModeToggle value={serviceMode} onChange={setServiceMode} />
         </div>
 
-        {/* Recurring multi-day booking — per-service opt-in. A customer only
-            sees the "book across multiple days" option in Discovery when
-            BOTH this is on AND the worker's overall profile toggle is on. */}
-        <div className="flex items-center justify-between gap-3 rounded-xl px-3.5 py-3"
-          style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}>
-          <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>Allow multi-day booking</p>
-            <p className="text-[12px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              Let customers book you for this service across several days at once
-            </p>
-          </div>
-          <button type="button"
-            onClick={() => setAllowMultiDay(v => !v)}
-            className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${allowMultiDay ? 'bg-instant' : ''}`}
-            style={!allowMultiDay ? { background: 'var(--card-bg)' } : undefined}
-          >
-            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${allowMultiDay ? 'translate-x-6' : 'translate-x-1'}`} />
-          </button>
+        {/* Booking mode — every service is EITHER slot-based OR multi-day,
+            never both. This decides whether customers see a time-slot
+            calendar or a start-date + number-of-days picker in Discovery. */}
+        <div>
+          <SectionLabel>Booking mode</SectionLabel>
+          <BookingModeToggle value={bookingMode} onChange={setBookingMode} />
         </div>
+
+        {/* Slot-mode: average completion time — used to auto-generate slots */}
+        <AnimatePresence mode="wait">
+          {isSlotMode && (
+            <motion.div key="duration" initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.15 }} style={{ overflow: 'hidden' }}>
+              <p className="text-xs font-medium mb-1.5" style={{ color: 'var(--text-muted)' }}>
+                Average time to complete this service
+              </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <input type="number" min={0} value={durationHours}
+                    onChange={e => setDurationHours(e.target.value)}
+                    placeholder="Hours" className={inp}
+                    style={durationMissing ? inpErrorStyle : inpStyle} />
+                </div>
+                <div>
+                  <input type="number" min={0} max={59} value={durationMinutes}
+                    onChange={e => setDurationMinutes(e.target.value)}
+                    placeholder="Minutes" className={inp}
+                    style={durationMissing ? inpErrorStyle : inpStyle} />
+                </div>
+              </div>
+              <p className="text-[12px] mt-1.5" style={{ color: durationMissing ? '#f87171' : 'var(--text-muted)' }}>
+                {durationMissing
+                  ? 'Required for slot-based services — used to auto-generate your available booking slots.'
+                  : 'Used to auto-generate available booking slots for customers.'}
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Tags */}
         <div>
@@ -367,10 +470,16 @@ function ServiceCard({ svc, onEdit, onDelete, deleting, disabled }) {
               style={{ background: modeColor.bg, color: modeColor.color, border: `1px solid ${modeColor.border}` }}>
               {modeLabel}
             </span>
+            {svc.requires_slot && (
+              <span className="text-[12px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1"
+                style={{ background: 'rgba(59,130,246,0.12)', color: '#60a5fa', border: '1px solid rgba(59,130,246,0.25)' }}>
+                <CalendarClock size={10} /> Slot-based{svc.duration_min ? ` · ${svc.duration_min}min` : ''}
+              </span>
+            )}
             {svc.allow_multi_day_booking && (
-              <span className="text-[12px] px-2 py-0.5 rounded-full font-medium"
+              <span className="text-[12px] px-2 py-0.5 rounded-full font-medium flex items-center gap-1"
                 style={{ background: 'var(--accent-deep)', color: 'var(--accent-hover)', border: '1px solid var(--accent-mid)' }}>
-                Multi-day
+                <CalendarRange size={10} /> Multi-day
               </span>
             )}
           </div>

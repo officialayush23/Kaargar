@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func as sa_func
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from decimal import Decimal
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone, timedelta, date
 from uuid import UUID
 import uuid
 import secrets
@@ -24,6 +24,7 @@ from schemas import (
     JobItemReceiptCreate, JobItemReceiptResponse, JobApprovalSummary,
     JobRejectRequest, JobOtpVerifyRequest, JobCompletionCodeResponse,
     JobContactResponse, JobWorkerLocationResponse,
+    JobNoShowReport, NoShowReportResponse, JobCustomerUnavailableFlag,
 )
 from dependencies import get_current_user
 from services.storage import (
@@ -31,12 +32,42 @@ from services.storage import (
     job_before_after_path, job_item_photo_path,
 )
 from services.notifications import post_system_message
+from services.penalties import (
+    count_customer_offenses, record_customer_offense, get_arrival_datetime,
+    find_worker_location_near, haversine_km, apply_no_show_rating_penalty,
+    NO_SHOW_PROXIMITY_KM,
+)
 
 router = APIRouter()
 
 
 def _make_geom(lon: float, lat: float):
     return ST_SetSRID(ST_MakePoint(lon, lat), 4326)
+
+
+async def _require_payment_captured(db, job):
+    """
+    Guard used at the two points where a job can actually be finished:
+    the customer viewing the completion code, and the worker submitting it.
+    Money must have actually moved before either can happen — otherwise jobs
+    were being marked 'completed' (and workers paid out) with no payment ever
+    enforced.
+
+    "Captured" means the Payment row for this job reached 'held' (set by the
+    Razorpay webhook on payment.captured, and by /payments/verify after
+    checkout) or 'released' (set later by the escrow-release background task)
+    — see BACKEND/routers/payments.py and BACKEND/tasks/escrow_release.py.
+    Any other status ('pending', 'refund_pending', 'refunded', or no row at
+    all) means the customer hasn't paid yet.
+    """
+    result = await db.execute(select(Payment).where(Payment.job_id == job.id))
+    payment = result.scalar_one_or_none()
+    if not payment or payment.status not in ("held", "released"):
+        raise HTTPException(
+            402,
+            "Please complete payment before finishing this job — "
+            "call POST /payments/create-order for this job, then pay, then try again.",
+        )
 
 
 async def _log_event(db, job_id, status, actor, actor_id, metadata=None):
@@ -385,6 +416,39 @@ async def cancel_job(
                 await db.commit()
                 return SuccessResponse(message="Job returned to queue for reassignment")
 
+    # ── Customer-cancels a scheduled/discovery booking: offense-counter + penalty ──
+    # Only applies when we can resolve an arrival time (pure instant jobs with
+    # no scheduled window fall through untouched, same as before this change).
+    if not is_worker:
+        arrival_dt = get_arrival_datetime(job)
+        if arrival_dt is not None:
+            hours_to_arrival = (arrival_dt - now).total_seconds() / 3600.0
+            prior_offenses = await count_customer_offenses(db, user.id)
+            is_first_offense = prior_offenses == 0
+
+            if hours_to_arrival < 6 and not is_first_offense:
+                # Too close to arrival, and this customer has done this before —
+                # self-service is blocked; they have to go through support.
+                raise HTTPException(
+                    403,
+                    "This booking starts in under 6 hours and you've cancelled "
+                    "before — please contact support to cancel (a 100% charge applies).",
+                )
+
+            if is_first_offense:
+                await record_customer_offense(
+                    db, job, user.id,
+                    reason="Customer cancellation — first offense (forgiven)",
+                    pct=Decimal("0"),
+                )
+            else:
+                # >=6h before arrival and a repeat offense — self-service allowed, 50% charge.
+                await record_customer_offense(
+                    db, job, user.id,
+                    reason=f"Customer cancellation — repeat offense, {hours_to_arrival:.1f}h before arrival",
+                    pct=Decimal("0.50"),
+                )
+
     # ── Trigger refund if payment was held ────────────────────────────────────
     pay_result = await db.execute(select(Payment).where(Payment.job_id == job.id))
     payment = pay_result.scalar_one_or_none()
@@ -557,6 +621,13 @@ async def mark_arrived(
         raise HTTPException(403)
     job.arrived_at = datetime.now(timezone.utc)
     job.status = "arrived"
+
+    # Worker is now physically tied up on-site — mark busy so the instant
+    # dispatch engine (services/matching.py) never double-books them onto a
+    # second job while they're here, regardless of whether this job came
+    # through instant dispatch or the scheduled/slot-booking flow.
+    wp.status = "busy"
+
     await _log_event(db, job.id, "arrived", "worker", user.id)
     await db.commit()
     return SuccessResponse(message="Marked arrived")
@@ -573,6 +644,12 @@ async def start_job(
         raise HTTPException(403)
     job.started_at = datetime.now(timezone.utc)
     job.status = "started"
+
+    # Defensive — should already be "busy" from mark_arrived (or from
+    # instant-dispatch assignment in services/matching.py), but jobs that
+    # skip the arrived step should still lock the worker as busy here.
+    wp.status = "busy"
+
     await _log_event(db, job.id, "started", "worker", user.id)
     await db.commit()
     return SuccessResponse(message="Job started")
@@ -603,7 +680,12 @@ async def _finalize_job_completion(db, job, wp, user_id):
         job.worker_payout  = Decimal(str(commission["payout"]))
 
     # ── Update worker profile stats ───────────────────────────────────────────
-    wp.status = "online"
+    # Only auto-flip back to "online" if we're the ones who put them "busy".
+    # If the worker manually went "offline" mid-job (e.g. toggled off after
+    # arriving), don't clobber that override — leave them offline until they
+    # flip themselves back online.
+    if wp.status == "busy":
+        wp.status = "online"
     wp.consecutive_rejects = 0
 
     wp.total_jobs_completed = (wp.total_jobs_completed or 0) + 1
@@ -647,6 +729,8 @@ async def complete_job(
         raise HTTPException(409, "Job is already completed")
     if job.status not in ("arrived", "started", "assigned", "confirmed", "en_route"):
         raise HTTPException(409, f"Cannot complete a job in '{job.status}' status")
+
+    await _require_payment_captured(db, job)
 
     await _finalize_job_completion(db, job, wp, user.id)
     await db.commit()
@@ -987,6 +1071,9 @@ async def get_completion_code(
         raise HTTPException(404, "Job not found")
     if job.status != "approved" or not job.completion_otp_code:
         raise HTTPException(409, "No active completion code for this job")
+
+    await _require_payment_captured(db, job)
+
     return JobCompletionCodeResponse(code=job.completion_otp_code, expires_at=job.completion_otp_expires_at)
 
 
@@ -1002,6 +1089,8 @@ async def verify_completion_otp(
         raise HTTPException(403)
     if job.status != "approved":
         raise HTTPException(409, f"Cannot verify a code for a job in '{job.status}' status")
+
+    await _require_payment_captured(db, job)
 
     now = datetime.now(timezone.utc)
     if job.completion_otp_locked_until and now < job.completion_otp_locked_until:
@@ -1086,12 +1175,17 @@ async def create_scheduled_job(
 
     now_utc = datetime.now(timezone.utc)
 
-    # Resolve category_id from the service if not supplied directly
+    # Resolve category_id from the service if not supplied directly. Also fetch
+    # the Service row up-front (regardless of whether category_id was already
+    # supplied) so we can compute quoted_price below — this was previously
+    # never fetched here at all, which is why job.quoted_price/final_price
+    # showed up as 0/not-set for every scheduled/multi-day booking.
     category_id = body.category_id
-    if category_id is None and body.service_id:
+    svc = None
+    if body.service_id:
         svc_r = await db.execute(select(Service).where(Service.id == body.service_id))
         svc = svc_r.scalar_one_or_none()
-        if svc:
+        if svc and category_id is None:
             category_id = svc.category_id
 
     # Last-resort: fall back to the pinned worker's primary category (handles services with NULL category_id)
@@ -1105,6 +1199,26 @@ async def create_scheduled_job(
 
     if category_id is None:
         raise HTTPException(422, "category_id is required — please pick a service or pass category_id")
+
+    # ── Compute quoted_price from the service ─────────────────────────────────
+    # Mirrors book_slot's `price = svc.base_price if svc.base_price is not None
+    # else svc.price`. A service with allow_multi_day_booking=true is treated
+    # as priced per-day (price_type == 'per_day', or 'fixed' with
+    # allow_multi_day_booking=true — that's how the only live multi-day
+    # service, "24hrs Guard", is configured: a fixed daily rate meant to be
+    # multiplied by the number of days booked) and its per-day rate is
+    # multiplied by the number of preferred_days to get the total booking
+    # price. Otherwise it's a single scheduled/window booking and the
+    # service's price is used directly, same as book_slot.
+    quoted_price = None
+    if svc is not None:
+        unit_price = svc.base_price if svc.base_price is not None else svc.price
+        if unit_price is not None:
+            is_per_day = svc.allow_multi_day_booking and svc.price_type in ("per_day", "fixed")
+            if is_per_day:
+                quoted_price = unit_price * len(body.preferred_days or [])
+            else:
+                quoted_price = unit_price
 
     is_direct = body.preferred_worker_id is not None
     initial_status = "confirmed" if is_direct else "scheduled"
@@ -1131,6 +1245,7 @@ async def create_scheduled_job(
         location_note    = body.location_note,
         location_geom    = _make_geom(body.location_lon, body.location_lat),
         budget_max       = body.budget_max,
+        quoted_price     = quoted_price,
         assigned_at      = now_utc if is_direct else None,
     )
     db.add(job)
@@ -1296,20 +1411,333 @@ async def reschedule_job(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Free, unlimited reschedules for a scheduled/discovery/package booking —
+    as long as it's >= 2 hours before the CURRENT arrival window, and the new
+    target is an actually-open slot/window (not an arbitrary time the
+    customer typed in).
+    """
+    from datetime import time as _time
+    from services.scheduling import check_worker_availability, find_eligible_workers, create_schedule_block
+
     result = await db.execute(
         select(Job).where(Job.id == job_id, Job.user_id == user.id)
     )
     job = result.scalar_one_or_none()
     if not job:
         raise HTTPException(404, "Job not found")
-    if job.status not in ("pending", "searching", "scheduled"):
-        raise HTTPException(409, f"Cannot reschedule a job in '{job.status}' status")
-    if job.slot_id:
-        raise HTTPException(400, "Slot-based bookings cannot be rescheduled here — cancel and rebook")
 
-    job.preferred_days  = body.preferred_days
-    job.window_start    = body.window_start
-    job.window_end      = body.window_end
+    RESCHEDULABLE = {"scheduled", "confirmed", "assigned"}
+    if job.status not in RESCHEDULABLE:
+        raise HTTPException(409, f"Cannot reschedule a job in '{job.status}' status")
+
+    now = datetime.now(timezone.utc)
+    current_arrival = get_arrival_datetime(job)
+    if current_arrival is not None and current_arrival - now < timedelta(hours=2):
+        raise HTTPException(
+            409,
+            "Too close to your scheduled arrival window to reschedule — "
+            "please contact support if you need a change now.",
+        )
+
+    # ── Slot-based booking: swap to another open slot ────────────────────────
+    if job.slot_id:
+        if not body.target_slot_id:
+            raise HTTPException(422, "target_slot_id is required to reschedule a slot-based booking")
+
+        old_slot_id = job.slot_id
+        slot_result = await db.execute(
+            select(ServiceSlot).where(ServiceSlot.id == body.target_slot_id).with_for_update()
+        )
+        new_slot = slot_result.scalar_one_or_none()
+        if not new_slot:
+            raise HTTPException(404, "Target slot not found")
+        if new_slot.id == old_slot_id:
+            raise HTTPException(400, "That's already your current slot")
+        if new_slot.service_id != job.service_id:
+            raise HTTPException(400, "Target slot is for a different service")
+        if new_slot.is_blocked:
+            raise HTTPException(409, "That slot is no longer available")
+        if new_slot.booked_count >= new_slot.capacity:
+            raise HTTPException(409, "That slot is fully booked — please pick another time")
+        new_slot_dt = datetime.combine(new_slot.slot_date, new_slot.slot_start, tzinfo=timezone.utc)
+        if new_slot_dt <= now:
+            raise HTTPException(400, "That slot is in the past")
+
+        # trg_slot_booking (see 007_slot_scheduling.sql) increments the NEW
+        # slot's booked_count on commit because slot_id is changing, but it
+        # only decrements a slot on cancel/fail — not on a plain reassignment
+        # — so we free the vacated slot ourselves.
+        await db.execute(
+            ServiceSlot.__table__.update()
+            .where(ServiceSlot.id == old_slot_id)
+            .values(booked_count=sa_func.greatest(0, ServiceSlot.booked_count - 1))
+        )
+
+        job.slot_id = new_slot.id
+        job.worker_id = new_slot.worker_id
+        job.scheduled_at = new_slot_dt
+        await _log_event(db, job.id, job.status, "user", user.id, {
+            "rescheduled": True, "old_slot_id": str(old_slot_id), "new_slot_id": str(new_slot.id),
+        })
+        await db.commit()
+        await db.refresh(job)
+        return job
+
+    # ── Window-based booking: validate the new days/window are actually open ──
+    if not body.preferred_days or not body.window_start or not body.window_end:
+        raise HTTPException(422, "preferred_days, window_start and window_end are required")
+
+    new_window_start = _time.fromisoformat(body.window_start)
+    new_window_end   = _time.fromisoformat(body.window_end)
+
+    valid_days = []
+    if job.worker_id:
+        # Already has a specific worker — the new window must fit THEIR calendar.
+        for d_str in body.preferred_days:
+            d = date.fromisoformat(d_str)
+            if await check_worker_availability(db, job.worker_id, d, new_window_start, new_window_end):
+                valid_days.append(d_str)
+        if not valid_days:
+            raise HTTPException(
+                409,
+                "Your assigned worker isn't available on any of those days/window — "
+                "try a different time, or cancel and rebook.",
+            )
+    else:
+        # Lazy assignment — no worker pinned yet, so "open" means at least one
+        # eligible worker exists for at least one of the candidate days.
+        probe = Job(
+            location_lat=job.location_lat, location_lon=job.location_lon,
+            window_start=new_window_start, window_end=new_window_end,
+        )
+        for d_str in body.preferred_days:
+            d = date.fromisoformat(d_str)
+            workers = await find_eligible_workers(db, probe, d)
+            if workers:
+                valid_days.append(d_str)
+        if not valid_days:
+            raise HTTPException(
+                409, "No workers are available on any of those days/window — try a different time."
+            )
+
+    # Drop any existing reservation — recreated below if a worker is pinned.
+    await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
+
+    job.preferred_days = valid_days
+    job.window_start   = new_window_start
+    job.window_end      = new_window_end
+
+    if job.worker_id:
+        chosen_date = date.fromisoformat(valid_days[0])
+        job.assigned_date = chosen_date
+        await create_schedule_block(db, job.worker_id, job.id, chosen_date, new_window_start, new_window_end)
+    else:
+        job.assigned_date = None
+
+    await _log_event(db, job.id, job.status, "user", user.id, {
+        "rescheduled": True, "preferred_days": valid_days,
+        "window": f"{body.window_start}–{body.window_end}",
+    })
+
+    db.add(Notification(
+        user_id=job.user_id,
+        type="job_rescheduled",
+        title="Booking rescheduled",
+        body="Your booking has been moved to your new preferred time.",
+        data={"job_id": str(job.id)},
+    ))
+    if job.worker_id:
+        wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
+        wp = wp_r.scalar_one_or_none()
+        if wp:
+            db.add(Notification(
+                user_id=wp.user_id,
+                type="job_rescheduled",
+                title="Booking rescheduled",
+                body="A customer moved their booking with you to a new time.",
+                data={"job_id": str(job.id)},
+            ))
+
     await db.commit()
     await db.refresh(job)
     return job
+
+
+# ── NO-SHOW / CUSTOMER-UNAVAILABLE FLOWS ───────────────────────────────────────
+
+@router.post("/{job_id}/report-no-show", response_model=NoShowReportResponse)
+async def report_no_show(
+    job_id: uuid.UUID,
+    body: JobNoShowReport,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Customer reports that the assigned worker never arrived. GPS-validated:
+    cross-checks the worker's last known position around the scheduled
+    arrival time against the job's location.
+
+      - Worker demonstrably nowhere near  -> auto-confirm: job is cancelled,
+        customer can rebook for free, and the worker takes a flat -0.5 star
+        rating hit (their first-ever confirmed no-show is forgiven).
+      - Worker's GPS puts them at/near the job -> NOT auto-confirmed; this is
+        a contested claim, so it's flagged for the customer to escalate to
+        support instead of being auto-decided either way.
+    """
+    result = await db.execute(select(Job).where(Job.id == job_id, Job.user_id == user.id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404, "Job not found")
+    if not job.worker_id:
+        raise HTTPException(400, "No worker was ever assigned to this booking")
+    if job.status in ("completed", "cancelled", "failed"):
+        raise HTTPException(409, f"Cannot report a no-show for a job that is already '{job.status}'")
+    if job.no_show_status == "confirmed":
+        raise HTTPException(409, "A no-show has already been confirmed for this booking")
+
+    arrival_dt = get_arrival_datetime(job)
+    if arrival_dt is None:
+        raise HTTPException(400, "This booking has no scheduled arrival time to check against")
+
+    now = datetime.now(timezone.utc)
+    if now < arrival_dt:
+        raise HTTPException(400, "The scheduled arrival window hasn't started yet")
+
+    loc = await find_worker_location_near(db, job.worker_id, arrival_dt)
+    job.no_show_reported_at = now
+
+    if loc is None:
+        # No GPS evidence either way — can't auto-confirm without proof.
+        job.no_show_status = "reported"
+        await _log_event(db, job.id, "no_show_reported", "user", user.id, {"reason": "no_location_data"})
+        db.add(SOSEvent(
+            job_id=job.id, triggered_by=user.id, triggered_by_role="user",
+            status="active",
+            notes=f"No-show reported, no GPS data available to verify. {body.notes or ''}".strip(),
+        ))
+        await db.commit()
+        return NoShowReportResponse(
+            outcome="escalated",
+            message="We couldn't verify this automatically — it's been sent to support to review.",
+        )
+
+    distance_km = haversine_km(float(loc.lat), float(loc.lon), float(job.location_lat), float(job.location_lon))
+
+    if distance_km > NO_SHOW_PROXIMITY_KM:
+        # Clearly nowhere near — auto-confirm.
+        job.no_show_status = "confirmed"
+        job.status = "cancelled"
+        job.cancelled_at = now
+        job.cancelled_by = "system"
+        job.cancellation_reason = f"Worker no-show (auto-confirmed, ~{distance_km:.2f}km from job at arrival time)"
+        await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
+        await _log_event(db, job.id, "no_show_confirmed", "system", user.id, {"distance_km": round(distance_km, 3)})
+
+        wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
+        wp = wp_r.scalar_one_or_none()
+        penalty_applied = False
+        if wp:
+            penalty_applied = await apply_no_show_rating_penalty(db, wp)
+            db.add(Notification(
+                user_id=wp.user_id,
+                type="job_no_show_confirmed",
+                title="No-show confirmed",
+                body=(
+                    "The customer reported you never arrived, and GPS confirms it. "
+                    + ("A rating penalty has been applied."
+                       if penalty_applied else
+                       "This is your first no-show — forgiven, no penalty.")
+                ),
+                data={"job_id": str(job.id)},
+            ))
+
+        db.add(Notification(
+            user_id=job.user_id,
+            type="job_no_show_confirmed",
+            title="No-show confirmed",
+            body="We've confirmed the worker didn't show up. You can rebook for free.",
+            data={"job_id": str(job.id)},
+        ))
+        await db.commit()
+        return NoShowReportResponse(
+            outcome="confirmed",
+            message="Confirmed — please rebook whenever you're ready. No charge to you.",
+        )
+
+    # GPS shows the worker was near — contested, don't auto-confirm either way.
+    job.no_show_status = "reported"
+    await _log_event(db, job.id, "no_show_reported", "user", user.id, {"distance_km": round(distance_km, 3)})
+    db.add(SOSEvent(
+        job_id=job.id, triggered_by=user.id, triggered_by_role="user",
+        status="active",
+        notes=(
+            f"No-show reported but worker GPS shows them ~{distance_km:.2f}km away "
+            f"at arrival time — contested. {body.notes or ''}"
+        ).strip(),
+    ))
+    await db.commit()
+    return NoShowReportResponse(
+        outcome="escalated",
+        message="Our records show the worker's device was near the job location, "
+                "so we've sent this to support to review your complaint.",
+    )
+
+
+@router.post("/{job_id}/flag-customer-unavailable", response_model=SuccessResponse)
+async def flag_customer_unavailable(
+    job_id: uuid.UUID,
+    body: JobCustomerUnavailableFlag,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Worker-side counterpart to a customer no-show report: the worker arrived
+    on-site but the customer wasn't there/reachable. This feeds into the SAME
+    cancellation-offense counter as a customer-initiated late cancellation —
+    see services/penalties.count_customer_offenses — not a separate system.
+    First-ever offense for that customer is forgiven; every one after that
+    costs a 50% charge, same as a repeat late self-cancellation.
+    """
+    wp, job = await _get_worker_for_job(job_id, user, db)
+    if job.worker_id != wp.id:
+        raise HTTPException(403)
+    if job.status not in ("arrived", "started"):
+        raise HTTPException(409, "You can only flag this after marking yourself arrived on-site")
+
+    now = datetime.now(timezone.utc)
+    prior_offenses = await count_customer_offenses(db, job.user_id)
+    is_first_offense = prior_offenses == 0
+
+    if is_first_offense:
+        pct = Decimal("0")
+        reason = "Customer unavailable on worker arrival — first offense (forgiven)"
+    else:
+        pct = Decimal("0.50")
+        reason = "Customer unavailable on worker arrival — repeat offense"
+    await record_customer_offense(db, job, job.user_id, reason=reason, pct=pct)
+
+    job.status = "cancelled"
+    job.cancelled_at = now
+    job.cancelled_by = "system"
+    job.cancellation_reason = f"Customer unavailable on arrival. {body.notes or ''}".strip()
+    await _log_event(db, job.id, "cancelled", "worker", user.id, {"reason": "customer_unavailable"})
+
+    await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
+    wp.status = "online"
+
+    db.add(Notification(
+        user_id=job.user_id,
+        type="job_customer_unavailable",
+        title="Booking cancelled — you weren't reachable",
+        body=(
+            "Your worker arrived but couldn't reach you, so the booking was cancelled."
+            if is_first_offense else
+            "Your worker arrived but couldn't reach you. Since this isn't your first "
+            "time, a 50% charge applies."
+        ),
+        data={"job_id": str(job.id)},
+    ))
+
+    await db.commit()
+    return SuccessResponse(message="Booking cancelled — customer was unavailable")

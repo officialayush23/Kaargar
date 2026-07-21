@@ -5,6 +5,7 @@ import { Background } from '@/components/glass/Background'
 import { MobileBottomNav } from '@/components/glass/GlassNavbar'
 import { OnboardingWalkthrough, useOnboarding } from '@/components/kaargar/OnboardingWalkthrough'
 import { PhonePrompt } from '@/components/kaargar/PhonePrompt'
+import { ActiveJobBar } from '@/components/kaargar/ActiveJobBar'
 import { useAuthStore } from '@/stores/auth'
 
 // Routes where the bottom nav should be hidden (full-screen experiences)
@@ -44,6 +45,7 @@ export function AppLayout() {
         <Outlet />
       </motion.main>
 
+      {!hideNav && <ActiveJobBar />}
       {!hideNav && <MobileBottomNav />}
 
       <AnimatePresence>

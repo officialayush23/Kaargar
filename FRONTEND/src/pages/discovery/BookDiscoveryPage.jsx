@@ -1,12 +1,19 @@
 /**
  * BookDiscoveryPage — Unified booking flow.
  *
- * AUTO-DETECTS service type after step 1:
- *   • requires_slot=true  → SLOT MODE:   service → slot calendar → location → confirm
- *   • requires_slot=false → WINDOW MODE: service → days → time window → location → confirm
+ * Every service is EITHER slot-mode OR multi-day-mode — never both, never
+ * neither (the old freeform "pick any window on any day" path has been
+ * retired; a service that has neither flag set shows a not-configured
+ * message instead of a booking flow):
  *
- * Slot mode:   POST /jobs/book-slot     (worker assigned immediately)
- * Window mode: POST /jobs/scheduled     (lazy assignment ~2h before window)
+ *   • requires_slot=true            → SLOT MODE:      service → slot calendar → location → confirm
+ *   • allow_multi_day_booking=true  → MULTI-DAY MODE: service → start date + #days → window → location → confirm
+ *
+ * Slot mode:      POST /jobs/book-slot  (worker assigned immediately)
+ * Multi-day mode: POST /jobs/scheduled, once per selected day (each call's
+ *                 preferred_days is a single-date list — the backend caps
+ *                 preferred_days at 3 entries per job, so a multi-day
+ *                 booking is really N separate jobs with the same worker).
  */
 
 import { useState, useMemo } from 'react'
@@ -14,7 +21,8 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Package,
-  Check, Loader2, CalendarCheck, Sparkles, Grid3x3,
+  Check, Loader2, CalendarCheck, Sparkles, Grid3x3, CalendarRange,
+  AlertTriangle, Minus, Plus,
 } from 'lucide-react'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { Background } from '@/components/glass/Background'
@@ -99,48 +107,76 @@ function SavedAddressPicker({ onSelect }) {
   )
 }
 
-function DayPicker({ selected, onChange, maxDays = 3 }) {
-  const days = Array.from({ length: 14 }, (_, i) => addDays(todayStr(), i + 1))
-  function toggle(d) {
-    if (selected.includes(d)) return onChange(selected.filter(x => x !== d))
-    if (selected.length >= maxDays) return toast.error(`Max ${maxDays} days`)
-    onChange([...selected, d].sort())
-  }
+// Multi-day range picker — customer picks a START DATE and a NUMBER OF DAYS;
+// the resulting consecutive date range is what gets booked (e.g. a security
+// guard booked for 5 days starting next Monday). Replaces the old freeform
+// "pick up to N arbitrary days" picker, which is retired along with window
+// mode — multi-day bookings are always a contiguous run of days.
+function MultiDayRangePicker({ startDate, onStartDateChange, numDays, onNumDaysChange, maxDays = 60 }) {
+  const dates = useMemo(() => {
+    if (!startDate || !numDays) return []
+    return Array.from({ length: numDays }, (_, i) => addDays(startDate, i))
+  }, [startDate, numDays])
+
+  const minStart = todayStr()
+
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
-      {days.map(day => {
-        const dt = new Date(day + 'T00:00:00')
-        const active = selected.includes(day)
-        const order = selected.indexOf(day) + 1
-        return (
-          <motion.button key={day} onClick={() => toggle(day)} whileTap={{ scale: 0.93 }}
+    <div className="space-y-4">
+      <div>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 500 }}>Start date</p>
+        <input
+          type="date"
+          value={startDate}
+          min={minStart}
+          onChange={e => onStartDateChange(e.target.value)}
+          style={{
+            width: '100%', padding: '10px 14px', borderRadius: 12, fontSize: 14,
+            background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+            color: 'var(--text-primary)', outline: 'none',
+          }}
+        />
+      </div>
+
+      <div>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 500 }}>Number of days</p>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <motion.button whileTap={{ scale: 0.9 }} type="button"
+            onClick={() => onNumDaysChange(Math.max(1, (Number(numDays) || 1) - 1))}
             style={{
-              padding: '8px 4px', borderRadius: 12, cursor: 'pointer',
-              border: active ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
-              background: active ? 'var(--accent-deep)' : 'var(--card-bg)',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1,
-              position: 'relative', transition: 'all 0.15s',
+              width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+              background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
             }}>
-            {active && (
-              <div style={{
-                position: 'absolute', top: 3, right: 3, width: 14, height: 14,
-                borderRadius: '50%', background: 'var(--amber)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 10, fontWeight: 700, color: '#000',
-              }}>{order}</div>
-            )}
-            <span style={{ fontSize: 11, color: active ? 'var(--amber)' : 'var(--text-muted)', fontWeight: 500 }}>
-              {dt.toLocaleDateString('en-IN', { weekday: 'short' })}
-            </span>
-            <span style={{ fontSize: 17, fontWeight: 700, color: active ? 'var(--amber)' : 'var(--text-primary)', lineHeight: 1 }}>
-              {dt.getDate()}
-            </span>
-            <span style={{ fontSize: 11, color: active ? 'var(--amber)' : 'var(--text-muted)' }}>
-              {dt.toLocaleDateString('en-IN', { month: 'short' })}
-            </span>
+            <Minus size={15} style={{ color: 'var(--text-secondary)' }} />
           </motion.button>
-        )
-      })}
+          <div style={{
+            flex: 1, textAlign: 'center', padding: '8px 0', borderRadius: 10,
+            background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)',
+          }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--amber)' }}>{numDays || 0}</span>
+            <span style={{ fontSize: 13, color: 'var(--text-muted)', marginLeft: 6 }}>day{numDays === 1 ? '' : 's'}</span>
+          </div>
+          <motion.button whileTap={{ scale: 0.9 }} type="button"
+            onClick={() => onNumDaysChange(Math.min(maxDays, (Number(numDays) || 0) + 1))}
+            style={{
+              width: 38, height: 38, borderRadius: 10, flexShrink: 0,
+              background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+            }}>
+            <Plus size={15} style={{ color: 'var(--text-secondary)' }} />
+          </motion.button>
+        </div>
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 6 }}>Up to {maxDays} days per booking</p>
+      </div>
+
+      {dates.length > 0 && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
+          style={{ padding: 12, borderRadius: 10, background: 'var(--accent-card)', border: '1px solid var(--accent-mid)' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+            {formatShort(dates[0])} → {formatShort(dates[dates.length - 1])} · {dates.length} separate booking{dates.length > 1 ? 's' : ''} with this worker
+          </p>
+        </motion.div>
+      )}
     </div>
   )
 }
@@ -316,7 +352,6 @@ export default function BookDiscoveryPage() {
   const [selectedService, setSelectedService] = useState(null)
   const [selectedPackage, setSelectedPackage] = useState(null)
   const [selectedSlot,    setSelectedSlot]    = useState(null)  // slot mode
-  const [preferredDays,   setPreferredDays]   = useState([])    // window mode
   const [windowStart,     setWindowStart]     = useState('')
   const [windowEnd,       setWindowEnd]       = useState('')
   const [address,         setAddress]         = useState('')
@@ -329,34 +364,34 @@ export default function BookDiscoveryPage() {
   const [locationLat,     setLocationLat]     = useState(null)
   const [locationLon,     setLocationLon]     = useState(null)
 
-  // Recurring multi-day booking — only offered when the worker has opted in.
-  // Distinct from `preferredDays` (which is retry-order fallback for ONE job):
-  // this books the SAME worker for a SEPARATE job on each selected day.
-  const [multiDayMode,    setMultiDayMode]    = useState(false)
-  const [multiDayDates,   setMultiDayDates]   = useState([])
+  // Multi-day booking — start date + number of days, computed into a
+  // contiguous date range. Books the SAME worker for a SEPARATE job on each
+  // day in the range (one /jobs/scheduled call per day).
+  const [multiDayStart,   setMultiDayStart]   = useState(addDays(todayStr(), 1))
+  const [multiDayCount,   setMultiDayCount]   = useState(1)
+  const multiDayDates = useMemo(
+    () => (multiDayStart && multiDayCount ? Array.from({ length: multiDayCount }, (_, i) => addDays(multiDayStart, i)) : []),
+    [multiDayStart, multiDayCount]
+  )
   const [multiDayProgress, setMultiDayProgress] = useState(null) // { done, total } while submitting
 
-  const { data: workerInfo } = useQuery({
-    queryKey: ['worker-public-book', workerId],
-    queryFn: async () => {
-      const { data } = await api.get(`/workers/${workerId}`)
-      return data
-    },
-    enabled: !!workerId,
-  })
-  // Requires BOTH the worker's overall opt-in AND this specific service's
-  // opt-in (set on the Services page) — a worker may allow it generally but
-  // still keep it off for a one-off service, e.g. a single appliance repair.
-  const workerAllowsMultiDay = !!workerInfo?.allow_multi_day_booking && !!selectedService?.allow_multi_day_booking
-
-  // Determine steps based on selected service mode
+  // Every service is exactly one of: slot-mode, multi-day-mode, or (rare,
+  // misconfigured) neither. There's no more freeform "pick any window"
+  // fallback — a service that has neither flag set can't be booked here.
   const isSlotMode = selectedService?.requires_slot === true
+  const isMultiDayMode = !isSlotMode && selectedService?.allow_multi_day_booking === true
+  const isUnconfigured = !!selectedService && !isSlotMode && !isMultiDayMode
+
   const STEPS = isSlotMode
     ? ['service', 'slot', 'location', 'confirm']
-    : ['service', 'days', 'window', 'location', 'confirm']
+    : isMultiDayMode
+      ? ['service', 'days', 'window', 'location', 'confirm']
+      : ['service']
   const LABELS = isSlotMode
     ? ['Service', 'Time Slot', 'Location', 'Confirm']
-    : ['Service', 'Days', 'Time', 'Location', 'Confirm']
+    : isMultiDayMode
+      ? ['Service', 'Days', 'Time', 'Location', 'Confirm']
+      : ['Service']
 
   function goNext() { setPrevIdx(stepIdx); setStepIdx(i => i + 1) }
   function goPrev() {
@@ -392,9 +427,9 @@ export default function BookDiscoveryPage() {
   })
 
   const canProceed = {
-    service:  !!selectedService,
+    service:  !!selectedService && !isUnconfigured,
     slot:     !!selectedSlot,
-    days:     multiDayMode ? multiDayDates.length >= 1 : preferredDays.length >= 1,
+    days:     multiDayDates.length >= 1,
     window:   windowValid,
     location: address.trim().length >= 5,
     confirm:  true,
@@ -402,33 +437,7 @@ export default function BookDiscoveryPage() {
 
   const price = selectedPackage?.discounted_price ?? selectedPackage?.price ?? selectedService?.price ?? 0
 
-  // Window mode booking
-  const windowMutation = useMutation({
-    mutationFn: async () => {
-      const { data } = await api.post('/jobs/scheduled', {
-        source: 'discovery',
-        category_id: selectedService?.category_id || null,
-        service_id: selectedService?.id,
-        package_id: selectedPackage?.id || null,
-        preferred_worker_id: workerId,          // pin to the specific worker the user chose
-        title: selectedService?.title,
-        description: null,
-        preferred_days: preferredDays,
-        window_start: to24h(windowStart),
-        window_end: to24h(windowEnd),
-        location_lat: locationLat || 18.5204, location_lon: locationLon || 73.8567,
-        location_address: address,
-        location_area: locationArea || null,
-        location_note: locationNote || null,
-        budget_max: price || null,
-      })
-      return data
-    },
-    onSuccess: () => { toast.success('Booking confirmed! Your worker will arrive within the selected window.'); navigate('/bookings') },
-    onError: e => toast.error(errMsg(e, 'Booking failed')),
-  })
-
-  // Recurring multi-day booking — creates one /jobs/scheduled job PER selected
+  // Multi-day booking — creates one /jobs/scheduled job PER selected
   // day (same worker, same service/window), instead of one job with a
   // preferred_days retry list. Runs sequentially so a mid-way failure still
   // leaves the earlier days successfully booked.
@@ -499,15 +508,14 @@ export default function BookDiscoveryPage() {
     },
   })
 
-  const isPending = windowMutation.isPending || slotMutation.isPending || multiDayMutation.isPending
+  const isPending = slotMutation.isPending || multiDayMutation.isPending
   function handleConfirm() {
     if (isSlotMode) slotMutation.mutate()
-    else if (multiDayMode) multiDayMutation.mutate()
-    else windowMutation.mutate()
+    else if (isMultiDayMode) multiDayMutation.mutate()
   }
   const confirmLabel = multiDayMutation.isPending && multiDayProgress
     ? `Booking ${multiDayProgress.done}/${multiDayProgress.total}…`
-    : isSlotMode ? 'Confirm Slot' : multiDayMode ? `Confirm ${multiDayDates.length} Bookings` : 'Confirm Booking'
+    : isSlotMode ? 'Confirm Slot' : isMultiDayMode ? `Confirm ${multiDayDates.length} Bookings` : 'Confirm Booking'
 
   const slide = {
     enter:  d => ({ opacity: 0, x: d > 0 ? 48 : -48 }),
@@ -564,7 +572,7 @@ export default function BookDiscoveryPage() {
               ) : services.map(svc => {
                 const isActive = selectedService?.id === svc.id
                 return (
-                  <motion.div key={svc.id} onClick={() => { setSelectedService(svc); setSelectedPackage(null); setSelectedSlot(null); setMultiDayMode(false); setMultiDayDates([]) }}
+                  <motion.div key={svc.id} onClick={() => { setSelectedService(svc); setSelectedPackage(null); setSelectedSlot(null); setMultiDayStart(addDays(todayStr(), 1)); setMultiDayCount(1) }}
                     whileTap={{ scale: 0.98 }}
                     style={{ padding: '14px 16px', borderRadius: 14, cursor: 'pointer', border: isActive ? '1.5px solid var(--amber)' : '1px solid var(--card-border)', background: isActive ? 'var(--accent-card)' : 'var(--card-bg)', transition: 'all 0.15s' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -574,7 +582,16 @@ export default function BookDiscoveryPage() {
                           {svc.requires_slot && (
                             <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, background: 'rgba(59,130,246,0.15)', color: '#60A5FA', border: '1px solid rgba(59,130,246,0.3)', fontWeight: 600 }}>SLOT</span>
                           )}
+                          {svc.allow_multi_day_booking && (
+                            <span style={{ fontSize: 11, padding: '2px 6px', borderRadius: 6, background: 'rgba(245,158,11,0.15)', color: 'var(--amber)', border: '1px solid rgba(245,158,11,0.3)', fontWeight: 600 }}>MULTI-DAY</span>
+                          )}
                         </div>
+                        {isActive && !svc.requires_slot && !svc.allow_multi_day_booking && (
+                          <div style={{ marginTop: 6, display: 'flex', alignItems: 'center', gap: 6, padding: '6px 10px', borderRadius: 8, background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+                            <AlertTriangle size={12} style={{ color: '#F87171', flexShrink: 0 }} />
+                            <span style={{ fontSize: 12, color: '#F87171' }}>This service isn't set up for booking yet</span>
+                          </div>
+                        )}
                         {svc.description && <p style={{ fontSize: 12, color: 'var(--text-muted)', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{svc.description}</p>}
                         {svc.duration_min && <p style={{ fontSize: 13, color: 'var(--text-muted)', marginTop: 3 }}>~{svc.duration_min} min</p>}
                       </div>
@@ -633,94 +650,39 @@ export default function BookDiscoveryPage() {
             </motion.div>
           )}
 
-          {/* ── DAYS (window mode) ── */}
+          {/* ── DAYS (multi-day mode) ── */}
           {step === 'days' && (
             <motion.div key="days" custom={direction} variants={slide} initial="enter" animate="center" exit="exit" transition={{ type: 'spring', stiffness: 340, damping: 32 }} className="space-y-4">
-
-              {/* Recurring multi-day toggle — only shown if this worker allows it */}
-              {workerAllowsMultiDay && (
-                <GlassCard className="p-4">
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)' }}>Book across multiple days</p>
-                      <p style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 2 }}>
-                        This worker allows recurring bookings — pick several days and they'll be booked for each one.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => { setMultiDayMode(m => !m); setPreferredDays([]); setMultiDayDates([]) }}
-                      className={`w-12 h-6 rounded-full transition-colors relative shrink-0 ${multiDayMode ? 'bg-instant' : ''}`}
-                      style={!multiDayMode ? { background: 'var(--card-bg)' } : undefined}
-                    >
-                      <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${multiDayMode ? 'translate-x-7' : 'translate-x-1'}`} />
-                    </button>
-                  </div>
-                </GlassCard>
-              )}
-
               <GlassCard className="p-5">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Calendar size={15} style={{ color: 'var(--amber)' }} />
-                    <h3 className="font-syne font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
-                      {multiDayMode ? 'Which days?' : 'Preferred days'}
-                    </h3>
+                    <CalendarRange size={15} style={{ color: 'var(--amber)' }} />
+                    <h3 className="font-syne font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Which days?</h3>
                   </div>
-                  <InfoButton text={multiDayMode
-                    ? "Pick every day you want this worker to come. A separate booking is created for each day you select."
-                    : "Pick up to 3 days you're available. We'll try day 1 first, then day 2, day 3. You'll be notified once confirmed."} />
+                  <InfoButton text="Pick a start date and how many days you need. A separate booking is created for each day, all with the same worker." />
                 </div>
-
-                {multiDayMode ? (
-                  <>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
-                      Select as many days as you need{multiDayDates.length > 0 && <span style={{ color: 'var(--amber)', fontWeight: 600 }}> · {multiDayDates.length} chosen</span>}
-                    </p>
-                    <DayPicker selected={multiDayDates} onChange={setMultiDayDates} maxDays={14} />
-                    {multiDayDates.length > 0 && (
-                      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                        style={{ marginTop: 14, padding: 12, borderRadius: 10, background: 'var(--accent-card)', border: '1px solid var(--accent-mid)' }}>
-                        <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                          {multiDayDates.length} separate booking{multiDayDates.length > 1 ? 's' : ''} will be created — one per day.
-                        </p>
-                      </motion.div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 14 }}>
-                      Select up to 3 days{preferredDays.length > 0 && <span style={{ color: 'var(--amber)', fontWeight: 600 }}> · {preferredDays.length}/3 chosen</span>}
-                    </p>
-                    <DayPicker selected={preferredDays} onChange={setPreferredDays} />
-                    {preferredDays.length > 0 && (
-                      <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
-                        style={{ marginTop: 14, padding: 12, borderRadius: 10, background: 'var(--accent-card)', border: '1px solid var(--accent-mid)' }}>
-                        {preferredDays.map((d, i) => (
-                          <div key={d} style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: i > 0 ? 4 : 0 }}>
-                            <div style={{ width: 16, height: 16, borderRadius: '50%', background: 'var(--amber)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 10, fontWeight: 700, color: '#000' }}>{i + 1}</div>
-                            <span style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{formatShort(d)}</span>
-                          </div>
-                        ))}
-                      </motion.div>
-                    )}
-                  </>
-                )}
+                <MultiDayRangePicker
+                  startDate={multiDayStart}
+                  onStartDateChange={setMultiDayStart}
+                  numDays={multiDayCount}
+                  onNumDaysChange={setMultiDayCount}
+                />
               </GlassCard>
             </motion.div>
           )}
 
-          {/* ── TIME WINDOW ── */}
+          {/* ── TIME WINDOW (multi-day mode — the daily arrival window) ── */}
           {step === 'window' && (
             <motion.div key="window" custom={direction} variants={slide} initial="enter" animate="center" exit="exit" transition={{ type: 'spring', stiffness: 340, damping: 32 }} className="space-y-4">
               <GlassCard className="p-5">
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Clock size={15} style={{ color: 'var(--amber)' }} />
-                    <h3 className="font-syne font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Available window</h3>
+                    <h3 className="font-syne font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Daily arrival window</h3>
                   </div>
-                  <InfoButton text="Set a time range when you'll be home. Example: 2 PM – 6 PM. The worker arrives within this window. Minimum 1 hour." />
+                  <InfoButton text="Set a time range for when the worker should arrive each day. Example: 9 AM – 6 PM. Minimum 1 hour." />
                 </div>
-                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>When can the worker arrive? (min 1 hour)</p>
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 16 }}>What time should the worker arrive, each day? (min 1 hour)</p>
                 <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
                   <TimeSelect label="From" value={windowStart} onChange={v => { setWindowStart(v); if (windowEnd && windowEnd <= v) setWindowEnd('') }} options={TIME_OPTS} placeholder="Start" />
                   <div style={{ paddingBottom: 12, color: 'var(--text-muted)', fontSize: 18 }}>–</div>
@@ -737,10 +699,10 @@ export default function BookDiscoveryPage() {
               </GlassCard>
               <GlassCard className="p-4">
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  {multiDayMode ? 'Your days (one booking each)' : 'Your days'}
+                  Your days (one booking each)
                 </p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {(multiDayMode ? multiDayDates : preferredDays).map(d => <span key={d} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)', fontSize: 13, color: 'var(--amber)', fontWeight: 500 }}>{formatShort(d)}</span>)}
+                  {multiDayDates.map(d => <span key={d} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)', fontSize: 13, color: 'var(--amber)', fontWeight: 500 }}>{formatShort(d)}</span>)}
                 </div>
               </GlassCard>
             </motion.div>
@@ -814,14 +776,14 @@ export default function BookDiscoveryPage() {
                     </p>
                   </SummaryRow>
                 )}
-                {!isSlotMode && (
+                {isMultiDayMode && (
                   <>
-                    <SummaryRow icon={Calendar} label={multiDayMode ? `${multiDayDates.length} separate bookings` : 'Preferred days'}>
+                    <SummaryRow icon={Calendar} label={`${multiDayDates.length} separate bookings`}>
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
-                        {(multiDayMode ? multiDayDates : preferredDays).map(d => <span key={d} style={{ fontSize: 13, padding: '2px 8px', borderRadius: 20, background: 'var(--accent-deep)', color: 'var(--amber)', border: '1px solid var(--accent-mid)' }}>{formatShort(d)}</span>)}
+                        {multiDayDates.map(d => <span key={d} style={{ fontSize: 13, padding: '2px 8px', borderRadius: 20, background: 'var(--accent-deep)', color: 'var(--amber)', border: '1px solid var(--accent-mid)' }}>{formatShort(d)}</span>)}
                       </div>
                     </SummaryRow>
-                    <SummaryRow icon={Clock} label="Time window">
+                    <SummaryRow icon={Clock} label="Daily arrival window">
                       <p style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{to12h(windowStart)} – {to12h(windowEnd)}</p>
                     </SummaryRow>
                   </>

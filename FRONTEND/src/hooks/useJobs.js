@@ -1,13 +1,17 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 
-export function useMyJobs(status = 'active') {
+export function useMyJobs(status = 'active', { asRole, refetchInterval, enabled } = {}) {
   return useQuery({
-    queryKey: ['jobs', status],
+    queryKey: ['jobs', status, asRole],
     queryFn: async () => {
-      const { data } = await api.get('/jobs/me', { params: { status } })
+      const params = { status }
+      if (asRole) params.as_role = asRole
+      const { data } = await api.get('/jobs/me', { params })
       return data
     },
+    ...(refetchInterval ? { refetchInterval } : {}),
+    ...(enabled !== undefined ? { enabled } : {}),
   })
 }
 

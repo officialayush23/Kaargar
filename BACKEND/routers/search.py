@@ -67,7 +67,11 @@ async def search(
     q: str = Query(..., min_length=1),
     mode: Optional[str] = Query(None),
     category_id: Optional[str] = Query(None),
-    sort: str = Query("rating", pattern="^(rating|price_asc|price_desc|distance)$"),
+    sort: Optional[str] = Query(
+        None,
+        pattern="^(rating|price_asc|price_desc|distance)$",
+        description="Explicit sort override. Omit for the blended relevance default.",
+    ),
     lat: Optional[float] = Query(None),
     lon: Optional[float] = Query(None),
     page: int = Query(1, ge=1),
@@ -155,7 +159,12 @@ async def search(
         svc_q = svc_q.where(Service.category_id == explicit_cat_id)
 
     distance_col = None
-    if sort == "distance" and lat is not None and lon is not None:
+    use_blended_default = sort is None
+
+    # Distance is needed both for the explicit sort=distance case and for the
+    # blended default (when customer coordinates are available) — join once.
+    need_distance_join = (sort == "distance" or use_blended_default) and lat is not None and lon is not None
+    if need_distance_join:
         distance_col = (
             ST_Distance(
                 WorkerLocation.geom,
@@ -163,16 +172,91 @@ async def search(
             ) / 1000.0
         ).label("distance_km")
         svc_q = svc_q.outerjoin(WorkerLocation, WorkerLocation.worker_id == WorkerProfile.id)
-        svc_q = svc_q.add_columns(relevance_col, distance_col).order_by(distance_col.asc().nulls_last())
-    elif sort == "price_asc":
-        svc_q = svc_q.add_columns(relevance_col).order_by(Service.price.asc())
-    elif sort == "price_desc":
-        svc_q = svc_q.add_columns(relevance_col).order_by(Service.price.desc())
+        svc_q = svc_q.add_columns(relevance_col, distance_col)
     else:
-        svc_q = svc_q.add_columns(relevance_col).order_by(relevance_col.desc(), Service.avg_rating.desc())
+        svc_q = svc_q.add_columns(relevance_col)
 
-    svc_q = svc_q.offset(offset).limit(limit)
-    rows = (await db.execute(svc_q)).all()
+    if sort == "distance" and distance_col is not None:
+        svc_q = svc_q.order_by(distance_col.asc().nulls_last())
+    elif sort == "price_asc":
+        svc_q = svc_q.order_by(Service.price.asc())
+    elif sort == "price_desc":
+        svc_q = svc_q.order_by(Service.price.desc())
+    elif not use_blended_default:
+        # Explicit sort=rating (unchanged from prior behaviour: text relevance
+        # first, then the service's own avg_rating), or sort=distance
+        # requested without customer coordinates — fall back the same way.
+        svc_q = svc_q.order_by(relevance_col.desc(), Service.avg_rating.desc())
+
+    if use_blended_default:
+        # ── Blended default ranking ────────────────────────────────────────────
+        # Weighted combination, each term normalized to 0-1, computed downstream
+        # of the tokenized text-match filter above (that filter is unchanged):
+        #   rating   ~45%  — 70% service.avg_rating / 30% worker.avg_rating (both /5)
+        #   distance ~35%  — only when customer lat/lon is supplied; cheaper^H
+        #                    closer = better. Omitted (and weights renormalized)
+        #                    when no customer location is passed.
+        #   price    ~20%  — cheaper = better, min-max normalized over the
+        #                    candidate pool.
+        # Pull a bounded candidate pool (bigger than one page) so min/max
+        # price/distance normalization reflects the real spread of matching
+        # results, then rank + paginate in Python.
+        W_RATING = 0.45
+        W_DISTANCE = 0.35
+        W_PRICE = 0.20
+        have_distance = distance_col is not None
+
+        if not have_distance:
+            # Renormalize remaining weights to sum to 1.0
+            remaining = W_RATING + W_PRICE
+            W_RATING = W_RATING / remaining
+            W_PRICE = W_PRICE / remaining
+
+        candidate_pool_size = max(limit * 10, 200)
+        pool_q = svc_q.limit(candidate_pool_size)
+        pool_rows = (await db.execute(pool_q)).all()
+
+        prices = [float(r[0].price) for r in pool_rows if r[0].price is not None]
+        min_price, max_price = (min(prices), max(prices)) if prices else (0.0, 0.0)
+        price_span = (max_price - min_price) or 1.0
+
+        if have_distance:
+            dists = [float(r[5]) for r in pool_rows if len(r) > 5 and r[5] is not None]
+            min_dist, max_dist = (min(dists), max(dists)) if dists else (0.0, 0.0)
+            dist_span = (max_dist - min_dist) or 1.0
+
+        def _blended_score(row):
+            svc, wp = row[0], row[1]
+            svc_rating = float(svc.avg_rating or 0) / 5.0
+            worker_rating = float(wp.avg_rating or 0) / 5.0
+            rating_component = 0.70 * svc_rating + 0.30 * worker_rating
+
+            if svc.price is not None:
+                price_component = 1.0 - ((float(svc.price) - min_price) / price_span)
+            else:
+                price_component = 0.5
+
+            score = W_RATING * rating_component + W_PRICE * price_component
+
+            if have_distance:
+                dist_val = float(row[5]) if len(row) > 5 and row[5] is not None else None
+                if dist_val is not None:
+                    distance_component = 1.0 - ((dist_val - min_dist) / dist_span)
+                else:
+                    distance_component = 0.5
+                score += W_DISTANCE * distance_component
+
+            return score
+
+        ranked = sorted(
+            pool_rows,
+            key=lambda r: (_blended_score(r), r[4]),  # relevance_col is index 4
+            reverse=True,
+        )
+        rows = ranked[offset:offset + limit]
+    else:
+        svc_q = svc_q.offset(offset).limit(limit)
+        rows = (await db.execute(svc_q)).all()
 
     results = []
     for row in rows:
