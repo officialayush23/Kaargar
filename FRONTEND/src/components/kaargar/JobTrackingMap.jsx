@@ -13,7 +13,7 @@
  * summary card instead of the interactive drag-pin fallback PuneMap uses
  * (that one's meant for picking a location, not displaying one).
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Map, { Marker } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { MapPin, Navigation2, Maximize2, Minimize2 } from 'lucide-react'
@@ -24,6 +24,42 @@ import { supabase } from '@/lib/supabase'
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const VALID_TOKEN  = MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith('pk.')
 const MAP_STYLE    = 'mapbox://styles/mapbox/streets-v12'
+
+// Straight-line-distance ETA estimate — NOT a real routing/directions call.
+// This is the cheap v1 approach: haversine distance between the worker's
+// last GPS ping and the job's destination, divided by an assumed average
+// city travel speed (accounts for stop-start traffic + not being able to
+// fly in a straight line, roughly). It recomputes every time a new worker
+// location ping arrives (via the Realtime subscription below) rather than
+// on a fixed timer, so it's only ever as stale as the last real GPS fix —
+// no artificial countdown is faked between pings, since a worker who's
+// actually stopped (traffic, a prior job running long) should show a
+// steady number, not a countdown ticking toward zero on its own. If this
+// approximation proves too rough in practice, the natural upgrade is a
+// real routing call (e.g. Mapbox Directions) computed server-side and
+// throttled, rather than switching this to per-pixel client-side guessing.
+const AVG_CITY_SPEED_KMH = 20
+
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371
+  const toRad = (d) => (d * Math.PI) / 180
+  const dLat = toRad(lat2 - lat1)
+  const dLon = toRad(lon2 - lon1)
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2
+  return R * 2 * Math.asin(Math.sqrt(a))
+}
+
+function etaLabel(distanceKm) {
+  const minutes = Math.max(1, Math.round((distanceKm / AVG_CITY_SPEED_KMH) * 60))
+  if (minutes >= 60) {
+    const h = Math.floor(minutes / 60)
+    const m = minutes % 60
+    return `~${h}h ${m}m away`
+  }
+  return `~${minutes} min away`
+}
 
 // Job statuses where a worker location realistically exists and is worth polling/subscribing for.
 const TRACKABLE_STATUSES = new Set(['worker_assigned', 'assigned', 'en_route', 'arrived', 'started'])
@@ -37,6 +73,12 @@ export function JobTrackingMap({ job, height = '220px' }) {
   const destLon = job?.location_lon != null ? Number(job.location_lon) : null
   const isTrackable = TRACKABLE_STATUSES.has(job?.status) && !!job?.worker_id
   const hasDest = destLat != null && destLon != null
+
+  const eta = useMemo(() => {
+    if (!workerLoc || !hasDest) return null
+    const km = haversineKm(workerLoc.lat, workerLoc.lon, destLat, destLon)
+    return etaLabel(km)
+  }, [workerLoc?.lat, workerLoc?.lon, hasDest, destLat, destLon])
 
   // Initial fetch of the worker's last known position.
   useEffect(() => {
@@ -105,7 +147,7 @@ export function JobTrackingMap({ job, height = '220px' }) {
           </p>
           {isTrackable && (
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
-              {workerLoc ? 'Worker is on the way' : 'Waiting for worker location…'}
+              {eta ? `Worker is on the way · ${eta}` : workerLoc ? 'Worker is on the way' : 'Waiting for worker location…'}
             </p>
           )}
         </div>
@@ -185,12 +227,19 @@ export function JobTrackingMap({ job, height = '220px' }) {
         display: 'flex', alignItems: 'center', gap: 8,
       }}>
         <MapPin size={13} color="var(--accent)" style={{ flexShrink: 0 }} />
-        <p style={{
-          fontSize: 12.5, fontWeight: 500, color: '#1E293B', margin: 0,
-          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-        }}>
-          {job.location_address || 'Service location'}
-        </p>
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <p style={{
+            fontSize: 12.5, fontWeight: 500, color: '#1E293B', margin: 0,
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+          }}>
+            {job.location_address || 'Service location'}
+          </p>
+          {eta && (
+            <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--accent)', margin: 0 }}>
+              {eta}
+            </p>
+          )}
+        </div>
       </div>
     </div>
   )

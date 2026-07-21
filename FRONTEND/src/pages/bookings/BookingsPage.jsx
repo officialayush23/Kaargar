@@ -23,7 +23,7 @@ const TABS = [
 const STATUS_CONFIG = {
   completed: { icon: CheckCircle, bgColor: 'rgba(52,211,153,0.12)',  textColor: '#34d399' },
   cancelled:  { icon: XCircle,    bgColor: 'rgba(248,113,113,0.12)', textColor: '#f87171' },
-  default:    { icon: Clock,      bgColor: 'rgba(59,130,246,0.12)',  textColor: '#60a5fa' },
+  default:    { icon: Clock,      bgColor: 'rgba(245,158,11,0.12)',  textColor: '#F59E0B' },
 }
 
 /* ── Job card ───────────────────────────────────────────────────── */
@@ -92,7 +92,7 @@ function PackageOrderCard({ order }) {
   // For multi_use: show uses_remaining; for single_use_bundle: show items done
   const isBundle = order.redemption_type === 'single_use_bundle'
 
-  let statusColor = '#60a5fa'
+  let statusColor = '#F59E0B'
   let statusLabel = 'Active'
   if (isExpired) { statusColor = '#f87171'; statusLabel = 'Expired' }
   else if (!isBundle && order.uses_remaining === 0) { statusColor = '#34d399'; statusLabel = 'Exhausted' }

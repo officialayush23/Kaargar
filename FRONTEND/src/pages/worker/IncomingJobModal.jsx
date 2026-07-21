@@ -85,7 +85,7 @@ export default function IncomingJobModal({ job, onAccept, onDecline, onExpire })
               <circle
                 cx="28" cy="28" r="24"
                 fill="none"
-                stroke={secondsLeft <= 3 ? '#ef4444' : '#4B7BFF'}
+                stroke={secondsLeft <= 3 ? '#ef4444' : '#F59E0B'}
                 strokeWidth="4"
                 strokeLinecap="round"
                 strokeDasharray={`${2 * Math.PI * 24}`}

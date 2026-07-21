@@ -1053,7 +1053,7 @@ supabase.channel(`worker-loc:${workerId}`)
 /admin/workers/:id              AdminWorkerDetailPage
 /admin/jobs                     AdminJobsPage
 /admin/support                  AdminSupportPage
-/admin/support/:id              AdminTicketDetailPage
+/admin/support/:id               AdminTicketDetailPage
 /admin/config                   AdminConfigPage
 ```
 

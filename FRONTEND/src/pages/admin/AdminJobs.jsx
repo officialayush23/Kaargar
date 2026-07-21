@@ -14,10 +14,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 
 const STATUS_CFG = {
   searching:  { label: 'Searching',  color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-  assigned:   { label: 'Assigned',   color: '#60a5fa', bg: 'rgba(96,165,250,0.12)'  },
+  assigned:   { label: 'Assigned',   color: '#F59E0B', bg: 'rgba(245,158,11,0.12)'  },
   en_route:   { label: 'En route',   color: '#34d399', bg: 'rgba(52,211,153,0.12)'  },
   arrived:    { label: 'Arrived',    color: '#34d399', bg: 'rgba(52,211,153,0.12)'  },
-  started:    { label: 'In progress',color: '#4B7BFF', bg: 'rgba(75,123,255,0.12)'  },
+  started:    { label: 'In progress',color: '#D97706', bg: 'rgba(217,119,6,0.12)'  },
   completed:  { label: 'Completed',  color: '#22c55e', bg: 'rgba(34,197,94,0.12)'   },
   cancelled:  { label: 'Cancelled',  color: '#f87171', bg: 'rgba(248,113,113,0.12)' },
   failed:     { label: 'Failed',     color: 'var(--text-muted)', bg: 'rgba(107,114,128,0.12)' },

@@ -1,7 +1,7 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useNavigate, useParams, Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MessageSquare, Phone, MapPin, Shield, Star, CheckCircle, Clock, Zap, CreditCard, Loader2, AlertCircle, ShieldAlert, FileText, ArrowRight, ArrowLeft, PhoneCall, Siren, XCircle, Search, Calendar, HeadphonesIcon, Ban, RotateCcw, UserX, AlertTriangle } from 'lucide-react'
+import { MessageSquare, Phone, MapPin, Shield, Star, CheckCircle, Clock, Zap, CreditCard, Loader2, AlertCircle, ShieldAlert, FileText, ArrowRight, ArrowLeft, PhoneCall, Siren, XCircle, Search, Calendar, HeadphonesIcon, Ban, RotateCcw, UserX, AlertTriangle, MoreVertical } from 'lucide-react'
 import { api } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
@@ -21,12 +21,12 @@ import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
 const STATUS_CONFIG = {
-  requested:         { label: 'Requested',             color: 'text-azure',       dot: 'bg-azure',        icon: Clock },
+  requested:         { label: 'Requested',             color: 'text-amber-300',   dot: 'bg-amber-300',    icon: Clock },
   scheduled:         { label: 'Scheduled',              color: 'text-violet-400',  dot: 'bg-violet-400',   icon: Calendar },
-  searching:         { label: 'Finding a worker',      color: 'text-azure',       dot: 'bg-azure',        icon: Search },
-  confirmed:         { label: 'Worker assigned',       color: 'text-azure',       dot: 'bg-azure',        icon: Zap },
-  worker_assigned:   { label: 'Worker assigned',       color: 'text-azure',       dot: 'bg-azure',        icon: Zap },
-  assigned:          { label: 'Worker assigned',      color: 'text-azure',       dot: 'bg-azure',        icon: Zap },
+  searching:         { label: 'Finding a worker',      color: 'text-amber-400',   dot: 'bg-amber-400',    icon: Search },
+  confirmed:         { label: 'Worker assigned',       color: 'text-amber-500',   dot: 'bg-amber-500',    icon: Zap },
+  worker_assigned:   { label: 'Worker assigned',       color: 'text-amber-500',   dot: 'bg-amber-500',    icon: Zap },
+  assigned:          { label: 'Worker assigned',      color: 'text-amber-600',   dot: 'bg-amber-600',    icon: Zap },
   en_route:          { label: 'On the way',           color: 'text-violet-400',  dot: 'bg-violet-400',   icon: MapPin },
   arrived:           { label: 'Worker arrived',        color: 'text-amber-400',   dot: 'bg-amber-400',    icon: Clock },
   started:           { label: 'Work in progress',      color: 'text-emerald-400', dot: 'bg-emerald-400',  icon: Zap },
@@ -373,7 +373,7 @@ function RescheduleModal({ open, onClose, job, jobId, onRescheduled }) {
   // clearer message pointing at cancel + rebook instead.
   if (job?.slot_id) {
     return (
-      <GlassModal open={open} onClose={onClose} title="Reschedule" size="sm">
+      <GlassModal open={open} onClose={onClose} title="Reschedule" size="sm" solid>
         <div className="space-y-3 text-center py-2">
           <Calendar className="h-8 w-8 mx-auto" style={{ color: 'var(--text-muted)' }} />
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
@@ -408,6 +408,7 @@ function RescheduleModal({ open, onClose, job, jobId, onRescheduled }) {
       onClose={loading ? undefined : onClose}
       title="Reschedule booking"
       size="sm"
+      solid
       footer={
         <GlassButton variant="brand" size="lg" className="w-full" loading={loading} disabled={!canSubmit} onClick={handleReschedule}>
           Confirm new time
@@ -444,6 +445,94 @@ function RescheduleModal({ open, onClose, job, jobId, onRescheduled }) {
         )}
       </div>
     </GlassModal>
+  )
+}
+
+/* ─── Job actions overflow menu (reschedule / cancel booking) ────────────────
+ * Both actions used to render as a full-width two-button row directly on the
+ * page. That's now tucked behind a single kebab (3-dot) icon button — same
+ * icon-button footprint as the call button on the other-party card below —
+ * that opens a small glass dropdown with the same two actions as menu items.
+ * Nothing about *when* these are available changed (still gated by
+ * canCancel/canReschedule upstream); only where they render. */
+function JobActionsMenu({ canReschedule, canCancel, onReschedule, onCancel }) {
+  const [open, setOpen] = useState(false)
+  const menuRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return
+    function onDocClick(e) {
+      if (menuRef.current && !menuRef.current.contains(e.target)) setOpen(false)
+    }
+    function onKey(e) { if (e.key === 'Escape') setOpen(false) }
+    document.addEventListener('mousedown', onDocClick)
+    window.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDocClick)
+      window.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  return (
+    <div className="relative flex justify-end" ref={menuRef}>
+      <motion.button
+        type="button"
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.95 }}
+        onClick={() => setOpen(v => !v)}
+        aria-label="Booking actions"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="w-10 h-10 rounded-xl flex items-center justify-center"
+        style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}
+      >
+        <MoreVertical className="h-4 w-4" style={{ color: 'var(--text-secondary)' }} />
+      </motion.button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="menu"
+            initial={{ opacity: 0, scale: 0.95, y: -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: -6 }}
+            transition={{ duration: 0.15, ease: 'easeOut' }}
+            className="absolute right-0 top-12 z-20 w-52 rounded-2xl overflow-hidden"
+            style={{
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--g-border)',
+              boxShadow: '0 8px 32px rgba(0,0,0,0.35)',
+            }}
+          >
+            {canReschedule && (
+              <button
+                role="menuitem"
+                onClick={() => { setOpen(false); onReschedule() }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left transition-colors hover:bg-white/5"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                <RotateCcw className="h-4 w-4 shrink-0" style={{ color: 'var(--text-secondary)' }} />
+                Reschedule
+              </button>
+            )}
+            {canReschedule && canCancel && (
+              <div style={{ height: 1, background: 'var(--g-border)' }} />
+            )}
+            {canCancel && (
+              <button
+                role="menuitem"
+                onClick={() => { setOpen(false); onCancel() }}
+                className="w-full flex items-center gap-2.5 px-4 py-3 text-sm font-medium text-left transition-colors hover:bg-white/5"
+                style={{ color: '#f87171' }}
+              >
+                <Ban className="h-4 w-4 shrink-0" />
+                Cancel booking
+              </button>
+            )}
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }
 
@@ -678,7 +767,7 @@ export default function ActiveJobPage() {
       {/* Loading */}
       {loading && (
         <div className="flex items-center justify-center h-40">
-          <div className="w-8 h-8 rounded-full border-2 border-azure/30 border-t-azure animate-spin" />
+          <div className="w-8 h-8 rounded-full border-2 border-amber-500/30 border-t-amber-500 animate-spin" />
         </div>
       )}
 
@@ -737,21 +826,15 @@ export default function ActiveJobPage() {
         </GlassCard>
       )}
 
-      {/* Customer: cancel / reschedule — pre-arrival, discovery/scheduled only */}
+      {/* Customer: cancel / reschedule — pre-arrival, discovery/scheduled only,
+          tucked into a 3-dot overflow menu instead of inline buttons */}
       {(canCancel || canReschedule) && (
-        <div className="flex gap-2">
-          {canReschedule && (
-            <GlassButton variant="outline" size="sm" className="flex-1" icon={RotateCcw} onClick={() => setRescheduleOpen(true)}>
-              Reschedule
-            </GlassButton>
-          )}
-          {canCancel && (
-            <GlassButton variant="outline" size="sm" className="flex-1" icon={Ban} onClick={() => setCancelOpen(true)}
-              style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', color: '#f87171' }}>
-              Cancel booking
-            </GlassButton>
-          )}
-        </div>
+        <JobActionsMenu
+          canReschedule={canReschedule}
+          canCancel={canCancel}
+          onReschedule={() => setRescheduleOpen(true)}
+          onCancel={() => setCancelOpen(true)}
+        />
       )}
 
       {/* Worker: arrived / start-job actions */}
@@ -822,8 +905,8 @@ export default function ActiveJobPage() {
                   </div>
                 ) : (
                   <div className="flex items-center gap-1 mt-1">
-                    <Shield className="h-3 w-3 text-azure" />
-                    <span className="text-[13px] text-azure">Verified worker · View profile</span>
+                    <Shield className="h-3 w-3 text-amber-500" />
+                    <span className="text-[13px] text-amber-500">Verified worker · View profile</span>
                   </div>
                 )}
               </div>
@@ -833,9 +916,9 @@ export default function ActiveJobPage() {
                 <motion.div
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
-                  className="w-10 h-10 rounded-xl bg-azure/15 border border-azure/25 flex items-center justify-center"
+                  className="w-10 h-10 rounded-xl bg-amber-500/15 border border-amber-500/25 flex items-center justify-center"
                 >
-                  <MessageSquare className="h-4 w-4 text-azure" />
+                  <MessageSquare className="h-4 w-4 text-amber-500" />
                 </motion.div>
               </Link>
               <motion.button
@@ -855,7 +938,7 @@ export default function ActiveJobPage() {
 
           {job?.location_address && (
             <div className="mt-4 pt-4 flex items-center gap-2" style={{ borderTop: '1px solid var(--g-border)' }}>
-              <MapPin className="h-3.5 w-3.5 text-azure shrink-0" />
+              <MapPin className="h-3.5 w-3.5 text-amber-500 shrink-0" />
               <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>{job.location_address}</span>
             </div>
           )}

@@ -298,8 +298,7 @@ async def get_worker_detail(
 ):
     """Full worker detail for admin verification page."""
     import uuid as _uuid
-    from models import WorkerCategory, Service, Tag, ServiceTag
-    from sqlalchemy import select as sel
+    from models import WorkerCategory, Service
 
     result = await db.execute(
         select(WorkerProfile, User)
@@ -383,10 +382,23 @@ async def get_worker_detail(
 
 
 @router.get("/config")
-async def get_config(
+async def list_platform_config(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    List every platform_config row for the admin config UI.
+
+    NOTE: this handler used to be named `get_config`, which silently
+    rebound the module-level name imported from `services.config` (the
+    `get_config(db, key, default)` cache-backed helper used throughout this
+    file, e.g. a few hundred lines below to read `max_category_icon_mb`).
+    Since Python resolves module-level names at call time, every call to
+    the *helper* after this route's definition was actually resolving to
+    *this route function* instead — a `(db, key, default)` call against a
+    `(admin, db)`-shaped function, which would raise a TypeError the
+    moment it was ever hit. Renamed to remove the collision entirely.
+    """
     result = await db.execute(select(PlatformConfig).order_by(PlatformConfig.key))
     configs = result.scalars().all()
     return [{"key": c.key, "value": c.value, "description": c.description} for c in configs]
@@ -527,7 +539,6 @@ async def create_config(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    from datetime import datetime, timezone
     existing = await db.execute(select(PlatformConfig).where(PlatformConfig.key == body.key))
     if existing.scalar_one_or_none():
         raise HTTPException(409, f"Config key '{body.key}' already exists")
@@ -778,15 +789,18 @@ async def payouts_summary(
 ):
     """Admin: payout totals by status."""
     from datetime import date
+
+    # Single GROUP BY query instead of 2 queries x 4 statuses (8 round trips) —
+    # same result, one round trip.
+    grouped = await db.execute(
+        select(Payout.status, func.count(Payout.id), func.sum(Payout.net_amount))
+        .group_by(Payout.status)
+    )
+    by_status = {status: (cnt, amt) for status, cnt, amt in grouped.all()}
     stats = {}
     for status in ("pending", "processing", "paid", "failed"):
-        total_amount = await db.scalar(
-            select(func.sum(Payout.net_amount)).where(Payout.status == status)
-        )
-        count = await db.scalar(
-            select(func.count(Payout.id)).where(Payout.status == status)
-        )
-        stats[status] = {"count": count or 0, "total": float(total_amount or 0)}
+        cnt, amt = by_status.get(status, (0, 0))
+        stats[status] = {"count": cnt or 0, "total": float(amt or 0)}
 
     today_paid = await db.scalar(
         select(func.sum(Payout.net_amount))

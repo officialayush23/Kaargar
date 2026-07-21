@@ -154,7 +154,6 @@ async def _call_groq(text: str, target_lang: str) -> str:
 # ---------------------------------------------------------------------------
 
 async def translate_and_store(
-    db,
     entity_type: str,
     entity_id: str,
     fields: dict[str, str],  # {"title": "...", "description": "..."}
@@ -162,52 +161,69 @@ async def translate_and_store(
 ) -> None:
     """
     Translate all `fields` to the missing languages and store in content_translations.
-    Called as a background task — never blocks the HTTP response.
+    Called as a background task via FastAPI's BackgroundTasks — which run
+    *after* the HTTP response has been sent, at which point the request's own
+    `db: AsyncSession` (from `get_db`) has already been closed by that
+    dependency's teardown. This function therefore opens its OWN fresh
+    session from `database.async_session` rather than accepting one from the
+    caller — a previous version accepted `db` from the request and reused it
+    here, which crashed every service/package/offer create-or-update that
+    included a title/description with `sqlalchemy.exc.IllegalStateChangeError`
+    the moment this background task's `db.execute`/`db.commit` ran against an
+    already-closed session (the same bug class later found in
+    `routers/search.py`'s `/search` endpoint).
+
+    This is also genuinely worth keeping as a background task (not just
+    awaiting it inline) since it makes real external Groq API calls per
+    field/language and shouldn't add that latency to the save request.
 
     Args:
-        db: AsyncSession
         entity_type: 'service' | 'package' | 'offer' | 'review'
         entity_id: UUID string
         fields: dict of field_name → original_text
         source_lang: the language the worker wrote in (default 'en')
     """
-    import uuid as _uuid
     from sqlalchemy import text as sql_text
+    from database import async_session
 
-    target_langs = [l for l in SUPPORTED_LANGS if l != source_lang]
-    # Always ensure English version is stored too
+    # Every supported language is stored, including the source language
+    # (as-is, untranslated) — so a read never has to fall back or guess.
     all_langs = list(SUPPORTED_LANGS)
 
-    for field_name, original_text in fields.items():
-        if not original_text or not original_text.strip():
-            continue
+    try:
+        async with async_session() as db:
+            for field_name, original_text in fields.items():
+                if not original_text or not original_text.strip():
+                    continue
 
-        for lang in all_langs:
-            if lang == source_lang:
-                translated = original_text  # Store original as-is
-            else:
-                translated = await translate_text(original_text, lang)
+                for lang in all_langs:
+                    if lang == source_lang:
+                        translated = original_text  # Store original as-is
+                    else:
+                        translated = await translate_text(original_text, lang)
 
-            # Upsert into content_translations
-            await db.execute(
-                sql_text("""
-                    INSERT INTO content_translations
-                        (entity_type, entity_id, language, field, text)
-                    VALUES
-                        (:entity_type, :entity_id, :language, :field, :text)
-                    ON CONFLICT (entity_type, entity_id, language, field)
-                    DO UPDATE SET text = EXCLUDED.text, updated_at = now()
-                """),
-                {
-                    "entity_type": entity_type,
-                    "entity_id": entity_id,
-                    "language": lang,
-                    "field": field_name,
-                    "text": translated,
-                },
-            )
+                    # Upsert into content_translations
+                    await db.execute(
+                        sql_text("""
+                            INSERT INTO content_translations
+                                (entity_type, entity_id, language, field, text)
+                            VALUES
+                                (:entity_type, :entity_id, :language, :field, :text)
+                            ON CONFLICT (entity_type, entity_id, language, field)
+                            DO UPDATE SET text = EXCLUDED.text, updated_at = now()
+                        """),
+                        {
+                            "entity_type": entity_type,
+                            "entity_id": entity_id,
+                            "language": lang,
+                            "field": field_name,
+                            "text": translated,
+                        },
+                    )
 
-    await db.commit()
+            await db.commit()
+    except Exception as exc:
+        logger.error(f"translate_and_store failed for {entity_type} {entity_id}: {exc}")
 
 
 async def get_translation(

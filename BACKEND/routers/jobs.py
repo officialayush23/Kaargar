@@ -83,6 +83,48 @@ async def _log_event(db, job_id, status, actor, actor_id, metadata=None):
     db.add(event)
 
 
+async def _validate_pinned_worker(db, worker_id, service_id=None, category_id=None):
+    """
+    Discovery bookings always pin a specific worker chosen by the customer
+    (see CLAUDE.md — Discovery has no lazy/auto-match path). Before this
+    check existed, create_scheduled_job / create_multi_day_booking trusted
+    the client-supplied preferred_worker_id completely: the WorkerProfile
+    lookup that DID happen afterward was only ever used to send a
+    notification, and silently did nothing (no error, no rollback) if the
+    id didn't resolve — so a customer could pin a random UUID, a rejected/
+    suspended worker, or a worker who never listed the requested service,
+    and still get back a job created with status='confirmed'.
+
+    This validates, before the job is created, that the pinned worker
+    actually exists, is approved, and offers the requested service (if a
+    specific service_id was given) or category (otherwise) — mirroring the
+    guarantee book_slot already had for real (it derives worker_id from a
+    server-verified ServiceSlot row rather than trusting the client at all).
+    """
+    wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == worker_id))
+    wp = wp_r.scalar_one_or_none()
+    if wp is None:
+        raise HTTPException(404, "Selected worker not found")
+    if wp.verification_status != "approved":
+        raise HTTPException(422, "Selected worker is not currently available for booking")
+
+    if service_id:
+        svc_r = await db.execute(select(Service).where(Service.id == service_id))
+        svc = svc_r.scalar_one_or_none()
+        if svc is None or svc.worker_id != worker_id:
+            raise HTTPException(422, "Selected worker does not offer this service")
+    elif category_id:
+        wc_r = await db.execute(
+            select(WorkerCategory).where(
+                WorkerCategory.worker_id == worker_id,
+                WorkerCategory.category_id == category_id,
+            )
+        )
+        if wc_r.scalar_one_or_none() is None:
+            raise HTTPException(422, "Selected worker does not offer this category")
+    return wp
+
+
 @router.post("", response_model=JobResponse)
 async def create_job(
     body: JobCreate,
@@ -549,7 +591,6 @@ async def cancel_job(
 # ── Worker job actions ────────────────────────────────────────
 
 async def _get_worker_for_job(job_id, user, db):
-    from models import WorkerProfile, JobWorkerRequest
     wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
     wp = wp_result.scalar_one_or_none()
     if not wp:
@@ -591,7 +632,7 @@ async def accept_job(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from models import WorkerProfile, JobWorkerRequest
+    from models import JobWorkerRequest
     wp, job = await _get_worker_for_job(job_id, user, db)
 
     req_result = await db.execute(
@@ -625,7 +666,7 @@ async def reject_job(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    from models import WorkerProfile, JobWorkerRequest
+    from models import JobWorkerRequest
     wp, job = await _get_worker_for_job(job_id, user, db)
 
     req_result = await db.execute(
@@ -757,9 +798,30 @@ async def _finalize_job_completion(db, job, wp, user_id):
 
     await _log_event(db, job.id, "completed", "worker", user_id)
 
+
+def _schedule_worker_analytics_refresh(worker_id):
+    """
+    Fire-and-forget analytics recompute right after a job completes, so a
+    worker's dashboard numbers update immediately instead of waiting for the
+    15-minute scheduled sweep (tasks/decay_scores.py::refresh_all_worker_analytics).
+
+    Must be called AFTER the caller's own `await db.commit()` for the
+    completed job, not before. `refresh_worker_analytics_for` opens its own
+    independent DB session (it does not take `db` as an argument, precisely
+    so it's safe to run after this request's session closes — same pattern
+    as `routers/workers.py::_regenerate_slots_background`), so it can't hit
+    the IllegalStateChangeError session-reuse bug. But `asyncio.create_task`
+    only *schedules* the coroutine — it can start running as soon as this
+    coroutine next yields control (e.g. on the request's own `db.commit()`
+    I/O), which previously meant the analytics query could run concurrently
+    with, and potentially before, the outer transaction that marks the job
+    'completed' had actually committed — undercounting today's/this week's
+    completed-job stats by one until the next 15-minute sweep self-corrects.
+    Scheduling it after the commit closes that window.
+    """
     import asyncio
     from tasks.decay_scores import refresh_worker_analytics_for
-    asyncio.create_task(refresh_worker_analytics_for(wp.id))
+    asyncio.create_task(refresh_worker_analytics_for(worker_id))
 
 
 @router.post("/{job_id}/complete", response_model=SuccessResponse)
@@ -780,6 +842,7 @@ async def complete_job(
 
     await _finalize_job_completion(db, job, wp, user.id)
     await db.commit()
+    _schedule_worker_analytics_refresh(wp.id)
     return SuccessResponse(message="Job completed")
 
 
@@ -1169,6 +1232,7 @@ async def verify_completion_otp(
     await _finalize_job_completion(db, job, wp, user.id)
     await post_system_message(db, job, "job_completed", "Job completed — payment is being processed.")
     await db.commit()
+    _schedule_worker_analytics_refresh(wp.id)
     return SuccessResponse(message="Job completed — payment will be requested from the customer")
 
 
@@ -1245,6 +1309,10 @@ async def create_scheduled_job(
 
     if category_id is None:
         raise HTTPException(422, "category_id is required — please pick a service or pass category_id")
+
+    # Server-side check that the pinned worker actually exists, is approved,
+    # and really offers this service/category — see _validate_pinned_worker.
+    await _validate_pinned_worker(db, body.preferred_worker_id, body.service_id, category_id)
 
     # ── Compute quoted_price from the service ─────────────────────────────────
     # Mirrors book_slot's `price = svc.base_price if svc.base_price is not None
@@ -1405,6 +1473,10 @@ async def create_multi_day_booking(
             category_id = wc.category_id
     if category_id is None:
         raise HTTPException(422, "category_id is required — please pick a service or pass category_id")
+
+    # Same pinned-worker validation as create_scheduled_job — see
+    # _validate_pinned_worker's docstring for the exploit this closes.
+    await _validate_pinned_worker(db, body.preferred_worker_id, body.service_id, category_id)
 
     total_price = None
     if svc is not None:
@@ -1587,8 +1659,6 @@ async def book_slot(
 
     Returns 409 if the slot is full or blocked.
     """
-    from models import WorkerProfile, Notification
-
     # ── Atomic slot lock (SELECT FOR UPDATE) ─────────────────────────────────
     # Blocks concurrent requests targeting the same slot row until this
     # transaction commits, preventing double-booking.
@@ -1665,7 +1735,6 @@ async def book_slot(
     await db.refresh(job)
 
     # ── Notify the worker (Notification.user_id = worker's auth user_id) ─────
-    from models import WorkerProfile, Notification
     wp_r = await db.execute(
         select(WorkerProfile).where(WorkerProfile.id == slot.worker_id)
     )

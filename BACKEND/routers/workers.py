@@ -17,7 +17,7 @@ import uuid
 from database import get_db
 from models import (
     User, WorkerProfile, WorkerCategory, WorkerAnalytics, Service, ServiceMedia,
-    Package, PackageService as PackageServiceModel, Offer, PackageOrder, PackageUsage,
+    Package, PackageService as PackageServiceModel, Offer, PackageOrder,
     WorkerAvailability, WorkerTimeOff, WorkerScheduleBlock,
     ServiceSlotConfig, ServiceSlot, Tag, ServiceTag,
 )
@@ -26,9 +26,9 @@ from schemas import (
     WorkerPublicResponse, WorkerStatusUpdate, WorkerLocationUpdate,
     WorkerDocumentResponse, DocumentUpload, ServiceCreate, ServiceUpdate,
     ServiceResponse, WorkerAnalyticsResponse, SuccessResponse,
-    PackageCreate, PackageUpdate, PackageResponse, PackageItemResponse,
+    PackageCreate, PackageUpdate, PackageResponse,
     OfferCreate, OfferUpdate, OfferResponse,
-    PackageOrderCreate, PackageOrderResponse, PackageUsageResponse,
+    PackageOrderCreate,
     WorkerAvailabilitySet, WorkerAvailabilityResponse,
     WorkerTimeOffCreate, WorkerTimeOffResponse, WorkerScheduleBlockResponse,
     SlotConfigCreate, SlotConfigResponse, SlotResponse, SlotGenerateRequest,
@@ -427,7 +427,7 @@ async def create_service(
     if svc.title:       fields["title"] = svc.title
     if svc.description: fields["description"] = svc.description
     if fields:
-        background.add_task(translate_and_store, db, "service", str(svc.id), fields)
+        background.add_task(translate_and_store, "service", str(svc.id), fields)
 
     return svc
 
@@ -499,7 +499,7 @@ async def update_service(
     if "title" in updates:       fields["title"] = svc.title
     if "description" in updates: fields["description"] = svc.description
     if fields:
-        background.add_task(translate_and_store, db, "service", str(svc.id), fields)
+        background.add_task(translate_and_store, "service", str(svc.id), fields)
 
     # ── Keep slot config + generated slots in sync with the new duration ──────
     # If this service already has slot settings configured, mirror the
@@ -583,7 +583,6 @@ async def list_tags(
     db: AsyncSession = Depends(get_db),
 ):
     """Public — list all tags, optionally filtered by name prefix or category."""
-    from sqlalchemy import func, or_
     stmt = select(Tag)
     if q:
         stmt = stmt.where(Tag.name.ilike(f"%{q}%"))
@@ -624,7 +623,7 @@ async def set_service_tags(
 ):
     """Replace all tags on a service. Creates new tags on-the-fly from new_tag_names."""
     import re
-    from sqlalchemy import delete as sa_delete, func
+    from sqlalchemy import delete as sa_delete
 
     # Auth: service must belong to this worker
     wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
@@ -866,7 +865,7 @@ async def create_package(
     if pkg.title:       fields["title"] = pkg.title
     if pkg.description: fields["description"] = pkg.description
     if fields:
-        background.add_task(translate_and_store, db, "package", str(pkg.id), fields)
+        background.add_task(translate_and_store, "package", str(pkg.id), fields)
 
     return _serialize_package(pkg)
 
@@ -924,7 +923,7 @@ async def update_package(
     if "title" in updates:       fields["title"] = pkg.title
     if "description" in updates: fields["description"] = pkg.description
     if fields:
-        background.add_task(translate_and_store, db, "package", str(pkg.id), fields)
+        background.add_task(translate_and_store, "package", str(pkg.id), fields)
 
     return _serialize_package(pkg)
 
@@ -1010,7 +1009,7 @@ async def create_offer(
     if offer.title:       fields["title"] = offer.title
     if offer.description: fields["description"] = offer.description
     if fields:
-        background.add_task(translate_and_store, db, "offer", str(offer.id), fields)
+        background.add_task(translate_and_store, "offer", str(offer.id), fields)
 
     return offer
 
@@ -1041,7 +1040,7 @@ async def update_offer(
     if "title" in updates:       fields["title"] = offer.title
     if "description" in updates: fields["description"] = offer.description
     if fields:
-        background.add_task(translate_and_store, db, "offer", str(offer.id), fields)
+        background.add_task(translate_and_store, "offer", str(offer.id), fields)
 
     return offer
 
@@ -1152,7 +1151,7 @@ async def get_my_package_orders(
                     "redeem_type": item.redeem_type,
                 })
 
-        from datetime import datetime, timezone, timedelta
+        from datetime import datetime, timezone
         days_remaining = None
         if order.expires_at:
             delta = order.expires_at - datetime.now(timezone.utc)

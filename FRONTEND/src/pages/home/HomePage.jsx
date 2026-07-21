@@ -815,22 +815,6 @@ function InlineModeToggle() {
   )
 }
 
-/* ── Stat chip ── */
-function StatChip({ emoji, label, value }) {
-  return (
-    <div
-      className="flex items-center gap-2 px-3.5 py-2 rounded-2xl flex-shrink-0"
-      style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}
-    >
-      <span className="text-base">{emoji}</span>
-      <div>
-        <p className="text-[12px] leading-none" style={{ color: 'var(--text-muted)' }}>{label}</p>
-        <p className="text-sm font-bold font-mono leading-tight" style={{ color: 'var(--text-primary)' }}>{value}</p>
-      </div>
-    </div>
-  )
-}
-
 /* ── Instant content ── */
 function InstantContent({ onCategorySelect }) {
   const { data: categories = [], isLoading } = useCategories('instant')
@@ -842,19 +826,14 @@ function InstantContent({ onCategorySelect }) {
       animate={{ opacity: 1, x: 0 }}
       exit={{ opacity: 0, x: 16 }}
       transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-      className="space-y-5"
+      className="space-y-3"
     >
-      {/* Stats row */}
-      <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-        <StatChip emoji="🟢" label="Online workers" value="24+" />
-        <StatChip emoji="⏱️" label="Avg. arrival"   value="38 min" />
-        <StatChip emoji="⭐" label="Avg. rating"    value="4.8" />
-      </div>
-
-      {/* Category grid */}
+      {/* Category grid — stat-chip row (online workers / avg arrival / avg
+          rating) removed so this sits directly under the mode toggle and
+          the grid fits within one screen without scrolling. */}
       <div>
         <p
-          className="text-xs uppercase tracking-widest mb-3 font-medium"
+          className="text-xs uppercase tracking-widest mb-2 font-bold"
           style={{ color: 'var(--text-muted)' }}
         >Pick a service</p>
         {isLoading ? (
@@ -874,6 +853,7 @@ function InstantContent({ onCategorySelect }) {
 /* ── Discovery content ── */
 function DiscoveryContent() {
   const navigate = useNavigate()
+  const { data: categories = [], isLoading: catLoading } = useCategories('discovery')
   const { data: recommendations = [], isLoading } = useQuery({
     queryKey: ['recommendations'],
     queryFn: () => api.get('/search/recommendations').then(r => r.data).catch(() => []),
@@ -889,9 +869,27 @@ function DiscoveryContent() {
       transition={{ type: 'spring', stiffness: 300, damping: 28 }}
       className="space-y-5"
     >
+      {/* Category grid — this used to be missing entirely from Home's
+          Discovery tab (only "Recommended for you" showed), so browsing
+          by profession was only reachable via the separate /discover
+          page. Truncated preview here (showAll left false) with the
+          "All services" card handling the overflow into the full list. */}
       <div>
         <p
-          className="text-xs uppercase tracking-widest mb-3 font-medium"
+          className="text-xs uppercase tracking-widest mb-3 font-bold"
+          style={{ color: 'var(--text-muted)' }}
+        >Pick a service</p>
+        <CategoryGrid
+          categories={categories}
+          isLoading={catLoading}
+          mode="discovery"
+          onSelect={cat => navigate('/job/new', { state: { category: cat, mode: 'discovery' } })}
+        />
+      </div>
+
+      <div>
+        <p
+          className="text-xs uppercase tracking-widest mb-3 font-bold"
           style={{ color: 'var(--text-muted)' }}
         >Recommended for you</p>
         <div className="space-y-3">
@@ -964,7 +962,7 @@ export default function HomePage() {
       {/* ═══════════════════════════════════════
           HERO SECTION — Blinkit/Zomato style
       ═══════════════════════════════════════ */}
-      <div className="pt-12 pb-6 space-y-5">
+      <div className="pt-6 pb-4 space-y-3">
 
         {/* Top row: Location + Bell + Profile */}
         <div className="flex items-center justify-between">
@@ -1059,11 +1057,15 @@ export default function HomePage() {
             >
               Kaargar
             </span>
+            {/* "Kaargar in 30 min" — Blinkit-style brand promise, not a
+                live per-job estimate (that lives on the tracking screen
+                and is computed from the actual worker/customer distance).
+                This is a static, admin-marketing number for now. */}
             <span
               className="text-[12px] font-semibold px-2 py-0.5 rounded-full"
               style={{ background: 'var(--accent)', color: '#000' }}
             >
-              Pune
+              in 30 min
             </span>
           </div>
           <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>

@@ -7,7 +7,6 @@ Endpoints:
   GET  /search/workers          — discovery browse
 """
 
-import asyncio
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from uuid import UUID
@@ -301,7 +300,18 @@ async def search(
     await db.refresh(history)
 
     if resolved_cat_id:
-        asyncio.create_task(_update_user_preferences(db, user.id))
+        # NOTE: this used to be `asyncio.create_task(_update_user_preferences(db, user.id))`
+        # — a fire-and-forget task sharing this request's AsyncSession. FastAPI's
+        # get_db dependency closes that session the moment this endpoint returns,
+        # so the background task kept running queries on an already-closing
+        # session, raising sqlalchemy.exc.IllegalStateChangeError ("close() can't
+        # be called here; _connection_for_bind() is already in progress") and
+        # turning every /search request into a 500. AsyncSession is not safe for
+        # concurrent use across coroutines regardless of whether one of them is
+        # "awaited" by the caller — awaiting it inline (a few small indexed
+        # queries, negligible latency) is the correct fix, not a performance
+        # compromise.
+        await _update_user_preferences(db, user.id)
 
     return {"results": results, "search_history_id": str(history.id)}
 

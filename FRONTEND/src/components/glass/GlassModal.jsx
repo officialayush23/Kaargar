@@ -18,6 +18,15 @@ export function GlassModal({
   size = 'md',
   closeOnBackdrop = true,
   className,
+  // Most modals in this app are deliberately see-through (glassmorphism is
+  // the whole design language), so that stays the default here. A few
+  // modals — reschedule being the reported case — read as "too transparent"
+  // against busy backgrounds behind them, so this is an opt-in per-instance
+  // override rather than a change to the shared default: when true, the
+  // panel gets a solid `--bg-elevated` background instead of the translucent
+  // `glass-strong` one, on top of everything else (blur, border, shadow)
+  // staying exactly the same.
+  solid = false,
 }) {
   // Lock scroll when open
   useEffect(() => {
@@ -76,6 +85,7 @@ export function GlassModal({
               sizes[size],
               className
             )}
+            style={solid ? { background: 'var(--bg-elevated)' } : undefined}
             initial={{ opacity: 0, scale: 0.94, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 16 }}

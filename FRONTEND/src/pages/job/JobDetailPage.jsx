@@ -30,7 +30,7 @@ import { Background } from '@/components/glass/Background'
 // ─── Status config ─────────────────────────────────────────────────────────────
 
 const STATUS = {
-  requested:     { label: 'Requested',       color: '#60A5FA', bg: 'rgba(96,165,250,0.12)',  icon: Clock },
+  requested:     { label: 'Requested',       color: '#F59E0B', bg: 'rgba(245,158,11,0.12)',  icon: Clock },
   searching:     { label: 'Finding Worker',   color: 'var(--accent)', bg: 'var(--accent-deep)',  icon: Zap },
   scheduled:     { label: 'Scheduled',        color: '#A78BFA', bg: 'rgba(167,139,250,0.12)', icon: CalendarClock },
   confirmed:     { label: 'Confirmed',        color: '#34D399', bg: 'rgba(52,211,153,0.12)',  icon: CheckCircle2 },

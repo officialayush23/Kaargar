@@ -1,88 +1,139 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { motion } from 'framer-motion'
 import { useNavigate } from 'react-router-dom'
 import * as LucideIcons from 'lucide-react'
 import { Skeleton } from '@/components/ui/skeleton'
-import { ChevronRight } from 'lucide-react'
+import { ChevronRight, ChevronLeft, Wrench } from 'lucide-react'
 
-/* ── icon renderer ───────────────────────────────────────────── */
-function CategoryIcon({ category }) {
+/* ── icon / photo renderer ──────────────────────────────────────
+   Preference order: icon_url (real photo/PNG/SVG) → icon_emoji →
+   lucide icon_name → generic wrench fallback.
+   NOTE: icon_url is served straight through an <img> tag — there is
+   no Lottie player wired up anywhere in this app (no lottie-react /
+   lottie-web dependency in package.json), so a .json Lottie file
+   uploaded via the admin icon uploader will simply fail to render
+   and fall through to the emoji/icon fallback below. Photos
+   (png/jpg/webp) are the only icon_url format that actually renders. */
+function CategoryPhoto({ category }) {
   const { icon_url, icon_name, icon_emoji, color_hex } = category
+  const [imgFailed, setImgFailed] = useState(false)
 
-  if (icon_url) {
+  if (icon_url && !imgFailed) {
     return (
       <img
         src={icon_url}
         alt={category.name}
-        style={{ width: 26, height: 26, objectFit: 'contain', borderRadius: 4 }}
-        onError={e => { e.currentTarget.style.display = 'none' }}
+        className="w-full h-full object-cover"
+        onError={() => setImgFailed(true)}
+        loading="lazy"
       />
     )
   }
 
   if (icon_emoji) {
-    return <span style={{ fontSize: 20, lineHeight: 1 }}>{icon_emoji}</span>
+    return (
+      <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--surface)' }}>
+        <span style={{ fontSize: 52, lineHeight: 1 }}>{icon_emoji}</span>
+      </div>
+    )
   }
 
-  const Icon = LucideIcons[icon_name] || LucideIcons.Wrench
-  return <Icon size={20} color="var(--text-secondary)" />
+  const Icon = LucideIcons[icon_name] || Wrench
+  return (
+    <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--surface)' }}>
+      <Icon size={48} color={color_hex || 'var(--text-secondary)'} strokeWidth={1.5} />
+    </div>
+  )
 }
 
-/* ── single card ─────────────────────────────────────────────── */
+/* ── single big card (Urban-Company-style) — Discovery mode only ── */
 function CategoryCard({ category, index, onClick }) {
   const [hovered, setHovered] = useState(false)
 
   return (
     <motion.button
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ delay: index * 0.03, type: 'spring', stiffness: 300, damping: 24 }}
+      initial={{ opacity: 0, x: 16 }}
+      animate={{ opacity: 1, x: 0 }}
+      transition={{ delay: index * 0.03, type: 'spring', stiffness: 300, damping: 26 }}
       onClick={() => onClick(category)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      whileTap={{ scale: 0.94 }}
+      whileTap={{ scale: 0.96 }}
+      className="flex-shrink-0 text-center overflow-hidden"
       style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '7px',
-        padding: '10px 6px',
-        borderRadius: '12px',
+        width: 124,
+        borderRadius: '18px',
         border: `1px solid ${hovered ? 'var(--accent-border)' : 'var(--card-border)'}`,
-        background: hovered ? 'var(--elevated)' : 'var(--card)',
-        transition: 'background 0.15s ease, border-color 0.15s ease',
+        background: 'var(--card)',
+        scrollSnapAlign: 'start',
+        transition: 'border-color 0.15s ease, transform 0.15s ease',
+        transform: hovered ? 'translateY(-2px)' : 'none',
         cursor: 'pointer',
       }}
     >
-      {/* Icon container — plain, no tinted bg */}
-      <div
-        style={{
-          width: '40px',
-          height: '40px',
-          borderRadius: '10px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          background: 'var(--surface)',
-          flexShrink: 0,
-        }}
-      >
-        <CategoryIcon category={category} />
+      {/* Photo area */}
+      <div style={{ width: '100%', height: 108, overflow: 'hidden', background: 'var(--surface)' }}>
+        <CategoryPhoto category={category} />
       </div>
 
-      {/* Name */}
+      {/* Name below photo — centered, non-bold */}
+      <div className="px-2.5 py-2 flex justify-center">
+        <span
+          style={{
+            fontSize: '13px',
+            fontWeight: 400,
+            color: 'var(--text-primary)',
+            textAlign: 'center',
+            lineHeight: '1.3',
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden',
+          }}
+        >
+          {category.name}
+        </span>
+      </div>
+    </motion.button>
+  )
+}
+
+/* ── small compact tile — Instant mode (unchanged size/layout) ──── */
+function CategoryTile({ category, index, onClick }) {
+  return (
+    <motion.button
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: index * 0.03, type: 'spring', stiffness: 300, damping: 26 }}
+      onClick={() => onClick(category)}
+      whileTap={{ scale: 0.94 }}
+      className="flex flex-col items-center gap-1.5"
+      style={{ cursor: 'pointer' }}
+    >
+      <div
+        style={{
+          width: 60,
+          height: 60,
+          borderRadius: '16px',
+          overflow: 'hidden',
+          background: 'var(--surface)',
+          border: '1px solid var(--card-border)',
+        }}
+      >
+        <CategoryPhoto category={category} />
+      </div>
       <span
         style={{
-          fontSize: '12px',
+          fontSize: '11px',
           fontWeight: 500,
           color: 'var(--text-secondary)',
           textAlign: 'center',
           lineHeight: '1.25',
+          maxWidth: 68,
           display: '-webkit-box',
           WebkitLineClamp: 2,
           WebkitBoxOrient: 'vertical',
           overflow: 'hidden',
-          width: '100%',
         }}
       >
         {category.name}
@@ -91,11 +142,59 @@ function CategoryCard({ category, index, onClick }) {
   )
 }
 
-/* ── grid component ──────────────────────────────────────────── */
-const VISIBLE = 8  // show first 8 on home, all on job/new
+/* ── "See all" tile — Instant mode only ───────────────────────────
+   Instant's home-page preview only renders the first VISIBLE tiles
+   (a full wrapping grid of every category would push the rest of the
+   page below the fold). Without this tile there was no way to reach
+   any category past #10 — clicking through to the full picker
+   (NewJobPage's CategoryStep, which always renders with showAll) is
+   the only place that lists everything, so this tile is the bridge. */
+function CategoryMoreTile({ index, onClick }) {
+  return (
+    <motion.button
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ delay: index * 0.03, type: 'spring', stiffness: 300, damping: 26 }}
+      onClick={onClick}
+      whileTap={{ scale: 0.94 }}
+      className="flex flex-col items-center gap-1.5"
+      style={{ cursor: 'pointer' }}
+    >
+      <div
+        style={{
+          width: 60,
+          height: 60,
+          borderRadius: '16px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: 'var(--accent)',
+          border: '1px solid var(--card-border)',
+        }}
+      >
+        <ChevronRight size={22} style={{ color: '#000' }} />
+      </div>
+      <span
+        style={{
+          fontSize: '11px',
+          fontWeight: 500,
+          color: 'var(--text-secondary)',
+          textAlign: 'center',
+          lineHeight: '1.25',
+        }}
+      >
+        See all
+      </span>
+    </motion.button>
+  )
+}
+
+/* ── horizontally scrollable row ─────────────────────────────────── */
+const VISIBLE = 10  // show first 10 on home, all on job/new
 
 export function CategoryGrid({ categories, isLoading, mode, onSelect, showAll = false }) {
   const navigate = useNavigate()
+  const scrollRef = useRef(null)
 
   const handleClick = (cat) => {
     if (onSelect) {
@@ -105,13 +204,34 @@ export function CategoryGrid({ categories, isLoading, mode, onSelect, showAll = 
     }
   }
 
+  // Unconditional — always opens the full picker (NewJobPage's category
+  // step renders with showAll), regardless of whether this grid's own
+  // tiles report selections via onSelect or via the default navigate-with-
+  // category behavior above.
+  const handleSeeAll = () => navigate('/job/new', { state: { mode } })
+
+  const scrollBy = (dir) => {
+    scrollRef.current?.scrollBy({ left: dir * 300, behavior: 'smooth' })
+  }
+
+  const isInstant = mode === 'instant'
+
   if (isLoading) {
-    return (
-      <div className="grid grid-cols-4 gap-2.5">
+    return isInstant ? (
+      <div className="grid grid-cols-4 gap-3">
         {Array.from({ length: 8 }).map((_, i) => (
+          <div key={i} className="flex flex-col items-center gap-1.5">
+            <Skeleton style={{ width: 60, height: 60, borderRadius: 16, background: 'var(--card)' }} />
+          </div>
+        ))}
+      </div>
+    ) : (
+      <div className="flex gap-3 overflow-x-auto no-scrollbar pb-1">
+        {Array.from({ length: 5 }).map((_, i) => (
           <Skeleton
             key={i}
-            style={{ height: 76, borderRadius: 12, background: 'var(--card)' }}
+            className="flex-shrink-0"
+            style={{ width: 124, height: 150, borderRadius: 18, background: 'var(--card)' }}
           />
         ))}
       </div>
@@ -123,29 +243,71 @@ export function CategoryGrid({ categories, isLoading, mode, onSelect, showAll = 
   const visible = showAll ? categories : categories.slice(0, VISIBLE)
   const hasMore = !showAll && categories.length > VISIBLE
 
+  // Instant mode keeps its original compact wrapping icon grid — unchanged
+  // size/layout, still supports a photo via icon_url whenever one is added.
+  // A "See all" tile is appended only when the caller truncated the list
+  // (showAll=false and there are more categories than VISIBLE) so the full
+  // grid on NewJobPage never shows a redundant "see all" pointing at itself.
+  if (isInstant) {
+    return (
+      <div className="grid grid-cols-4 gap-3">
+        {visible.map((cat, i) => (
+          <CategoryTile key={cat.id} category={cat} index={i} onClick={handleClick} />
+        ))}
+        {hasMore && (
+          <CategoryMoreTile index={visible.length} onClick={handleSeeAll} />
+        )}
+      </div>
+    )
+  }
+
   return (
-    <div>
-      <div className="grid grid-cols-4 gap-2.5">
+    <div className="relative group">
+      <div
+        ref={scrollRef}
+        className="flex gap-3 overflow-x-auto no-scrollbar pb-1"
+        style={{ scrollSnapType: 'x mandatory' }}
+      >
         {visible.map((cat, i) => (
           <CategoryCard key={cat.id} category={cat} index={i} onClick={handleClick} />
         ))}
+
+        {hasMore && (
+          <button
+            onClick={() => navigate('/job/new')}
+            className="flex-shrink-0 flex flex-col items-center justify-center gap-1.5"
+            style={{
+              width: 124,
+              height: 150,
+              borderRadius: '18px',
+              border: '1px solid var(--accent-border)',
+              background: 'var(--accent)',
+              color: '#000',
+              scrollSnapAlign: 'start',
+              cursor: 'pointer',
+            }}
+          >
+            <ChevronRight size={20} color="#000" />
+            <span className="text-xs font-semibold">All services</span>
+          </button>
+        )}
       </div>
 
-      {hasMore && (
-        <button
-          onClick={() => navigate('/job/new')}
-          className="mt-3 w-full flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-semibold transition-colors"
-          style={{
-            background: 'var(--card)',
-            border: '1px solid var(--card-border)',
-            color: 'var(--text-secondary)',
-          }}
-          onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent-border)'; e.currentTarget.style.color = 'var(--accent)' }}
-          onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--card-border)'; e.currentTarget.style.color = 'var(--text-secondary)' }}
-        >
-          All services <ChevronRight size={13} />
-        </button>
-      )}
+      {/* Desktop scroll arrows — hidden on touch, shown on hover */}
+      <button
+        onClick={() => scrollBy(-1)}
+        className="hidden md:flex absolute left-0 top-[52px] -translate-x-2 z-10 w-8 h-8 rounded-full items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ background: 'var(--accent)', border: '1px solid var(--accent-border)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+      >
+        <ChevronLeft className="h-4 w-4" style={{ color: '#000' }} />
+      </button>
+      <button
+        onClick={() => scrollBy(1)}
+        className="hidden md:flex absolute right-0 top-[52px] translate-x-2 z-10 w-8 h-8 rounded-full items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ background: 'var(--accent)', border: '1px solid var(--accent-border)', boxShadow: '0 4px 12px rgba(0,0,0,0.4)' }}
+      >
+        <ChevronRight className="h-4 w-4" style={{ color: '#000' }} />
+      </button>
     </div>
   )
 }

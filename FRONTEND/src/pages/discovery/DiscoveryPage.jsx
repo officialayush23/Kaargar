@@ -3,13 +3,15 @@ import { useSearchParams, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence, useScroll, useTransform } from 'framer-motion'
 import {
   Search, SlidersHorizontal, X, Compass, Package, TrendingUp, Star,
-  ChevronRight, ChevronLeft, Zap, Shield, Clock, MapPin, Sparkles,
-  CheckCircle2, Users, BadgeCheck, Wallet, ArrowRight
+  ChevronRight, ChevronLeft, Zap, MapPin, Sparkles,
+  CheckCircle2, Users, ArrowRight
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useGeoLocation } from '@/hooks/useGeoLocation'
+import { useCategories } from '@/hooks/useCategories'
 import { WorkerCard } from '@/components/kaargar/WorkerCard'
+import { CategoryGrid } from '@/components/kaargar/CategoryGrid'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
@@ -22,48 +24,6 @@ const SORT_OPTIONS = [
   { value: 'price_asc',  label: '💸 Lowest Price' },
   { value: 'price_desc', label: '💎 Premium' },
   { value: 'distance',   label: '📍 Nearest' },
-]
-
-const QUICK_TAGS = [
-  { label: 'Electrician', emoji: '⚡', color: 'var(--accent)' },
-  { label: 'Plumber',     emoji: '🔧', color: '#3B82F6' },
-  { label: 'Carpenter',   emoji: '🪚', color: 'var(--accent-dim)' },
-  { label: 'Cleaner',     emoji: '🧹', color: '#10B981' },
-  { label: 'AC Repair',   emoji: '❄️', color: '#06B6D4' },
-  { label: 'Painter',     emoji: '🎨', color: '#F97316' },
-  { label: 'Mechanic',    emoji: '🔩', color: '#374151' },
-  { label: 'Pest Control',emoji: '🐛', color: '#DC2626' },
-  { label: 'Photographer',emoji: '📸', color: '#EC4899' },
-  { label: 'Chef',        emoji: '👨‍🍳', color: 'var(--accent)' },
-  { label: 'Beautician',  emoji: '💄', color: '#A855F7' },
-  { label: 'Tutor',       emoji: '📚', color: '#6366F1' },
-]
-
-const PLATFORM_FEATURES = [
-  {
-    icon: BadgeCheck,
-    color: '#4ade80',
-    title: 'Verified Workers',
-    desc: 'Every worker is background-checked, document-verified, and rated by real customers.',
-  },
-  {
-    icon: Clock,
-    color: '#60a5fa',
-    title: 'Instant Matching',
-    desc: 'Get a worker at your door in under 30 minutes with our real-time dispatch system.',
-  },
-  {
-    icon: Wallet,
-    color: 'var(--accent-hover)',
-    title: 'Secure Payments',
-    desc: 'Pay only after the job is done. Money held in escrow until you approve.',
-  },
-  {
-    icon: Shield,
-    color: '#f472b6',
-    title: 'Work Guarantee',
-    desc: 'Not satisfied? We rebook the job or refund — no questions asked.',
-  },
 ]
 
 /* ── Horizontal scroll carousel ────────────────────────────────── */
@@ -246,6 +206,8 @@ function SectionHeader({ icon: Icon, title, subtitle, accent = 'var(--accent)', 
 
 /* ── Discovery Home ─────────────────────────────────────────────── */
 function DiscoveryHome({ onSearch, navigate }) {
+  const { data: categories = [], isLoading: catLoading } = useCategories('discovery')
+
   const { data: recData = [], isLoading: recLoading } = useQuery({
     queryKey: ['discovery-recommendations'],
     queryFn: () => api.get('/search/recommendations').then(r => r.data),
@@ -274,7 +236,7 @@ function DiscoveryHome({ onSearch, navigate }) {
   return (
     <div className="space-y-10">
 
-      {/* ── Quick search tags ───────────────────────────────────── */}
+      {/* ── Browse by profession — real categories, admin-photo aware ── */}
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
@@ -286,49 +248,13 @@ function DiscoveryHome({ onSearch, navigate }) {
           subtitle="Tap to find workers instantly"
           accent="var(--accent)"
         />
-        <div className="grid grid-cols-4 gap-2">
-          {QUICK_TAGS.slice(0, 8).map(({ label, emoji, color }, i) => (
-            <motion.button
-              key={label}
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: i * 0.04 }}
-              whileHover={{ scale: 1.05, y: -2 }}
-              whileTap={{ scale: 0.95 }}
-              onClick={() => onSearch(label)}
-              className="flex flex-col items-center gap-1.5 p-3 rounded-2xl transition-all text-center"
-              style={{
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)',
-              }}
-            >
-              <span className="text-xl leading-none">{emoji}</span>
-              <span className="text-[12px] font-medium leading-tight"
-                style={{ color: 'var(--text-secondary)' }}>
-                {label}
-              </span>
-            </motion.button>
-          ))}
-        </div>
-        {/* More tags pill row */}
-        <div className="flex gap-2 mt-2 overflow-x-auto no-scrollbar pb-1">
-          {QUICK_TAGS.slice(8).map(({ label, emoji, color }) => (
-            <motion.button
-              key={label}
-              whileHover={{ scale: 1.04 }}
-              whileTap={{ scale: 0.96 }}
-              onClick={() => onSearch(label)}
-              className="flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium"
-              style={{
-                background: 'var(--bg-elevated)',
-                border: '1px solid var(--border)',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              <span>{emoji}</span> {label}
-            </motion.button>
-          ))}
-        </div>
+        <CategoryGrid
+          categories={categories}
+          isLoading={catLoading}
+          mode="discovery"
+          onSelect={cat => onSearch(cat.name)}
+          showAll
+        />
       </motion.div>
 
       {/* ── Recommended packages ───────────────────────────────── */}
@@ -430,45 +356,6 @@ function DiscoveryHome({ onSearch, navigate }) {
             </p>
           </GlassCard>
         )}
-      </motion.div>
-
-      {/* ── Platform features ──────────────────────────────────── */}
-      <motion.div
-        initial={{ opacity: 0, y: 12 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-      >
-        <SectionHeader
-          icon={Shield}
-          title="Why Kaargar?"
-          subtitle="Built for trust, speed, and quality"
-          accent="#e99f2f"
-        />
-        <div className="grid grid-cols-2 gap-3">
-          {PLATFORM_FEATURES.map(({ icon: Icon, color, title, desc }, i) => (
-            <motion.div
-              key={title}
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.3 + i * 0.07 }}
-              className="rounded-2xl p-4 space-y-2.5"
-              style={{ background: 'var(--bg-elevated)', border: '1px solid var(--border)' }}
-            >
-              <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-                style={{ background: 'var(--card-bg)' }}>
-                <Icon className="h-4.5 w-4.5" style={{ color, width: 18, height: 18 }} />
-              </div>
-              <div>
-                <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                  {title}
-                </p>
-                <p className="text-[13px] mt-1 leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                  {desc}
-                </p>
-              </div>
-            </motion.div>
-          ))}
-        </div>
       </motion.div>
 
       {/* ── How it works ───────────────────────────────────────── */}
