@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '@/lib/supabase'
 import { motion } from 'framer-motion'
-import { LogOut, ChevronRight, Briefcase, Shield, Bell, User, Pencil, Check, HelpCircle, HardHat, Phone, X } from 'lucide-react'
+import { LogOut, ChevronRight, Briefcase, Shield, Bell, Pencil, Check, HelpCircle, Phone, X } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { api } from '@/lib/api'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
@@ -230,13 +230,6 @@ export default function ProfilePage() {
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.08)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}
             >
-              <div style={{
-                width: '36px', height: '36px', borderRadius: '10px',
-                background: 'rgba(255,255,255,0.08)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-              }}>
-                <HardHat size={18} style={{ color: 'var(--text-secondary)' }} />
-              </div>
               <div style={{ flex: 1 }}>
                 <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                   Become a Worker

@@ -14,7 +14,7 @@ import { ChevronRight, ChevronLeft, Wrench } from 'lucide-react'
    uploaded via the admin icon uploader will simply fail to render
    and fall through to the emoji/icon fallback below. Photos
    (png/jpg/webp) are the only icon_url format that actually renders. */
-function CategoryPhoto({ category }) {
+export function CategoryPhoto({ category, iconSize = 48 }) {
   const { icon_url, icon_name, icon_emoji, color_hex } = category
   const [imgFailed, setImgFailed] = useState(false)
 
@@ -24,6 +24,16 @@ function CategoryPhoto({ category }) {
         src={icon_url}
         alt={category.name}
         className="w-full h-full object-cover"
+        // Inline style as a belt-and-suspenders fix on top of the Tailwind
+        // classes above: a plain <img> defaults to display:inline, which
+        // leaves a few px of baseline whitespace under the image even
+        // inside a fixed-height, overflow:hidden container — the classic
+        // "photo doesn't quite cover the card, there's a sliver of the
+        // card background visible at the bottom" bug. display:block plus
+        // explicit width/height:100% + objectFit:cover here guarantees the
+        // image fills its container regardless of whether Tailwind's own
+        // utilities got purged/overridden anywhere.
+        style={{ display: 'block', width: '100%', height: '100%', objectFit: 'cover' }}
         onError={() => setImgFailed(true)}
         loading="lazy"
       />
@@ -33,7 +43,7 @@ function CategoryPhoto({ category }) {
   if (icon_emoji) {
     return (
       <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--surface)' }}>
-        <span style={{ fontSize: 52, lineHeight: 1 }}>{icon_emoji}</span>
+        <span style={{ fontSize: iconSize * 1.08, lineHeight: 1 }}>{icon_emoji}</span>
       </div>
     )
   }
@@ -41,7 +51,7 @@ function CategoryPhoto({ category }) {
   const Icon = LucideIcons[icon_name] || Wrench
   return (
     <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--surface)' }}>
-      <Icon size={48} color={color_hex || 'var(--text-secondary)'} strokeWidth={1.5} />
+      <Icon size={iconSize} color={color_hex || 'var(--text-secondary)'} strokeWidth={1.5} />
     </div>
   )
 }
@@ -62,6 +72,8 @@ function CategoryCard({ category, index, onClick }) {
       className="flex-shrink-0 text-center overflow-hidden"
       style={{
         width: 124,
+        height: 150,
+        position: 'relative',
         borderRadius: '18px',
         border: `1px solid ${hovered ? 'var(--accent-border)' : 'var(--card-border)'}`,
         background: 'var(--card)',
@@ -69,24 +81,45 @@ function CategoryCard({ category, index, onClick }) {
         transition: 'border-color 0.15s ease, transform 0.15s ease',
         transform: hovered ? 'translateY(-2px)' : 'none',
         cursor: 'pointer',
+        // A plain <button> carries browser default padding (Chrome's UA
+        // stylesheet gives it ~1px 6px) unless explicitly zeroed — that's
+        // what was leaving a thin sliver of the card's own background
+        // visible around the photo instead of the photo reaching flush to
+        // the card's top/side edges.
+        padding: 0,
+        margin: 0,
+        display: 'block',
       }}
     >
-      {/* Photo area */}
-      <div style={{ width: '100%', height: 108, overflow: 'hidden', background: 'var(--surface)' }}>
+      {/* Photo — pinned to the top 80% of the card via absolute positioning
+          (not a fixed px height) so it always fills its share of the card
+          regardless of card size, instead of leaving any sliver of the
+          card's own background visible around it. */}
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0, height: '80%',
+        overflow: 'hidden', background: 'var(--surface)',
+        borderTopLeftRadius: 17, borderTopRightRadius: 17,
+      }}>
         <CategoryPhoto category={category} />
       </div>
 
-      {/* Name below photo — centered, non-bold */}
-      <div className="px-2.5 py-2 flex justify-center">
+      {/* Name — pinned to the bottom 20% of the card via bottom:0, so it
+          always occupies exactly "the rest of the space" underneath the
+          photo instead of pushing the card's total height around. */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, height: '20%',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '0 8px',
+      }}>
         <span
           style={{
             fontSize: '13px',
             fontWeight: 400,
             color: 'var(--text-primary)',
             textAlign: 'center',
-            lineHeight: '1.3',
+            lineHeight: '1.25',
             display: '-webkit-box',
-            WebkitLineClamp: 2,
+            WebkitLineClamp: 1,
             WebkitBoxOrient: 'vertical',
             overflow: 'hidden',
           }}

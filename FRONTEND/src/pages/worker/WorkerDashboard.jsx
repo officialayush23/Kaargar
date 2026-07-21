@@ -3,14 +3,12 @@ import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   TrendingUp, Briefcase, Star, ChevronRight, Clock,
-  Zap, DollarSign, CheckCircle, HelpCircle,
-  ShieldAlert, ShieldCheck, RefreshCw, XCircle,
+  ShieldCheck, RefreshCw,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkerAnalytics, useWorkerStatus, useWorkerProfile } from '@/hooks/useWorker'
 import { useJobs } from '@/hooks/useJobs'
-import { useLocationPublisher } from '@/hooks/useLocationPublisher'
 import { supabase } from '@/lib/supabase'
 import { formatCurrency, formatRelativeTime, getErrorMessage } from '@/lib/utils'
 import { GlassCard } from '@/components/glass/GlassCard'
@@ -52,15 +50,6 @@ function VerificationBanner({ status, rejectionReason }) {
       }}
     >
       <div className="flex items-start gap-3">
-        <div
-          className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-          style={{ background: isPending ? 'var(--accent-deep)' : 'rgba(239,68,68,0.15)' }}
-        >
-          {isPending
-            ? <ShieldAlert className="h-4.5 w-4.5" style={{ color: 'var(--accent)' }} />
-            : <XCircle className="h-4.5 w-4.5" style={{ color: '#ef4444' }} />
-          }
-        </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold" style={{ color: isPending ? 'var(--accent)' : '#ef4444' }}>
             {isPending ? 'Verification pending' : 'Application rejected'}
@@ -92,18 +81,10 @@ function VerificationBanner({ status, rejectionReason }) {
   )
 }
 
-function StatCard({ label, value, sub, icon: Icon, accentColor }) {
+function StatCard({ label, value, sub }) {
   return (
     <GlassCard className="p-4 space-y-2">
-      <div className="flex items-center justify-between">
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</p>
-        <div
-          className="w-7 h-7 rounded-lg flex items-center justify-center"
-          style={{ background: `${accentColor}20` }}
-        >
-          <Icon className="h-3.5 w-3.5" style={{ color: accentColor }} />
-        </div>
-      </div>
+      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{label}</p>
       <p className="text-xl font-mono font-bold" style={{ color: 'var(--text-primary)' }}>{value}</p>
       {sub && <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{sub}</p>}
     </GlassCard>
@@ -127,9 +108,12 @@ export default function WorkerDashboard() {
   const verificationStatus = workerProfile?.verification_status || 'pending'
   const isApproved = verificationStatus === 'approved'
 
-  // Publish live GPS while online — feeds both the instant-job matching
-  // radius query and the customer-facing tracking map on ActiveJobPage.
-  useLocationPublisher(isOnline)
+  // GPS publishing itself now lives in WorkerLayout (mounted for every
+  // worker route, not just this one) — see the note there for why it was
+  // moved. Keeping it scoped to this page meant a worker's location went
+  // stale (and they silently dropped out of instant-dispatch matching +
+  // the customer's nearby-workers map) the moment they navigated to any
+  // other worker tab, even while still toggled "online".
 
   // Redirect to onboarding if worker profile doesn't exist yet
   useEffect(() => {
@@ -193,20 +177,20 @@ export default function WorkerDashboard() {
       {/* Online toggle — locked until approved */}
       <GlassCard
         className={cn('p-4 transition-all', !isApproved && 'opacity-50 pointer-events-none select-none')}
-        style={isOnline ? { borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.05)' } : {}}
+        style={isOnline ? { borderColor: 'var(--accent-border)', background: 'var(--accent-bg-sm)' } : {}}
       >
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-2 mb-0.5">
               <motion.div
                 className="w-2.5 h-2.5 rounded-full"
-                style={{ background: isOnline ? '#4ade80' : 'var(--text-muted)' }}
+                style={{ background: isOnline ? 'var(--accent)' : 'var(--text-muted)' }}
                 animate={isOnline ? { scale: [1, 1.3, 1] } : {}}
                 transition={{ repeat: Infinity, duration: 2 }}
               />
               <span
                 className="text-sm font-semibold"
-                style={{ color: isOnline ? '#4ade80' : 'var(--text-muted)' }}
+                style={{ color: isOnline ? 'var(--accent)' : 'var(--text-muted)' }}
               >
                 {isOnline ? 'Online — accepting jobs' : 'Offline'}
               </span>
@@ -222,8 +206,8 @@ export default function WorkerDashboard() {
             whileTap={{ scale: 0.92 }}
             className="relative w-14 h-7 rounded-full transition-all duration-300"
             style={{
-              background: isOnline ? '#22C55E' : 'var(--card)',
-              border: `1px solid ${isOnline ? '#22C55E' : 'var(--card-border)'}`,
+              background: isOnline ? 'var(--accent)' : 'var(--g-bg-mid)',
+              border: `1px solid ${isOnline ? 'var(--accent)' : 'var(--g-border)'}`,
             }}
           >
             <motion.div
@@ -252,10 +236,6 @@ export default function WorkerDashboard() {
               style={{ borderColor: 'rgba(34,197,94,0.25)', background: 'rgba(34,197,94,0.05)' }}
             >
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-                  style={{ background: 'rgba(34,197,94,0.2)' }}>
-                  <Zap className="h-5 w-5 text-green-400" />
-                </div>
                 <div className="flex-1">
                   <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
                     Active job in progress
@@ -287,22 +267,16 @@ export default function WorkerDashboard() {
               label="Today's earnings"
               value={formatCurrency(analytics?.today_earnings || 0)}
               sub={`${analytics?.today_jobs || 0} jobs completed`}
-              icon={DollarSign}
-              accentColor="#22c55e"
             />
             <StatCard
               label="This month"
               value={formatCurrency(analytics?.month_earnings || 0)}
               sub={`${analytics?.month_jobs || 0} total jobs`}
-              icon={TrendingUp}
-              accentColor="var(--accent)"
             />
             <StatCard
               label="Rating"
               value={Number(analytics?.avg_rating || 0).toFixed(1)}
               sub={`${analytics?.total_reviews || 0} reviews`}
-              icon={Star}
-              accentColor="var(--accent)"
             />
             <StatCard
               label="Acceptance"
@@ -312,8 +286,6 @@ export default function WorkerDashboard() {
                   : '—'
               }
               sub={analytics?.jobs_offered > 0 ? 'of jobs offered' : 'No offers yet'}
-              icon={CheckCircle}
-              accentColor="#a78bfa"
             />
           </div>
         )}
@@ -339,10 +311,6 @@ export default function WorkerDashboard() {
         className="p-4 flex items-center justify-between hover:opacity-90 transition-opacity cursor-pointer"
       >
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center"
-            style={{ background: 'rgba(255,255,255,0.06)' }}>
-            <HelpCircle className="h-5 w-5" style={{ color: 'var(--accent)' }} />
-          </div>
           <div>
             <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Help & Support</p>
             <p className="text-xs" style={{ color: 'var(--text-muted)' }}>

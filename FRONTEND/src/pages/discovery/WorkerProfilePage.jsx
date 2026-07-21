@@ -356,10 +356,20 @@ export default function WorkerProfilePage() {
         {services.length > 0 && (
           <Section title="Services" icon={Wrench}>
             <div className="space-y-2">
-              {services.map(svc => (
+              {services.map(svc => {
+                const svcPhoto = media.find(m => m.service_id === svc.id)
+                return (
                 <div key={svc.id}
                   style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--g-border)', borderRadius: 14, padding: '14px 16px' }}>
                   <div className="flex items-start justify-between gap-3">
+                    {svcPhoto && (
+                      <img
+                        src={svcPhoto.cloudinary_url || svcPhoto.url}
+                        alt=""
+                        className="shrink-0 rounded-lg object-cover"
+                        style={{ width: 52, height: 52, border: '1px solid var(--g-border)' }}
+                      />
+                    )}
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>{svc.title}</p>
                       {svc.description && (
@@ -392,7 +402,8 @@ export default function WorkerProfilePage() {
                     </div>
                   </div>
                 </div>
-              ))}
+                )
+              })}
             </div>
           </Section>
         )}

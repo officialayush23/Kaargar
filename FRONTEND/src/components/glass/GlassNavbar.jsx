@@ -145,7 +145,18 @@ export function MobileBottomNav() {
         initial={false}
         animate={{ borderRadius: jobExpanded ? 28 : 9999 }}
         transition={{ duration: 0.32, ease: [0.4, 0, 0.2, 1] }}
-        className="pointer-events-auto w-full max-w-sm overflow-hidden"
+        className={cn(
+          'pointer-events-auto w-full overflow-hidden',
+          // NOTE: worker labels (Dashboard, Services, Schedule, Earnings)
+          // are long words in a non-wrapping flex row, so widening this
+          // container or bumping mobile padding/text previously pushed the
+          // pill past the viewport edges instead of shrinking (flex items
+          // don't shrink below their content's intrinsic width by default).
+          // Keep the same max-width as the customer nav — the size bump
+          // for worker only happens at sm:+ breakpoints below, where there's
+          // actually room for it.
+          'max-w-sm'
+        )}
         style={{
           background: 'var(--g-bg-hi)',
           backdropFilter: 'blur(40px) saturate(200%)',
@@ -211,7 +222,10 @@ export function MobileBottomNav() {
         )}
 
         {/* Row of nav items */}
-        <div className="flex items-center justify-center gap-0.5 sm:gap-1 px-1.5 py-1.5 sm:px-2.5 sm:py-2.5">
+        <div className={cn(
+          'flex items-center justify-center gap-0.5 sm:gap-1',
+          onWorkerSide ? 'px-1.5 py-1.5 sm:px-3 sm:py-3.5' : 'px-1.5 py-1.5 sm:px-2.5 sm:py-2.5'
+        )}>
           {links.map((link) => {
             if (link.jobItem) {
               return (
@@ -221,7 +235,10 @@ export function MobileBottomNav() {
                   onClick={() => setJobExpanded(v => !v)}
                   whileHover={{ scale: 1.06 }}
                   whileTap={{ scale: 0.92 }}
-                  className="relative flex flex-col items-center gap-0.5 sm:gap-1 px-2.5 py-1 sm:px-4 sm:py-2.5"
+                  className={cn(
+                    'relative flex flex-col items-center gap-0.5 sm:gap-1',
+                    onWorkerSide ? 'px-1.5 py-1 sm:px-5 sm:py-3' : 'px-2.5 py-1 sm:px-4 sm:py-2.5'
+                  )}
                   style={{ borderRadius: '9999px' }}
                 >
                   {jobExpanded && (
@@ -239,7 +256,10 @@ export function MobileBottomNav() {
                     transition={{ repeat: Infinity, duration: 1.8 }}
                   />
                   <span
-                    className="text-[11px] sm:text-sm font-bold relative leading-none"
+                    className={cn(
+                      'font-bold relative leading-none',
+                      onWorkerSide ? 'text-[11px] sm:text-base' : 'text-[11px] sm:text-sm'
+                    )}
                     style={{ color: jobExpanded ? 'var(--accent)' : 'var(--text-muted)' }}
                   >
                     Live
@@ -257,7 +277,10 @@ export function MobileBottomNav() {
                 <motion.div
                   whileHover={{ scale: 1.06 }}
                   whileTap={{ scale: 0.92 }}
-                  className="relative flex flex-col items-center gap-0.5 sm:gap-1 px-2.5 py-1 sm:px-4 sm:py-2.5"
+                  className={cn(
+                    'relative flex flex-col items-center gap-0.5 sm:gap-1',
+                    onWorkerSide ? 'px-1.5 py-1 sm:px-5 sm:py-3' : 'px-2.5 py-1 sm:px-4 sm:py-2.5'
+                  )}
                   style={{ borderRadius: '9999px' }}
                 >
                   {active && (
@@ -268,9 +291,12 @@ export function MobileBottomNav() {
                       transition={{ type: 'spring', stiffness: 400, damping: 28 }}
                     />
                   )}
-                  <span className="text-sm sm:text-xl relative leading-none">{link.emoji}</span>
+                  <span className={cn('relative leading-none', onWorkerSide ? 'text-sm sm:text-2xl' : 'text-sm sm:text-xl')}>{link.emoji}</span>
                   <span
-                    className="text-[11px] sm:text-sm font-bold relative leading-none"
+                    className={cn(
+                      'font-bold relative leading-none',
+                      onWorkerSide ? 'text-[11px] sm:text-base' : 'text-[11px] sm:text-sm'
+                    )}
                     style={{ color: active ? 'var(--accent)' : 'var(--text-muted)' }}
                   >
                     {link.label}

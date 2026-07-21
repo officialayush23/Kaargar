@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Link } from 'react-router-dom'
-import { Loader2, Save, User, MapPin, FileText, Image, ChevronRight } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { Loader2, Save, User, MapPin, FileText, ChevronRight, ArrowLeft } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
@@ -24,6 +24,7 @@ function Field({ label, icon: Icon, children }) {
 
 export default function WorkerProfile() {
   const queryClient = useQueryClient()
+  const navigate = useNavigate()
   const { user, updateUser } = useAuthStore()
 
   const { data: profile, isLoading } = useQuery({
@@ -36,8 +37,6 @@ export default function WorkerProfile() {
     bio: '',
     area: '',
     years_experience: '',
-    instant_available: true,
-    allow_multi_day_booking: false,
   })
 
   useEffect(() => {
@@ -49,8 +48,6 @@ export default function WorkerProfile() {
         // API returns this field as `experience_years` (not `years_experience` —
         // that name only exists as the write-side alias on the PATCH payload).
         years_experience: profile?.experience_years ?? '',
-        instant_available: profile?.is_instant_available ?? true,
-        allow_multi_day_booking: profile?.allow_multi_day_booking ?? false,
       })
     }
   }, [user, profile])
@@ -71,7 +68,6 @@ export default function WorkerProfile() {
   }
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }))
-  const setCheck = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.checked }))
 
   const handleSave = () => {
     saveMut.mutate({
@@ -79,8 +75,6 @@ export default function WorkerProfile() {
       bio: form.bio.trim() || undefined,
       area: form.area || undefined,
       years_experience: form.years_experience ? Number(form.years_experience) : undefined,
-      instant_available: form.instant_available,
-      allow_multi_day_booking: form.allow_multi_day_booking,
     })
   }
 
@@ -91,8 +85,17 @@ export default function WorkerProfile() {
   )
 
   return (
-    <div className="px-4 pt-5 pb-24 space-y-5">
-      <h2 className="font-syne font-bold text-xl text-[--text-primary]">My profile</h2>
+    <div className="px-4 pt-5 pb-24 space-y-6">
+      <div className="flex items-center gap-3">
+        <button
+          onClick={() => navigate(-1)}
+          className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+          style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}
+        >
+          <ArrowLeft className="h-4 w-4" style={{ color: 'var(--text-secondary)' }} />
+        </button>
+        <h2 className="font-syne font-bold text-xl text-[--text-primary]">My profile</h2>
+      </div>
 
       {/* Avatar */}
       <div className="flex flex-col items-center gap-3">
@@ -113,7 +116,7 @@ export default function WorkerProfile() {
       </div>
 
       {/* Form */}
-      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-5 space-y-4">
+      <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="glass rounded-2xl p-5 space-y-5">
         <Field label="Full name" icon={User}>
           <input
             value={form.full_name}
@@ -153,32 +156,20 @@ export default function WorkerProfile() {
             className="w-full glass-input rounded-xl px-4 py-2.5 text-sm text-[--text-primary] placeholder:text-[--text-muted] focus:outline-none"
           />
         </Field>
-
-        <div className="flex items-center justify-between py-1">
-          <div>
-            <p className="text-sm font-medium text-[--text-primary]">Available for instant jobs</p>
-            <p className="text-xs text-[--text-muted] mt-0.5">Accept same-day service requests</p>
-          </div>
-          <button
-            onClick={() => setForm((f) => ({ ...f, instant_available: !f.instant_available }))}
-            className={`w-12 h-6 rounded-full transition-colors relative ${form.instant_available ? 'bg-instant' : 'bg-[--card-bg]'}`}
-          >
-            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${form.instant_available ? 'translate-x-7' : 'translate-x-1'}`} />
-          </button>
-        </div>
-
-        <div className="flex items-center justify-between py-1" style={{ borderTop: '1px solid var(--g-border)', paddingTop: 16 }}>
-          <div>
-            <p className="text-sm font-medium text-[--text-primary]">Allow multi-day booking</p>
-            <p className="text-xs text-[--text-muted] mt-0.5">Let Discovery customers book you across several days at once</p>
-          </div>
-          <button
-            onClick={() => setForm((f) => ({ ...f, allow_multi_day_booking: !f.allow_multi_day_booking }))}
-            className={`w-12 h-6 rounded-full transition-colors relative ${form.allow_multi_day_booking ? 'bg-instant' : 'bg-[--card-bg]'}`}
-          >
-            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${form.allow_multi_day_booking ? 'translate-x-7' : 'translate-x-1'}`} />
-          </button>
-        </div>
+        {/* "Available for instant jobs" and "Allow multi-day booking" toggles
+            used to live here, duplicating controls that live elsewhere and
+            actually work:
+            - Instant availability is now driven entirely by the Dashboard's
+              online/offline toggle (see PATCH /workers/status), which keeps
+              is_instant_available in sync automatically. A second manual
+              toggle for the same flag, on a different page, was redundant
+              and could silently fight with it (e.g. going online on the
+              Dashboard but this toggle still reading "off").
+            - Multi-day booking eligibility is actually enforced per-SERVICE
+              (Service.allow_multi_day_booking, toggled in each service's
+              own form on the Services page) — this profile-level flag was
+              never read by the booking-creation code at all, so turning it
+              off here did nothing to what customers could actually book. */}
       </motion.div>
 
       {/* Portfolio moved off the bottom nav to make room for Schedule — still
@@ -190,9 +181,6 @@ export default function WorkerProfile() {
           className="flex items-center gap-3 rounded-xl p-3.5 cursor-pointer transition-colors"
           style={{ background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)' }}
         >
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--accent-bg-md)' }}>
-            <Image size={16} style={{ color: 'var(--accent)' }} />
-          </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>Portfolio</p>
             <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Photos & videos of your work</p>

@@ -5,7 +5,7 @@
  * Step 3: Price estimate
  * Step 4: Confirm + submit
  */
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowLeft, MapPin, Zap, Compass, Navigation, FileText, ChevronRight, Check, TrendingUp, Clock } from 'lucide-react'
@@ -15,7 +15,7 @@ import { useCategories } from '@/hooks/useCategories'
 import { useGeoLocation } from '@/hooks/useGeoLocation'
 import { useAddressAutocomplete, reverseGeocode } from '@/hooks/useGeocoding'
 import { GlassCard } from '@/components/glass/GlassCard'
-import { CategoryGrid } from '@/components/kaargar/CategoryGrid'
+import { CategoryGrid, CategoryPhoto } from '@/components/kaargar/CategoryGrid'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput, GlassTextarea } from '@/components/glass/GlassInput'
 import { PuneMap } from '@/components/kaargar/PuneMap'
@@ -27,16 +27,6 @@ import { cn } from '@/lib/utils'
 
 const STEPS = ['service', 'location', 'estimate', 'confirm']
 const STEP_LABELS = { service: 'Service', location: 'Location', estimate: 'Estimate', confirm: 'Confirm' }
-
-const CATEGORY_ICONS = {
-  electrician: '⚡', plumber: '🔧', carpenter: '🪚', mechanic: '🔩',
-  cleaner: '🧹', painter: '🎨', ac_repair: '❄️', appliance: '🔌',
-  pest_control: '🐛', shifting: '📦', default: '🛠',
-}
-
-function getCatIcon(slug) {
-  return CATEGORY_ICONS[slug] || CATEGORY_ICONS.default
-}
 
 function StepIndicator({ current }) {
   return (
@@ -337,9 +327,35 @@ function LocationStep({ location, onLocationSelect, category }) {
 
 function EstimateStep({ category, mode }) {
   const basePrice = Number(category?.min_price || 99)
-  const surge = mode === 'instant' ? 1.15 : 1.0
-  const low  = Math.round(basePrice * surge)
-  const high = Math.round(low * 2.8)
+
+  // Real, configured platform-fee/GST rates — replaces a hardcoded 15%
+  // "surge" that used to render on every single instant booking regardless
+  // of actual demand (it was never demand-driven, just a permanent
+  // multiplier), plus a fabricated "low–high" range that didn't correspond
+  // to anything the backend actually charges. Defaults here match
+  // services/matching.calc_commission's own fallback defaults, so the
+  // number shown is correct even before the fetch resolves.
+  const [rates, setRates] = useState({ commission_instant_rate: 0.12, gst_rate: 0.18 })
+  useEffect(() => {
+    let cancelled = false
+    api.get('/categories/pricing-info')
+      .then(({ data }) => { if (!cancelled && data) setRates(data) })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
+  // IMPORTANT: per the actual backend (services/matching.calc_commission),
+  // the customer only ever pays `basePrice` — commission + GST are computed
+  // server-side and deducted from the WORKER's payout, never added as a
+  // customer surcharge. The old UI got this backwards (added a "platform
+  // fee" + "GST" on top of the base price, inflating what the customer saw
+  // they'd pay) on top of a fabricated always-on 15% surge. This now shows
+  // what the customer actually pays, plus an honest, optional look at how
+  // that same amount splits between the platform and the worker.
+  const platformFeeRate = mode === 'instant' ? rates.commission_instant_rate : null
+  const platformFee = platformFeeRate != null ? Math.round(basePrice * platformFeeRate) : null
+  const gstOnFee = platformFee != null ? Math.round(platformFee * rates.gst_rate) : null
+  const workerPayout = platformFee != null ? basePrice - platformFee - gstOnFee : null
 
   return (
     <motion.div
@@ -355,37 +371,42 @@ function EstimateStep({ category, mode }) {
         <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Final price set after job assessment</p>
       </div>
 
-      {/* Big price card */}
+      {/* Big price card — the one real number the customer actually pays */}
       <GlassCard blue glow glowColor="azure" className="p-6 text-center">
-        <p className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>Estimated range</p>
+        <p className="text-xs uppercase tracking-widest mb-2" style={{ color: 'var(--text-muted)' }}>You pay</p>
         <p className="text-4xl font-bold" style={{ color: 'var(--text-primary)' }}>
-          {formatCurrency(low)} – {formatCurrency(high)}
+          {formatCurrency(basePrice)}
         </p>
         <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>{category?.name} · {mode} mode</p>
-
-        {mode === 'instant' && (
-          <div className="flex items-center justify-center gap-1.5 mt-3">
-            <Zap className="h-3.5 w-3.5 text-amber-400" />
-            <span className="text-xs text-amber-400 font-medium">Peak demand — 15% surge applied</span>
-          </div>
-        )}
       </GlassCard>
 
-      {/* Breakdown */}
+      {/* Breakdown — how the base fare splits, not extra charges on top */}
       <GlassCard className="p-4 space-y-3">
-        <p className="text-xs uppercase tracking-widest font-medium" style={{ color: 'var(--text-muted)' }}>Price breakdown</p>
+        <p className="text-xs uppercase tracking-widest font-medium" style={{ color: 'var(--text-muted)' }}>Base fare</p>
         <div className="space-y-2">
-          {[
-            { label: 'Base fare',        value: formatCurrency(basePrice) },
-            { label: 'Platform fee',     value: formatCurrency(Math.round(low * 0.15)) },
-            mode === 'instant' && { label: 'Surge (15%)', value: `+${formatCurrency(Math.round(basePrice * 0.15))}` },
-            { label: 'GST (18%)',        value: formatCurrency(Math.round(low * 0.18)) },
-          ].filter(Boolean).map(row => (
-            <div key={row.label} className="flex items-center justify-between">
-              <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>{row.label}</span>
-              <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{row.value}</span>
-            </div>
-          ))}
+          <div className="flex items-center justify-between">
+            <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Base fare (what you pay)</span>
+            <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>{formatCurrency(basePrice)}</span>
+          </div>
+          {platformFee != null && (
+            <>
+              <p className="text-xs pt-1" style={{ color: 'var(--text-muted)' }}>
+                Taken from the base fare (not added to what you pay):
+              </p>
+              <div className="flex items-center justify-between pl-3">
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>Platform fee ({Math.round(platformFeeRate * 100)}%)</span>
+                <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>−{formatCurrency(platformFee)}</span>
+              </div>
+              <div className="flex items-center justify-between pl-3">
+                <span className="text-sm" style={{ color: 'var(--text-secondary)' }}>GST on fee ({Math.round(rates.gst_rate * 100)}%)</span>
+                <span className="text-sm font-mono" style={{ color: 'var(--text-primary)' }}>−{formatCurrency(gstOnFee)}</span>
+              </div>
+              <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid var(--g-border)' }}>
+                <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Worker receives</span>
+                <span className="text-sm font-mono font-semibold" style={{ color: 'var(--text-primary)' }}>{formatCurrency(workerPayout)}</span>
+              </div>
+            </>
+          )}
         </div>
       </GlassCard>
 
@@ -416,7 +437,7 @@ function EstimateStep({ category, mode }) {
 
 // ── Step 4: Confirm ───────────────────────────────────────────
 
-function ConfirmStep({ category, location, mode, description, loading, onSubmit }) {
+function ConfirmStep({ category, location, mode, description }) {
   return (
     <motion.div
       key="step-confirm"
@@ -433,14 +454,14 @@ function ConfirmStep({ category, location, mode, description, loading, onSubmit 
 
       <GlassCard className="p-5 space-y-4">
         <div className="flex items-center gap-3 pb-4" style={{ borderBottom: '1px solid var(--g-border)' }}>
-          <div className="w-12 h-12 rounded-2xl bg-azure/15 flex items-center justify-center text-2xl">
-            {getCatIcon(category?.slug)}
+          <div className="w-12 h-12 rounded-2xl shrink-0 overflow-hidden" style={{ border: '1px solid var(--card-border)' }}>
+            <CategoryPhoto category={category || {}} iconSize={26} />
           </div>
           <div>
             <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{category?.name}</p>
             <div className="flex items-center gap-2 mt-0.5">
               {mode === 'instant' ? (
-                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: '#22C55E' }}>
+                <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: 'var(--accent)' }}>
                   <Zap className="h-2.5 w-2.5" style={{ color: '#000' }} />
                   <span className="text-[12px] font-semibold" style={{ color: '#000' }}>Instant</span>
                 </div>
@@ -463,9 +484,9 @@ function ConfirmStep({ category, location, mode, description, loading, onSubmit 
       {mode === 'instant' && (
         <GlassCard className="p-4" style={{ border: '1px solid var(--card-border)', background: 'var(--card)' }}>
           <div className="flex items-center gap-3">
-            <Zap className="h-5 w-5 text-emerald-400 shrink-0" />
+            <Zap className="h-5 w-5 shrink-0" style={{ color: 'var(--accent)' }} />
             <div>
-              <p className="text-sm font-semibold text-emerald-400">Instant Match</p>
+              <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>Instant Match</p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
                 We search for nearby workers within 5 km. Average wait: 30–45 min.
               </p>
@@ -473,40 +494,49 @@ function ConfirmStep({ category, location, mode, description, loading, onSubmit 
           </div>
         </GlassCard>
       )}
-
-      <motion.button
-        onClick={onSubmit}
-        disabled={loading}
-        whileHover={{ scale: loading ? 1 : 1.02, y: loading ? 0 : -2 }}
-        whileTap={{ scale: 0.97 }}
-        className={cn(
-          'w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 relative overflow-hidden',
-          loading && 'opacity-70'
-        )}
-        style={{
-          background: mode === 'instant' ? '#22C55E' : 'var(--accent)',
-          color: '#000',
-        }}
-      >
-        {/* Glare sweep */}
-        <motion.div
-          className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
-          initial={{ x: '-100%' }}
-          animate={{ x: '200%' }}
-          transition={{ repeat: Infinity, duration: 2.5, ease: 'linear' }}
-        />
-        {loading ? (
-          <span className="relative animate-spin">⌛</span>
-        ) : (
-          <>
-            {mode === 'instant' ? <Zap className="h-5 w-5 relative" /> : <Compass className="h-5 w-5 relative" />}
-            <span className="relative">
-              {mode === 'instant' ? 'Find worker now' : 'Book service'}
-            </span>
-          </>
-        )}
-      </motion.button>
     </motion.div>
+  )
+}
+
+// Shared submit button for Confirm — rendered in the page's fixed bottom
+// bar (same slot every other step's "Continue" button uses) instead of
+// inside ConfirmStep itself, so the action button's position is consistent
+// across all 4 steps. Colors now always come from the theme accent instead
+// of a hardcoded green that didn't match the rest of the app.
+function ConfirmSubmitButton({ mode, loading, onSubmit }) {
+  return (
+    <motion.button
+      onClick={onSubmit}
+      disabled={loading}
+      whileHover={{ scale: loading ? 1 : 1.02, y: loading ? 0 : -2 }}
+      whileTap={{ scale: 0.97 }}
+      className={cn(
+        'w-full py-4 rounded-2xl font-bold text-base flex items-center justify-center gap-2 relative overflow-hidden',
+        loading && 'opacity-70'
+      )}
+      style={{
+        background: 'var(--accent)',
+        color: 'var(--accent-on, #000)',
+      }}
+    >
+      {/* Glare sweep */}
+      <motion.div
+        className="absolute inset-0 bg-gradient-to-r from-transparent via-white/20 to-transparent"
+        initial={{ x: '-100%' }}
+        animate={{ x: '200%' }}
+        transition={{ repeat: Infinity, duration: 2.5, ease: 'linear' }}
+      />
+      {loading ? (
+        <span className="relative animate-spin">⌛</span>
+      ) : (
+        <>
+          {mode === 'instant' ? <Zap className="h-5 w-5 relative" /> : <Compass className="h-5 w-5 relative" />}
+          <span className="relative">
+            {mode === 'instant' ? 'Find worker now' : 'Book service'}
+          </span>
+        </>
+      )}
+    </motion.button>
   )
 }
 
@@ -578,9 +608,16 @@ export default function NewJobPage() {
   }
 
   return (
-    <div className="min-h-full">
-      {/* Oval page header */}
-      <div className="px-4 pt-5 pb-4">
+    // Full-screen fixed takeover for the whole wizard — the top step-nav/
+    // back button and the bottom action button are permanent flex children
+    // (not part of the scrolling content), and only the middle section
+    // scrolls. This replaces the old layout where the header/CTA were just
+    // inline elements that scrolled away with everything else, and applies
+    // uniformly to all 4 steps (including Confirm, whose submit button used
+    // to live inside the step content instead of this shared footer).
+    <div style={{ position: 'fixed', inset: 0, zIndex: 70, display: 'flex', flexDirection: 'column' }}>
+      {/* ── Top: step nav + back button — always visible ─────────────── */}
+      <div className="px-4 pt-5 pb-4" style={{ flexShrink: 0 }}>
         <div
           style={{
             display: 'flex',
@@ -626,7 +663,9 @@ export default function NewJobPage() {
         </div>
       </div>
 
-      <div className="px-4 pb-10 space-y-5">
+      {/* ── Middle: the only part that scrolls — plain scroll, no page
+             breaks, content just flows and scrolls within this pane ───── */}
+      <div className="flex-1 overflow-y-auto px-4 pb-6 space-y-5" style={{ WebkitOverflowScrolling: 'touch' }}>
         <AnimatePresence mode="wait">
           {step === 'service' && (
             <CategoryStep
@@ -657,14 +696,16 @@ export default function NewJobPage() {
               location={location}
               mode={mode}
               description={description}
-              loading={loading}
-              onSubmit={handleSubmit}
             />
           )}
         </AnimatePresence>
+      </div>
 
-        {/* Bottom CTA (not on confirm — it has its own) */}
-        {step !== 'confirm' && (
+      {/* ── Bottom: action button — always visible, same slot on every step ─ */}
+      <div className="px-4 pt-3 pb-5" style={{ flexShrink: 0 }}>
+        {step === 'confirm' ? (
+          <ConfirmSubmitButton mode={mode} loading={loading} onSubmit={handleSubmit} />
+        ) : (
           <GlassButton
             variant={mode === 'instant' ? 'instant' : 'brand'}
             size="lg"

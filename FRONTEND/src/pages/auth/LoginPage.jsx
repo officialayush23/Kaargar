@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Eye, EyeOff, Mail, ArrowLeft, Zap, Search } from 'lucide-react'
+import { Eye, EyeOff, ArrowLeft, Zap, Search } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
@@ -329,10 +329,6 @@ export default function LoginPage() {
               initial="enter" animate="center" exit="exit" transition={trans}>
               <Card>
                 <CardHeader>
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-3"
-                    style={{ background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                    <Mail size={24} style={{ color: '#22C55E' }} />
-                  </div>
                   <CardTitle className="text-center">Check your inbox</CardTitle>
                   <CardDescription className="text-center">
                     We sent a confirmation link to{' '}

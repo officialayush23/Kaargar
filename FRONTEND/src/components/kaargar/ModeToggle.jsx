@@ -1,84 +1,105 @@
+/**
+ * ModeToggle — shared Instant/Discovery pill, used at the top of both
+ * HomePage (Instant) and DiscoveryPage (Discovery).
+ *
+ * This used to be two separate things: HomePage had its own local
+ * `InlineModeToggle` that just flipped a `mode` value in-place and
+ * rendered different content on the SAME page (so picking "Discover" on
+ * Home never actually navigated anywhere — it just swapped in a
+ * recommendations feed on top of the Home route), and this file existed
+ * separately, unused, as a leftover fixed-floating pill from an earlier
+ * pass. Neither matched what Discovery bookings actually need: Discovery
+ * always ends in the customer picking a specific worker (see
+ * DiscoveryPage's search flow), which lives on its own route (`/discover`),
+ * not inline on Home.
+ *
+ * Now the toggle is one component that's genuinely navigation-aware:
+ * picking "Instant" takes you to `/` and picking "Discover" takes you to
+ * `/discover`, syncing the global `mode` store either way so whichever
+ * page you land on already reflects the right toggle state and the right
+ * content (Home no longer renders a Discovery feed of its own).
+ */
 import { motion } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 import { Zap, Compass } from 'lucide-react'
 import { useAppStore } from '@/stores/app'
 
 const MODES = [
-  {
-    id: 'instant',
-    label: 'Instant',
-    // icon: Zap,
-    activeBg: 'var(--accent)',
-    activeBorder: 'var(--accent)',
-    activeColor: '#000',
-    dotColor: '#000',
-  },
-  {
-    id: 'discovery',
-    label: 'Discover',
-    icon: Compass,
-    activeBg: 'var(--accent-dim)',
-    activeBorder: 'var(--accent-dim)',
-    activeColor: 'var(--accent-soft)',
-    dotColor: 'var(--accent-soft)',
-  },
+  { id: 'instant',   label: 'Instant',  icon: Zap,     path: '/' },
+  { id: 'discovery', label: 'Discover', icon: Compass, path: '/discover' },
 ]
 
-export function ModeToggle() {
+export function ModeToggle({ className = '' }) {
   const { mode, setMode } = useAppStore()
+  const navigate = useNavigate()
+
+  const handleSelect = (m) => {
+    if (m.id === mode) return
+    setMode(m.id)
+    navigate(m.path)
+  }
 
   return (
-    <motion.div
-      className="fixed bottom-24 inset-x-0 z-40 flex justify-center"
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.35, type: 'spring', stiffness: 300, damping: 26 }}
-      style={{ pointerEvents: 'none' }}
+    <div
+      className={className}
+      style={{
+        display: 'inline-flex',
+        padding: '3px',
+        gap: '3px',
+        borderRadius: '9999px',
+        background: 'var(--card)',
+        border: '1px solid var(--card-border)',
+      }}
     >
-      <div
-        style={{
-          display: 'inline-flex',
-          alignItems: 'center',
-          gap: '3px',
-          padding: '4px',
-          borderRadius: '9999px',
-          background: 'var(--card)',
-          border: '1px solid var(--card-border)',
-          pointerEvents: 'auto',
-        }}
-      >
-        {MODES.map(({ id, label, icon: Icon, activeBg, activeBorder, activeColor, dotColor }) => {
-          const active = mode === id
-
-          return (
-            <button
-              key={id}
-              onClick={() => setMode(id)}
-              style={{
-                position: 'relative',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '7px',
-                padding: '9px 18px',
-                borderRadius: '9999px',
-                border: active ? `1px solid ${activeBorder}` : '1px solid transparent',
-                background: active ? activeBg : 'transparent',
-                cursor: 'pointer',
-                outline: 'none',
-                userSelect: 'none',
-                WebkitTapHighlightColor: 'transparent',
-                transition: 'background 0.2s ease, color 0.2s ease',
-                color: active ? activeColor : 'var(--text-muted)',
-                fontWeight: active ? 600 : 400,
-                fontSize: '13px',
-                fontFamily: "'Poppins', 'DM Sans', sans-serif",
-              }}
+      {MODES.map((m) => {
+        const active = mode === m.id
+        const Icon = m.icon
+        return (
+          <button
+            key={m.id}
+            onClick={() => handleSelect(m)}
+            className="relative flex items-center gap-2 px-5 py-2 select-none"
+            style={{
+              borderRadius: '9999px',
+              WebkitTapHighlightColor: 'transparent',
+              cursor: 'pointer',
+              border: '1px solid transparent',
+              background: 'transparent',
+            }}
+          >
+            {/* Animated sliding active background — a single shared
+                layoutId means framer-motion animates it smoothly from
+                whichever button it was on to the newly-active one,
+                instead of the two buttons just abruptly swapping colors. */}
+            {active && (
+              <motion.div
+                layoutId="mode-toggle-active-bg"
+                className="absolute inset-0"
+                style={{ borderRadius: '9999px', background: 'var(--accent)' }}
+                transition={{ type: 'spring', stiffness: 400, damping: 32 }}
+              />
+            )}
+            {/* Outline-only, never filled — a solid black fill on top of
+                a black stroke (both driven by currentColor) made the icon's
+                own line detail disappear into itself, especially on
+                Compass's thin needle, leaving what looked like a plain
+                black dot instead of a recognizable icon. */}
+            <Icon
+              size={15}
+              className="relative"
+              fill="none"
+              style={{ color: active ? '#000' : 'var(--text-muted)' }}
+              strokeWidth={2}
+            />
+            <span
+              className="relative text-sm font-semibold font-clean"
+              style={{ color: active ? '#000' : 'var(--text-muted)' }}
             >
-              <Icon size={14} />
-              {label}
-            </button>
-          )
-        })}
-      </div>
-    </motion.div>
+              {m.label}
+            </span>
+          </button>
+        )
+      })}
+    </div>
   )
 }

@@ -167,6 +167,19 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
             AND wp.is_instant_available = true
             AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
             AND wl.updated_at > NOW() - INTERVAL '2 minutes'
+            -- Explicit "I'm on leave" windows (worker_time_off) still exclude
+            -- a worker even if they're toggled online — this is a deliberate,
+            -- worker-set signal, unlike the weekly working-hours schedule
+            -- (worker_availability), which instant dispatch intentionally
+            -- ignores: online/offline is the real-time control for on-demand
+            -- work, and a pre-set weekly schedule doesn't map cleanly onto
+            -- "can dispatch to them right now." An active time-off block is
+            -- different — it's an explicit "not this specific date" override.
+            AND NOT EXISTS (
+                SELECT 1 FROM worker_time_off wto
+                WHERE wto.worker_id = wp.id
+                  AND NOW() BETWEEN wto.start_datetime AND wto.end_datetime
+            )
             AND ST_DWithin(
                 wl.geom::geography,
                 ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,

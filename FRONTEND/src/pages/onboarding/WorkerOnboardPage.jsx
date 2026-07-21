@@ -583,8 +583,11 @@ export default function WorkerOnboardPage() {
                   </div>
                   <button type="button"
                     onClick={() => setAllowMultiDay(v => !v)}
-                    className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${allowMultiDay ? 'bg-instant' : ''}`}
-                    style={!allowMultiDay ? { background: 'var(--g-bg)' } : undefined}
+                    className="w-11 h-6 rounded-full transition-colors relative shrink-0"
+                    style={{
+                      background: allowMultiDay ? 'var(--accent)' : 'var(--g-bg-mid)',
+                      border: `1px solid ${allowMultiDay ? 'var(--accent)' : 'var(--g-border)'}`,
+                    }}
                   >
                     <div className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${allowMultiDay ? 'translate-x-6' : 'translate-x-1'}`} />
                   </button>
@@ -657,14 +660,30 @@ export default function WorkerOnboardPage() {
                         >
                           <div style={{
                             width: '32px', height: '32px', borderRadius: '8px',
-                            background: `${cat.color_hex || 'var(--accent)'}20`,
+                            background: cat.icon_url ? 'var(--surface)' : `${cat.color_hex || 'var(--accent)'}20`,
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
-                            flexShrink: 0,
+                            flexShrink: 0, overflow: 'hidden', position: 'relative',
                           }}>
-                            {selected
-                              ? <Check size={16} style={{ color: cat.color_hex || 'var(--amber)' }} />
-                              : <span style={{ fontSize: '16px' }}>{cat.icon_emoji || '🔧'}</span>
-                            }
+                            {cat.icon_url ? (
+                              <img
+                                src={cat.icon_url}
+                                alt=""
+                                style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                              />
+                            ) : (
+                              <span style={{ fontSize: '16px' }}>{cat.icon_emoji || '🔧'}</span>
+                            )}
+                            {selected && (
+                              <div style={{
+                                position: 'absolute', bottom: '-2px', right: '-2px',
+                                width: '15px', height: '15px', borderRadius: '50%',
+                                background: cat.color_hex || 'var(--amber)',
+                                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                border: '1.5px solid var(--card-bg)',
+                              }}>
+                                <Check size={9} style={{ color: '#fff' }} />
+                              </div>
+                            )}
                           </div>
                           <div style={{ minWidth: 0 }}>
                             <span style={{
@@ -850,10 +869,10 @@ export default function WorkerOnboardPage() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                     <div style={{
                       width: '36px', height: '36px', borderRadius: '10px',
-                      background: 'rgba(34,197,94,0.12)',
+                      background: 'rgba(245,158,11,0.12)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
                     }}>
-                      <Video size={18} style={{ color: '#22C55E' }} />
+                      <Video size={18} style={{ color: 'var(--accent)' }} />
                     </div>
                     <div>
                       <h2 className="text-base font-bold font-syne" style={{ color: 'var(--text-primary)' }}>
@@ -882,23 +901,23 @@ export default function WorkerOnboardPage() {
                     animate={{ opacity: 1, y: 0 }}
                     style={{
                       padding: '16px', borderRadius: '14px',
-                      background: 'rgba(34,197,94,0.08)',
-                      border: '1.5px solid rgba(34,197,94,0.25)',
+                      background: 'rgba(245,158,11,0.08)',
+                      border: '1.5px solid rgba(245,158,11,0.25)',
                     }}
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <div style={{
                         width: '48px', height: '48px', borderRadius: '12px', flexShrink: 0,
-                        background: 'rgba(34,197,94,0.15)',
+                        background: 'rgba(245,158,11,0.15)',
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                       }}>
-                        <Play size={20} style={{ color: '#22C55E', marginLeft: '2px' }} />
+                        <Play size={20} style={{ color: 'var(--accent)', marginLeft: '2px' }} />
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <p className="text-sm font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
                           {videoUploaded.filename}
                         </p>
-                        <p className="text-xs mt-0.5" style={{ color: '#86efac' }}>
+                        <p className="text-xs mt-0.5" style={{ color: 'var(--accent)' }}>
                           {(videoUploaded.size / (1024 * 1024)).toFixed(1)} MB · Uploaded successfully
                         </p>
                       </div>
@@ -914,7 +933,7 @@ export default function WorkerOnboardPage() {
                       className="text-xs mt-3"
                       style={{
                         background: 'none', border: 'none', cursor: 'pointer',
-                        color: '#86efac', textDecoration: 'underline', padding: 0,
+                        color: 'var(--accent)', textDecoration: 'underline', padding: 0,
                       }}
                     >
                       Replace video
@@ -927,11 +946,11 @@ export default function WorkerOnboardPage() {
                     style={{
                       width: '100%', padding: '32px 20px', borderRadius: '14px',
                       border: videoUploading
-                        ? '1.5px dashed rgba(34,197,94,0.5)'
-                        : '1.5px dashed rgba(34,197,94,0.3)',
+                        ? '1.5px dashed rgba(245,158,11,0.5)'
+                        : '1.5px dashed rgba(245,158,11,0.3)',
                       background: videoUploading
-                        ? 'rgba(34,197,94,0.06)'
-                        : 'rgba(34,197,94,0.03)',
+                        ? 'rgba(245,158,11,0.06)'
+                        : 'rgba(245,158,11,0.03)',
                       display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px',
                       cursor: videoUploading ? 'not-allowed' : 'pointer',
                       transition: 'all 0.15s ease',
@@ -939,7 +958,7 @@ export default function WorkerOnboardPage() {
                   >
                     {videoUploading ? (
                       <>
-                        <Loader2 size={32} className="animate-spin" style={{ color: '#22C55E' }} />
+                        <Loader2 size={32} className="animate-spin" style={{ color: 'var(--accent)' }} />
                         <div style={{ textAlign: 'center' }}>
                           <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
                             Uploading…
@@ -953,10 +972,10 @@ export default function WorkerOnboardPage() {
                       <>
                         <div style={{
                           width: '56px', height: '56px', borderRadius: '16px',
-                          background: 'rgba(34,197,94,0.12)',
+                          background: 'rgba(245,158,11,0.12)',
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                         }}>
-                          <Video size={28} style={{ color: '#22C55E' }} />
+                          <Video size={28} style={{ color: 'var(--accent)' }} />
                         </div>
                         <div style={{ textAlign: 'center' }}>
                           <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
@@ -973,9 +992,9 @@ export default function WorkerOnboardPage() {
               </GlassCard>
 
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', padding: '12px 14px', borderRadius: '12px',
-                background: 'rgba(34,197,94,0.05)', border: '1px solid rgba(34,197,94,0.15)' }}>
-                <AlertCircle size={13} style={{ color: '#4ade80', flexShrink: 0, marginTop: '1px' }} />
-                <p className="text-xs" style={{ color: '#86efac', lineHeight: '1.6' }}>
+                background: 'rgba(245,158,11,0.05)', border: '1px solid rgba(245,158,11,0.15)' }}>
+                <AlertCircle size={13} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: '1px' }} />
+                <p className="text-xs" style={{ color: 'var(--accent)', lineHeight: '1.6' }}>
                   Your video is reviewed privately by Kaargar staff and never shared publicly.
                   You can skip this now and add it later from your dashboard.
                 </p>
@@ -1160,11 +1179,10 @@ export default function WorkerOnboardPage() {
             >
               <div style={{ textAlign: 'center', padding: '8px 0 4px' }}>
                 <div style={{
-                  width: '64px', height: '64px', borderRadius: '20px', margin: '0 auto 16px',
-                  background: 'var(--accent-bg)',
+                  width: '96px', height: '96px', borderRadius: '20px', margin: '0 auto 16px',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}>
-                  <Rocket size={30} style={{ color: 'var(--brand)' }} />
+                  <img src="/Letsgo.png" alt="" style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
                 </div>
                 <h2 className="text-xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>
                   Ready to go live?
@@ -1190,11 +1208,11 @@ export default function WorkerOnboardPage() {
                   }}>
                     <div style={{
                       width: '20px', height: '20px', borderRadius: '6px', flexShrink: 0, marginTop: '1px',
-                      background: row.ok ? 'rgba(34,197,94,0.12)' : 'var(--accent-deep)',
+                      background: row.ok ? 'rgba(245,158,11,0.12)' : 'var(--accent-deep)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
                       {row.ok
-                        ? <Check size={11} style={{ color: '#22C55E' }} />
+                        ? <Check size={11} style={{ color: 'var(--accent)' }} />
                         : <AlertCircle size={11} style={{ color: 'var(--accent)' }} />
                       }
                     </div>
@@ -1236,7 +1254,7 @@ export default function WorkerOnboardPage() {
             onClick={step === 'publish' ? publishProfile : handleNext}
           >
             {step === 'publish'
-              ? (loading ? 'Publishing…' : '🚀 Launch Profile')
+              ? (loading ? 'Publishing…' : 'Launch Profile')
               : step === 'video' && !videoUploaded
                 ? 'Skip for now'
                 : 'Continue'

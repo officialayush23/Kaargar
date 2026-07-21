@@ -1,7 +1,7 @@
 """
 Upload router — Supabase Storage.
 POST /upload/profile-photo  → profile_photos bucket
-POST /upload/worker-post    → worker_posts bucket
+POST /upload/worker-post    → worker_post bucket
 DELETE /upload/worker-post/{media_id}
 """
 
@@ -31,6 +31,27 @@ MAX_IMAGE_SIZE = 10 * 1024 * 1024
 MAX_VIDEO_SIZE = 100 * 1024 * 1024
 
 
+def _safe_upload(bucket: str, path: str, data: bytes, content_type: str) -> str:
+    """
+    upload_file() was raising an unhandled exception straight out of every
+    endpoint here on any Supabase Storage failure (missing bucket, bad
+    service-role permissions, network hiccup, etc.) — FastAPI turned that
+    into a bare "500 Internal Server Error" with no detail at all, which is
+    exactly what was reported for POST /upload/worker-post. Catching it here
+    surfaces the *actual* storage error message in the response (so it's
+    finally possible to tell "bucket doesn't exist" apart from "network
+    timeout" apart from anything else) and logs it server-side too.
+    """
+    try:
+        return upload_file(bucket, path, data, content_type)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).exception(
+            "Storage upload failed (bucket=%s, path=%s): %s", bucket, path, e
+        )
+        raise HTTPException(502, f"Upload failed — storage error: {e}")
+
+
 @router.post("/profile-photo", response_model=MediaUploadResponse)
 async def upload_profile_photo(
     file: UploadFile = File(...),
@@ -45,7 +66,7 @@ async def upload_profile_photo(
         raise HTTPException(400, f"Image must be under {max_image_mb}MB")
 
     path = profile_photo_path(str(user.id))
-    url = upload_file(BUCKET_PROFILE, path, data, file.content_type)
+    url = _safe_upload(BUCKET_PROFILE, path, data, file.content_type)
     user.avatar_url = url
     await db.commit()
     return MediaUploadResponse(url=url, path=path, bucket=BUCKET_PROFILE)
@@ -78,12 +99,19 @@ async def upload_worker_post(
         raise HTTPException(404, "Worker profile not found")
 
     path = worker_post_path(str(user.id), file.filename or "upload")
-    url = upload_file(BUCKET_POSTS, path, data, file.content_type)
+    url = _safe_upload(BUCKET_POSTS, path, data, file.content_type)
     media_type = "video" if is_video else "image"
+
+    parsed_service_id = None
+    if service_id:
+        try:
+            parsed_service_id = _uuid.UUID(service_id)
+        except ValueError:
+            raise HTTPException(400, "Invalid service_id")
 
     media = ServiceMedia(
         worker_id=wp.id,
-        service_id=_uuid.UUID(service_id) if service_id else None,
+        service_id=parsed_service_id,
         type=media_type,
         cloudinary_url=url,
         cloudinary_id=path,
@@ -120,7 +148,7 @@ async def upload_document_file(
 
     original = file.filename or "doc"
     path = worker_document_path(str(user.id), doc_type, original)
-    url = upload_file(BUCKET_DOCUMENTS, path, data, file.content_type)
+    url = _safe_upload(BUCKET_DOCUMENTS, path, data, file.content_type)
 
     return MediaUploadResponse(url=url, path=path, bucket=BUCKET_DOCUMENTS)
 
@@ -146,7 +174,7 @@ async def upload_verification_video(
         raise HTTPException(400, f"Video must be under {max_verif_video_mb}MB")
 
     path = verification_video_path(str(user.id), file.filename or "intro.mp4")
-    url = upload_file(BUCKET_VERIFICATION_VIDEO, path, data, file.content_type)
+    url = _safe_upload(BUCKET_VERIFICATION_VIDEO, path, data, file.content_type)
 
     # Register in worker_documents so admin sees it in verification queue
     from models import WorkerDocument
@@ -192,9 +220,14 @@ async def delete_worker_post(
     if not wp:
         raise HTTPException(404)
 
+    try:
+        parsed_media_id = _uuid.UUID(media_id)
+    except ValueError:
+        raise HTTPException(400, "Invalid media_id")
+
     media_result = await db.execute(
         select(ServiceMedia).where(
-            ServiceMedia.id == _uuid.UUID(media_id),
+            ServiceMedia.id == parsed_media_id,
             ServiceMedia.worker_id == wp.id,
         )
     )

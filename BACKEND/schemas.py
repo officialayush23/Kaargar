@@ -759,6 +759,7 @@ class SearchResult(BaseModel):
     category_name: Optional[str] = None
     relevance_score: Optional[float] = None
     distance_km: Optional[float] = None
+    photo_url: Optional[str] = None
 
 class SearchResponseWrapper(BaseModel):
     results: list[SearchResult]

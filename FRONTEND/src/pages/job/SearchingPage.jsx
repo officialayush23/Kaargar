@@ -18,21 +18,18 @@ import { api }                             from '@/lib/api'
 import { supabase }                        from '@/lib/supabase'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { toast }                           from 'sonner'
+import { useAppStore }                     from '@/stores/app'
 
 // ─── Config ──────────────────────────────────────────────────────────────────
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
-const MAP_STYLE    = 'mapbox://styles/mapbox/dark-v11'
+// Map style follows the app's own theme instead of always forcing dark —
+// matches the convention already used in PuneMap.jsx / JobTrackingMap.jsx.
+const MAP_STYLE_DARK  = 'mapbox://styles/mapbox/dark-v11'
+const MAP_STYLE_LIGHT = 'mapbox://styles/mapbox/streets-v12'
 const PUNE_CENTER  = { longitude: 73.8567, latitude: 18.5204 }
 
-// Offsets (degrees) for simulated worker positions around user
-const WORKER_OFFSETS = [
-  { dx: -0.0042, dy:  0.0028 },
-  { dx:  0.0058, dy:  0.0038 },
-  { dx:  0.0065, dy: -0.0025 },
-  { dx:  0.0028, dy: -0.0055 },
-  { dx: -0.0048, dy: -0.0032 },
-  { dx: -0.0015, dy:  0.0065 },
-]
+// How often to refresh the real nearby-worker positions while searching.
+const NEARBY_POLL_MS = 5000
 
 const SEARCH_MESSAGES = [
   'Finding workers near you…',
@@ -80,7 +77,7 @@ function UserPin() {
   )
 }
 
-// ─── Simulated worker marker ──────────────────────────────────────────────────
+// ─── Real worker marker ────────────────────────────────────────────────────────
 function WorkerPin({ delay, highlight }) {
   return (
     <motion.div
@@ -122,7 +119,7 @@ function WorkerPin({ delay, highlight }) {
 }
 
 // ─── Bottom: animated status while searching ──────────────────────────────────
-function SearchingStatus() {
+function SearchingStatus({ nearbyCount }) {
   const [msgIdx, setMsgIdx] = useState(0)
 
   useEffect(() => {
@@ -146,29 +143,37 @@ function SearchingStatus() {
         </motion.p>
       </AnimatePresence>
 
-      <div className="flex items-center gap-2.5">
-        <div className="flex -space-x-1.5">
-          {[0, 1, 2, 3].map(i => (
-            <motion.div
-              key={i}
-              style={{
-                width: 24, height: 24, borderRadius: '50%',
-                background: 'var(--g-bg-mid)',
-                border: '1px solid var(--g-border)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 13,
-              }}
-              animate={{ opacity: [0.4, 1, 0.4] }}
-              transition={{ duration: 2, repeat: Infinity, delay: i * 0.35 }}
-            >
-              🔧
-            </motion.div>
-          ))}
+      {/* Real count, not a fabricated one — if nobody is actually nearby yet,
+          we say so instead of always claiming a fixed number of workers. */}
+      {nearbyCount > 0 ? (
+        <div className="flex items-center gap-2.5">
+          <div className="flex -space-x-1.5">
+            {Array.from({ length: Math.min(nearbyCount, 4) }).map((_, i) => (
+              <motion.div
+                key={i}
+                style={{
+                  width: 24, height: 24, borderRadius: '50%',
+                  background: 'var(--g-bg-mid)',
+                  border: '1px solid var(--g-border)',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: 13,
+                }}
+                animate={{ opacity: [0.4, 1, 0.4] }}
+                transition={{ duration: 2, repeat: Infinity, delay: i * 0.35 }}
+              >
+                🔧
+              </motion.div>
+            ))}
+          </div>
+          <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
+            {nearbyCount} worker{nearbyCount === 1 ? '' : 's'} nearby
+          </span>
         </div>
-        <span className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          {WORKER_OFFSETS.length} workers nearby
-        </span>
-      </div>
+      ) : (
+        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+          Expanding search radius to find you a pro…
+        </p>
+      )}
 
       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
         Usually matched in under 2 min
@@ -289,8 +294,9 @@ export default function SearchingPage() {
 
   const [jobStatus,  setJobStatus]  = useState('searching')
   const [worker,     setWorker]     = useState(null)
-  const [matchedIdx, setMatchedIdx] = useState(null)
   const [cancelling, setCancelling] = useState(false)
+  const [nearbyWorkers, setNearbyWorkers] = useState([])
+  const { theme } = useAppStore()
 
   // User's real geo position (falls back to Pune center)
   const [userCoords, setUserCoords] = useState({
@@ -341,7 +347,6 @@ export default function SearchingPage() {
       }, ({ new: updated }) => {
         setJobStatus(updated.status)
         if (updated.status === 'assigned') {
-          setMatchedIdx(Math.floor(Math.random() * WORKER_OFFSETS.length))
           api.get(`/jobs/${jobId}`).then(({ data }) => {
             if (data.assigned_worker) setWorker(data.assigned_worker)
           }).catch(() => {})
@@ -361,6 +366,28 @@ export default function SearchingPage() {
     return () => { if (channelRef.current) supabase.removeChannel(channelRef.current) }
   }, [jobId, navigate])
 
+  // Poll real nearby-worker positions while still searching. Replaces the
+  // old fixed set of fake marker offsets — an empty response here just
+  // means no eligible worker is currently in range, which we now show
+  // honestly instead of always rendering the same 6 fake wrench icons.
+  useEffect(() => {
+    if (!jobId || jobStatus !== 'searching') return
+    let cancelled = false
+
+    async function poll() {
+      try {
+        const { data } = await api.get(`/jobs/${jobId}/nearby-workers`)
+        if (!cancelled) setNearbyWorkers(data?.workers || [])
+      } catch {
+        // Non-fatal — just leave the last known set (or empty) in place.
+      }
+    }
+
+    poll()
+    const id = setInterval(poll, NEARBY_POLL_MS)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [jobId, jobStatus])
+
   async function handleCancel() {
     setCancelling(true)
     try {
@@ -375,11 +402,8 @@ export default function SearchingPage() {
     }
   }
 
-  // Compute worker geo positions relative to user
-  const workerPositions = WORKER_OFFSETS.map(({ dx, dy }) => ({
-    longitude: userCoords.longitude + dx,
-    latitude:  userCoords.latitude  + dy,
-  }))
+  // Real worker positions from the backend (already privacy-jittered server-side)
+  const workerPositions = nearbyWorkers.map(w => ({ longitude: w.lon, latitude: w.lat }))
 
   const workerFound = jobStatus === 'assigned' && worker
 
@@ -426,7 +450,7 @@ export default function SearchingPage() {
           {...viewState}
           onMove={e => setViewState(e.viewState)}
           mapboxAccessToken={MAPBOX_TOKEN}
-          mapStyle={MAP_STYLE}
+          mapStyle={theme === 'light' ? MAP_STYLE_LIGHT : MAP_STYLE_DARK}
           style={{ width: '100%', height: '100%' }}
           attributionControl={false}
           reuseMaps
@@ -440,7 +464,7 @@ export default function SearchingPage() {
             <UserPin />
           </Marker>
 
-          {/* Simulated worker markers */}
+          {/* Real nearby-worker markers (empty when nobody is actually eligible) */}
           {workerPositions.map((pos, i) => (
             <Marker
               key={i}
@@ -448,7 +472,7 @@ export default function SearchingPage() {
               latitude={pos.latitude}
               anchor="bottom"
             >
-              <WorkerPin delay={0.2 + i * 0.1} highlight={matchedIdx === i} />
+              <WorkerPin delay={0.2 + i * 0.1} />
             </Marker>
           ))}
         </Map>

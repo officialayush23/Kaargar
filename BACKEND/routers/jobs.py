@@ -4,7 +4,7 @@ Jobs router — create, status transitions, lifecycle endpoints.
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, UploadFile, File, Body
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, delete, func as sa_func
+from sqlalchemy import select, delete, func as sa_func, text
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta, date
@@ -260,6 +260,77 @@ async def my_jobs(
     return out
 
 
+@router.get("/frequently-booked")
+async def frequently_booked(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Blinkit-style "frequently booked" — this customer's own (worker_id,
+    service_id) pairs among their completed jobs, repeated >=2 times, most
+    frequent first. Used to power a quick-rebook card on the Discovery home.
+
+    Two queries total, regardless of how many groups come back: one
+    aggregate GROUP BY for the counts, one joined lookup for the display
+    details of just the groups that survived the >=2 filter — no per-group
+    query loop.
+    """
+    from models import Category as CatModel, User as UserModel, WorkerProfile as WP
+
+    group_q = (
+        select(
+            Job.worker_id,
+            Job.service_id,
+            sa_func.count().label("cnt"),
+        )
+        .where(Job.user_id == user.id)
+        .where(Job.status == "completed")
+        .where(Job.worker_id.isnot(None))
+        .where(Job.service_id.isnot(None))
+        .group_by(Job.worker_id, Job.service_id)
+        .having(sa_func.count() >= 2)
+        .order_by(sa_func.count().desc())
+        .limit(10)
+    )
+    group_rows = (await db.execute(group_q)).all()
+    if not group_rows:
+        return []
+
+    worker_ids = list({row.worker_id for row in group_rows})
+    service_ids = list({row.service_id for row in group_rows})
+
+    detail_rows = (await db.execute(
+        select(Service, WP, UserModel, CatModel)
+        .join(WP, WP.id == Service.worker_id)
+        .join(UserModel, UserModel.id == WP.user_id)
+        .join(CatModel, CatModel.id == Service.category_id)
+        .where(Service.id.in_(service_ids))
+        .where(WP.id.in_(worker_ids))
+    )).all()
+    detail_map = {(wp.id, svc.id): (svc, wp, u, cat) for svc, wp, u, cat in detail_rows}
+
+    out = []
+    for row in group_rows:
+        detail = detail_map.get((row.worker_id, row.service_id))
+        if not detail:
+            # Service or worker profile was deleted since — skip rather than error.
+            continue
+        svc, wp, u, cat = detail
+        out.append({
+            "worker_id": str(wp.id),
+            "worker_name": u.full_name,
+            "worker_avatar_url": u.avatar_url,
+            "worker_avg_rating": float(wp.avg_rating) if wp.avg_rating is not None else None,
+            "service_id": str(svc.id),
+            "service_title": svc.title,
+            "price": float(svc.price) if svc.price is not None else None,
+            "category_id": str(cat.id) if cat else None,
+            "category_name": cat.name if cat else None,
+            "booking_count": row.cnt,
+        })
+    return out
+
+
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(
     job_id: uuid.UUID,
@@ -342,9 +413,22 @@ async def get_job_contact(
         if not wp or job.worker_id != wp.id:
             raise HTTPException(403)
 
+    # NOTE: the job state machine (see services/matching.py, routers/jobs.py)
+    # only ever actually sets status to one of: requested, searching,
+    # assigned, confirmed, arrived, started, awaiting_approval, approved,
+    # completed, disputed, cancelled, failed, scheduled. This set previously
+    # listed "worker_assigned"/"en_route"/"pending_approval" — none of which
+    # the app ever sets — while omitting "awaiting_approval"/"approved" (the
+    # bill-review window) AND "confirmed" — which is the actual, real status
+    # a Discovery/scheduled booking sits in from the moment it's created
+    # (worker pinned immediately, see create_scheduled_job/create_multi_day_
+    # booking/book_slot's `initial_status = "confirmed"`) all the way until
+    # the worker arrives. Missing it meant Discovery customers could never
+    # call their pinned worker at all before arrival, despite the worker
+    # being fully assigned and job.worker_id set the whole time.
     contactable_statuses = {
-        "worker_assigned", "assigned", "en_route", "arrived", "started",
-        "pending_approval", "completed",
+        "assigned", "confirmed", "arrived", "started",
+        "awaiting_approval", "approved", "completed",
     }
     if job.status not in contactable_statuses:
         raise HTTPException(400, "Contact number is only available for active jobs")
@@ -398,7 +482,10 @@ async def get_job_worker_location(
         if not wp or job.worker_id != wp.id:
             raise HTTPException(403)
 
-    trackable_statuses = {"worker_assigned", "assigned", "en_route", "arrived", "started"}
+    # Same real-status gap as contactable_statuses above — "confirmed" is the
+    # actual status Discovery/scheduled bookings sit in with a worker already
+    # pinned, so it needs to be trackable too, not just instant's "assigned".
+    trackable_statuses = {"assigned", "confirmed", "arrived", "started"}
     if job.status not in trackable_statuses:
         raise HTTPException(400, "Live tracking is only available while the job is in progress")
     if not job.worker_id:
@@ -418,6 +505,80 @@ async def get_job_worker_location(
         heading=float(loc.heading) if loc.heading is not None else None,
         updated_at=loc.updated_at,
     )
+
+
+@router.get("/{job_id}/nearby-workers")
+async def get_nearby_workers(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Real (privacy-jittered) positions of workers actually eligible for this
+    job's instant dispatch, for the "Finding your pro…" map on SearchingPage.
+    Previously that screen rendered a fixed set of fake marker offsets with a
+    wrench emoji regardless of whether any real worker existed nearby — this
+    replaces that with the same online + approved + is_instant_available +
+    fresh-location + within-radius criteria services/matching.py actually
+    dispatches to, so an empty result here honestly means "no one nearby"
+    instead of always showing 5-6 workers that don't exist.
+
+    Only the customer who owns this job may call this (no need to expose
+    worker positions to anyone else), and only while still searching —
+    there's nothing meaningful to show once a worker is assigned. Positions
+    are jittered by a small random offset (~50-150m) and only lat/lon are
+    returned — no worker id, name, or any other identifying field — since
+    this is a coarse "workers are out there" visualization, not a precise
+    per-worker tracker (that's /worker-location, once assigned).
+    """
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404)
+    if job.user_id != user.id:
+        raise HTTPException(403)
+
+    radius_km = int(await get_config(db, "dispatch_radius_max_km", 5))
+
+    rows = await db.execute(text("""
+        SELECT wl.lat, wl.lon
+        FROM worker_profiles wp
+        JOIN worker_locations wl ON wl.worker_id = wp.id
+        WHERE
+            wp.status = 'online'
+            AND wp.verification_status = 'approved'
+            AND wp.is_instant_available = true
+            AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
+            AND wl.updated_at > NOW() - INTERVAL '2 minutes'
+            AND NOT EXISTS (
+                SELECT 1 FROM worker_time_off wto
+                WHERE wto.worker_id = wp.id
+                  AND NOW() BETWEEN wto.start_datetime AND wto.end_datetime
+            )
+            AND ST_DWithin(
+                wl.geom::geography,
+                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                :radius_m
+            )
+        LIMIT 10
+    """), {
+        "lat": float(job.location_lat),
+        "lon": float(job.location_lon),
+        "radius_m": radius_km * 1000,
+    })
+
+    workers = []
+    for lat, lon in rows.fetchall():
+        # ~0.0005-0.0014 deg jitter ≈ 50-150m at Pune's latitude — enough to
+        # obscure a worker's exact position while still looking "nearby" on
+        # a city-scale map.
+        jitter_lat = (secrets.randbelow(1000) - 500) / 1_000_000
+        jitter_lon = (secrets.randbelow(1000) - 500) / 1_000_000
+        workers.append({
+            "lat": float(lat) + jitter_lat,
+            "lon": float(lon) + jitter_lon,
+        })
+    return {"workers": workers}
 
 
 @router.post("/{job_id}/cancel", response_model=SuccessResponse)

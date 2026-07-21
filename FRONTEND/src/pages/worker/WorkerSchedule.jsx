@@ -1,7 +1,7 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Calendar, MapPin, Clock, Zap, ChevronRight, Loader2, CalendarClock } from 'lucide-react'
+import { MapPin, Clock, Zap, ChevronRight, Loader2, CalendarClock } from 'lucide-react'
 import { useWorkerSchedule } from '@/hooks/useWorker'
 import { formatCurrency } from '@/lib/utils'
 
@@ -12,7 +12,12 @@ const STATUS_LABEL = {
 }
 
 function jobDateKey(job) {
-  const d = job.scheduled_at || job.created_at
+  // Multi-day bundle days (see create_multi_day_booking) never set
+  // scheduled_at at all — each day's real date only lives in
+  // preferred_days[0]. Falling back to scheduled_at/created_at for those
+  // meant every expanded day of a 39-day booking collapsed onto the single
+  // date the booking was CREATED on, instead of each day's own date.
+  const d = job.preferred_days?.[0] || job.scheduled_at || job.created_at
   return d ? d.slice(0, 10) : 'unscheduled'
 }
 
@@ -58,8 +63,10 @@ function StripDay({ dateStr, count, active, onClick }) {
       </span>
       {isToday && <span className="text-[9px] font-semibold" style={{ color: 'var(--brand)' }}>Today</span>}
       {count > 0 && (
-        <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold"
-          style={{ background: 'var(--instant)', color: '#04120a' }}>
+        <div
+          className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold"
+          style={{ background: 'var(--accent)', color: 'var(--accent-on, #000)', zIndex: 20 }}
+        >
           {count}
         </div>
       )}
@@ -115,6 +122,16 @@ export default function WorkerSchedule() {
   const navigate = useNavigate()
   const { data: jobs, isLoading } = useWorkerSchedule()
   const [selectedDay, setSelectedDay] = useState(null)
+  // Days the worker has already opened this session — the little count
+  // badge on the strip is a "new/unseen" indicator, so once a day has been
+  // clicked/viewed it should stop showing the badge instead of nagging
+  // forever.
+  const [viewedDays, setViewedDays] = useState(() => new Set())
+
+  function selectDay(d) {
+    setSelectedDay(d)
+    setViewedDays(prev => (prev.has(d) ? prev : new Set(prev).add(d)))
+  }
 
   const strip = useMemo(() => {
     const days = []
@@ -143,16 +160,21 @@ export default function WorkerSchedule() {
   const dayJobs = grouped[activeDay] || []
   const unscheduled = grouped['unscheduled'] || []
 
+  // Whatever day is actually showing (even the default selection, before
+  // any explicit tap) counts as "viewed" — its badge shouldn't linger once
+  // its jobs are already visible on screen.
+  useEffect(() => {
+    if (!activeDay) return
+    setViewedDays(prev => (prev.has(activeDay) ? prev : new Set(prev).add(activeDay)))
+  }, [activeDay])
+
   function openJob(job) {
     navigate(`/worker/job/${job.id}/active`)
   }
 
   return (
     <div className="px-4 pt-5 pb-24 space-y-5">
-      <div className="flex items-center gap-2">
-        <Calendar size={20} style={{ color: 'var(--brand)' }} />
-        <h2 className="font-syne font-bold text-xl" style={{ color: 'var(--text-primary)' }}>Schedule</h2>
-      </div>
+      <h2 className="font-syne font-bold text-xl" style={{ color: 'var(--text-primary)' }}>Schedule</h2>
 
       {isLoading ? (
         <div className="flex items-center justify-center py-16">
@@ -166,9 +188,9 @@ export default function WorkerSchedule() {
               <StripDay
                 key={d}
                 dateStr={d}
-                count={(grouped[d] || []).length}
+                count={viewedDays.has(d) ? 0 : (grouped[d] || []).length}
                 active={d === activeDay}
-                onClick={() => setSelectedDay(d)}
+                onClick={() => selectDay(d)}
               />
             ))}
           </div>

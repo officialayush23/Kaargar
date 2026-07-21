@@ -136,6 +136,17 @@ async def update_status(
     if wp.verification_status != "approved":
         raise HTTPException(403, "Your account must be approved by admin before you can go online")
     wp.status = body.status
+    # The Dashboard's online/offline toggle is the ONLY switch a worker sees,
+    # and its own copy says "You will receive new job requests" — so it must
+    # actually make them eligible for instant dispatch. Previously this only
+    # flipped `status`, while the dispatch query in services/matching.py
+    # additionally requires `is_instant_available = true`, a separate column
+    # that nothing here ever set. That silently meant NO worker who went
+    # "online" via this toggle was ever dispatchable, since the only other
+    # place is_instant_available could be set was a rarely-visited manual
+    # toggle buried in Profile settings. Auto-sync it with online/offline so
+    # there's one clear source of truth: online == instant-dispatchable.
+    wp.is_instant_available = (body.status == "online")
     await db.commit()
     return SuccessResponse(message=f"Status set to {body.status}")
 
@@ -321,6 +332,12 @@ async def get_my_media(
             "is_featured": m.is_featured,
             "view_count": m.view_count,
             "sort_order": m.sort_order,
+            # Was missing entirely — without it, the frontend has no way to
+            # tell which photos belong to which of the worker's services,
+            # so a per-service photo (uploaded via WorkerPostUpload's
+            # optional serviceId) couldn't be filtered/displayed anywhere
+            # except the general portfolio grid.
+            "service_id": str(m.service_id) if m.service_id else None,
             "created_at": m.created_at.isoformat(),
         }
         for m in media_result.scalars().all()
@@ -1343,6 +1360,12 @@ async def get_worker_media(worker_id: uuid.UUID, db: AsyncSession = Depends(get_
             "is_featured": m.is_featured,
             "view_count": m.view_count,
             "sort_order": m.sort_order,
+            # Was missing entirely — without it, the frontend has no way to
+            # tell which photos belong to which of the worker's services,
+            # so a per-service photo (uploaded via WorkerPostUpload's
+            # optional serviceId) couldn't be filtered/displayed anywhere
+            # except the general portfolio grid.
+            "service_id": str(m.service_id) if m.service_id else None,
             "created_at": m.created_at.isoformat(),
         }
         for m in result.scalars().all()

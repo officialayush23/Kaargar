@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Outlet, useNavigate } from 'react-router-dom'
+import { Outlet, useNavigate, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LogOut, Moon, Sun, Bell, ChevronRight, X,
@@ -13,6 +13,8 @@ import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import { useNotifications } from '@/hooks/useNotifications'
+import { useWorkerStatus } from '@/hooks/useWorker'
+import { useLocationPublisher } from '@/hooks/useLocationPublisher'
 import { supabase } from '@/lib/supabase'
 import { setWorkerLanguage } from '@/i18n/index.js'
 
@@ -353,8 +355,42 @@ function WorkerPageHeader() {
   )
 }
 
+// Full-screen experiences that manage their own header/scroll/footer and
+// must not be squeezed by WorkerPageHeader, the px-4 wrapper, or the
+// floating bottom nav sitting on top of them — chat in particular already
+// builds itself as an h-screen flex column with its own pinned composer,
+// so wrapping it in this layout's chrome was pushing that composer out
+// from under the (always-visible-here, unlike AppLayout) bottom nav.
+const HIDE_CHROME_PATTERNS = [/^\/worker\/chat\/\w/]
+
 /* ── Layout ──────────────────────────────────────────────────────── */
 export function WorkerLayout() {
+  const { pathname } = useLocation()
+  const hideChrome = HIDE_CHROME_PATTERNS.some(re => re.test(pathname))
+
+  // GPS publishing lives here (mounted for every worker route this layout
+  // wraps, chat included) rather than inside WorkerDashboard specifically.
+  // It used to be scoped to the Dashboard page only, which meant the
+  // browser's geolocation watch — and therefore worker_locations.updated_at
+  // — stopped the moment a worker navigated to Services/Schedule/Profile/
+  // etc., even while still toggled "online" on the Dashboard. Instant
+  // dispatch and the customer's nearby-workers map both require a location
+  // ping within the last 2 minutes (see services/matching.py), so a worker
+  // sitting on any other tab for >2 min would silently vanish from both —
+  // exactly the "no worker found / no worker on map" symptom despite the
+  // worker's own toggle still showing online.
+  const { data: workerStatus } = useWorkerStatus()
+  useLocationPublisher(workerStatus?.status === 'online')
+
+  if (hideChrome) {
+    return (
+      <div className="min-h-screen" style={{ background: 'var(--page-bg)' }}>
+        <Background />
+        <Outlet />
+      </div>
+    )
+  }
+
   return (
     <div className="min-h-screen" style={{ background: 'var(--page-bg)' }}>
       <Background />

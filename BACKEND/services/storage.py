@@ -1,6 +1,6 @@
 """
 Supabase Storage helper.
-Buckets: profile_photos, worker_posts, documents, verification_video_worker
+Buckets: profile_photos, worker_post, documents, verification_video_worker
 """
 
 from supabase import create_client
@@ -11,7 +11,7 @@ settings = get_settings()
 supabase = create_client(settings.supabase_url, settings.supabase_service_role_key)
 
 BUCKET_PROFILE = "profile_photos"
-BUCKET_POSTS = "worker_posts"
+BUCKET_POSTS = "worker_post"
 BUCKET_DOCUMENTS = "documents"
 BUCKET_VERIFICATION_VIDEO = "verification_video_worker"
 BUCKET_JOB_BEFORE_AFTER = "job_before_after"

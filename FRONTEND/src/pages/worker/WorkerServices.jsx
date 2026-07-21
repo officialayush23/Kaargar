@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Edit3, Loader2, Check, MapPin, Store, Tag, X, Package, ChevronRight, CalendarClock, CalendarRange } from 'lucide-react'
+import { Plus, Trash2, Edit3, Loader2, Check, MapPin, Store, Tag, X, ChevronRight, CalendarClock, CalendarRange, Image as ImageIcon } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { toast } from 'sonner'
+import { WorkerPostUpload } from '@/components/kaargar/MediaUpload'
 
 const MODE_OPTIONS = [
   { value: 'walkin', label: 'Walk-in', icon: Store, tip: 'Customer comes to you' },
@@ -214,6 +215,76 @@ function TagInput({ selectedTags, onChange }) {
       <p className="text-[12px] mt-1" style={{ color: 'var(--text-muted)' }}>
         Press Enter or comma to add · Backspace to remove
       </p>
+    </div>
+  )
+}
+
+// ── Service photos ──────────────────────────────────────────────────────────
+// Only usable once a service already exists (has an id to attach media to).
+// Shares the '/workers/me/media' endpoint + query key ('my-portfolio') with
+// WorkerMedia.jsx's general portfolio grid, so uploading/deleting a photo
+// here also keeps that page's cache correct without a manual refresh.
+function ServicePhotosSection({ serviceId }) {
+  const queryClient = useQueryClient()
+
+  const { data: media = [], isLoading } = useQuery({
+    queryKey: ['my-portfolio'],
+    queryFn: () => api.get('/workers/me/media').then(r => r.data).catch(() => []),
+  })
+
+  const servicePhotos = media.filter(m => m.service_id === serviceId)
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => api.delete(`/upload/worker-post/${id}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['my-portfolio'])
+      toast.success('Photo removed')
+    },
+    onError: () => toast.error('Failed to delete'),
+  })
+
+  const handleUploadSuccess = () => {
+    queryClient.invalidateQueries(['my-portfolio'])
+    toast.success('Photo added')
+  }
+
+  return (
+    <div>
+      <SectionLabel>Photos</SectionLabel>
+      {isLoading ? (
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {[...Array(3)].map((_, i) => <Skeleton key={i} className="aspect-square rounded-xl" />)}
+        </div>
+      ) : servicePhotos.length > 0 ? (
+        <div className="grid grid-cols-3 gap-2 mb-3">
+          {servicePhotos.map(item => (
+            <div key={item.id} className="relative aspect-square rounded-xl overflow-hidden group">
+              {item.type === 'video' ? (
+                <div className="w-full h-full flex items-center justify-center" style={{ background: 'var(--g-bg)' }}>
+                  <ImageIcon size={20} style={{ color: 'var(--text-muted)' }} />
+                </div>
+              ) : (
+                <img src={item.cloudinary_url || item.url} alt={item.caption || ''} className="w-full h-full object-cover" />
+              )}
+              <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all flex items-center justify-center opacity-0 group-hover:opacity-100">
+                <button
+                  type="button"
+                  onClick={() => deleteMut.mutate(item.id)}
+                  disabled={deleteMut.isPending}
+                  className="w-7 h-7 rounded-full bg-red-500/70 backdrop-blur-sm flex items-center justify-center"
+                >
+                  {deleteMut.isPending && deleteMut.variables === item.id
+                    ? <Loader2 size={11} className="animate-spin text-white" />
+                    : <X size={12} className="text-white" />}
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs mb-3" style={{ color: 'var(--text-muted)' }}>No photos for this service yet.</p>
+      )}
+      <WorkerPostUpload serviceId={serviceId} onSuccess={handleUploadSuccess} />
     </div>
   )
 }
@@ -430,6 +501,18 @@ function ServiceForm({ initial, onSave, onCancel, minPrice }) {
           )}
         </AnimatePresence>
 
+        {/* Photos — only meaningful once the service actually has an id */}
+        {initial?.id ? (
+          <ServicePhotosSection serviceId={initial.id} />
+        ) : (
+          <div>
+            <SectionLabel>Photos</SectionLabel>
+            <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+              Save this service first, then come back to add photos.
+            </p>
+          </div>
+        )}
+
         {/* Tags */}
         <div>
           <SectionLabel>Tags</SectionLabel>
@@ -630,9 +713,6 @@ export default function WorkerServices() {
           className="flex items-center gap-3 rounded-xl m-1 p-3.5 cursor-pointer transition-colors"
           style={{ background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)' }}
         >
-          <div className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: 'var(--accent-bg-md)' }}>
-            <Package size={16} style={{ color: 'var(--accent)' }} />
-          </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>Create a package</p>
             <p className="text-[12px]" style={{ color: 'var(--text-secondary)' }}>Bundle your services together at a combined price</p>

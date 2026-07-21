@@ -30,10 +30,37 @@ def sanitize(text: str) -> str:
 async def _get_chat_for_user(job_id: uuid.UUID, user: User, db: AsyncSession) -> Chat:
     result = await db.execute(select(Chat).where(Chat.job_id == job_id))
     chat = result.scalar_one_or_none()
-    if not chat:
-        raise HTTPException(404, "Chat not found")
     wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
     wp = wp_result.scalar_one_or_none()
+
+    if not chat:
+        # Chat rows used to only be created by the instant-dispatch flow
+        # (services/matching._assign_job), so any Discovery/scheduled/
+        # multi-day booking — which pins a worker at creation time instead
+        # of going through that flow — never got a chat at all, and the
+        # customer or worker would hit a 404 on every chat call. Lazily
+        # create it here (same pattern services/notifications.post_system_
+        # message already uses) the first time either legitimate
+        # participant opens the chat, as long as a worker is actually
+        # attached to the job — this covers every booking path uniformly
+        # without needing a Chat-creation call in each one individually.
+        job_result = await db.execute(select(Job).where(Job.id == job_id))
+        job = job_result.scalar_one_or_none()
+        if not job:
+            raise HTTPException(404, "Job not found")
+        if not job.worker_id:
+            raise HTTPException(404, "Chat not available until a worker is assigned")
+
+        is_participant = (job.user_id == user.id) or (wp and job.worker_id == wp.id)
+        if not is_participant:
+            raise HTTPException(403)
+
+        chat = Chat(job_id=job.id, user_id=job.user_id, worker_id=job.worker_id)
+        db.add(chat)
+        await db.commit()
+        await db.refresh(chat)
+        return chat
+
     is_participant = (chat.user_id == user.id) or (wp and chat.worker_id == wp.id)
     if not is_participant:
         raise HTTPException(403)

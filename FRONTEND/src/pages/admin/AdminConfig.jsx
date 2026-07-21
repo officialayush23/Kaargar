@@ -18,7 +18,7 @@
 import { useMemo, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  Settings, Edit2, Check, X, Percent, Wallet,
+  Edit2, Check, X, Percent, Wallet,
   Zap, Search, AlertTriangle, ChevronDown, ChevronUp,
   Plus, Trash2, CalendarClock, KeyRound, ImageIcon, Archive,
 } from 'lucide-react'
@@ -243,7 +243,6 @@ function ConfigRow({ item, isEditing, editValue, setEditValue, onStartEdit, onSa
 // ── Group accordion ───────────────────────────────────────────────────
 function ConfigGroup({ group, items, defaultOpen = true, ...rowProps }) {
   const [open, setOpen] = useState(defaultOpen)
-  const Icon = group.icon
   const groupItems = items.filter(c => group.keys.includes(c.key))
   if (groupItems.length === 0) return null
   const setCount = groupItems.filter(c => c.isSet).length
@@ -256,9 +255,6 @@ function ConfigGroup({ group, items, defaultOpen = true, ...rowProps }) {
         style={{ background: 'var(--card-bg)', border: 'none', cursor: 'pointer', borderBottom: open ? '1px solid var(--card-border)' : 'none' }}
       >
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl flex items-center justify-center" style={{ background: 'var(--card-bg)' }}>
-            <Icon size={15} style={{ color: 'var(--text-secondary)' }} />
-          </div>
           <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>{group.label}</span>
           <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--card-bg)', color: 'var(--text-muted)' }}>
             {setCount}/{groupItems.length} set
@@ -406,7 +402,6 @@ export default function AdminConfig() {
           {customRows.length > 0 && (
             <div className="rounded-2xl overflow-hidden" style={{ border: '1px solid var(--card-border)', background: 'var(--card-bg)' }}>
               <div className="flex items-center gap-3 px-5 py-4" style={{ borderBottom: '1px solid var(--card-border)', background: 'var(--card-bg)' }}>
-                <Settings size={15} style={{ color: 'var(--text-secondary)' }} />
                 <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Custom</span>
                 <span className="text-[10px] font-medium px-2 py-0.5 rounded-full" style={{ background: 'var(--card-bg)', color: 'var(--text-muted)' }}>
                   {customRows.length}

@@ -19,8 +19,8 @@
  *                 mid-way failure left a partial, inconsistent booking.
  */
 
-import { useState, useMemo } from 'react'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate, useParams, useLocation } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   ChevronLeft, ChevronRight, Calendar, Clock, MapPin, Package,
@@ -416,6 +416,12 @@ function SlotCalendar({ workerId, serviceId, selectedSlot, onSelect }) {
 export default function BookDiscoveryPage() {
   const { workerId } = useParams()
   const navigate     = useNavigate()
+  const location     = useLocation()
+  // "Book again" (Discovery home's "Frequently booked" card) navigates here
+  // with { state: { preselectServiceId } } — once this worker's services
+  // load, auto-select the matching one so the customer lands straight on a
+  // pre-filled booking instead of an empty service picker.
+  const preselectServiceId = location.state?.preselectServiceId
 
   // Step management
   const [stepIdx, setStepIdx] = useState(0)
@@ -484,6 +490,19 @@ export default function BookDiscoveryPage() {
     },
     enabled: !!workerId,
   })
+
+  useEffect(() => {
+    if (!preselectServiceId || selectedService || services.length === 0) return
+    const match = services.find(s => s.id === preselectServiceId)
+    if (match) {
+      setSelectedService(match)
+      setSelectedPackage(null)
+      setSelectedSlot(null)
+      setMultiDayStart(addDays(todayStr(), 1))
+      setMultiDayCount(1)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [services, preselectServiceId])
 
   // Window validation
   const windowValid = (() => {

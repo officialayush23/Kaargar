@@ -1,6 +1,5 @@
 import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { TrendingUp, Star, Briefcase, Clock, Loader2 } from 'lucide-react'
 import { useWorkerAnalytics } from '@/hooks/useWorker'
 import { formatCurrency } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
@@ -12,22 +11,13 @@ const PERIODS = [
   { value: 'all', label: 'All time' },
 ]
 
-function StatBlock({ icon: Icon, label, value, sub, accent = 'brand' }) {
-  const accents = {
-    brand: 'text-brand bg-brand/10',
-    instant: 'text-instant bg-instant/10',
-    discovery: 'text-discovery bg-discovery/10',
-    muted: 'text-[--text-muted] bg-[--card-bg]',
-  }
+function StatBlock({ label, value, sub }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 8 }}
       animate={{ opacity: 1, y: 0 }}
       className="glass-light rounded-2xl p-4"
     >
-      <div className={`w-9 h-9 rounded-xl flex items-center justify-center mb-3 ${accents[accent]}`}>
-        <Icon size={17} />
-      </div>
       <p className="text-2xl font-mono font-bold text-[--text-primary]">{value}</p>
       <p className="text-xs text-[--text-muted] mt-0.5">{label}</p>
       {sub && <p className="text-xs text-[--text-secondary] mt-1">{sub}</p>}
@@ -95,7 +85,6 @@ export default function WorkerAnalytics() {
           {/* Stats grid */}
           <div className="grid grid-cols-2 gap-3">
             <StatBlock
-              icon={TrendingUp}
               label="Earnings"
               value={formatCurrency(
                 period === 'today' ? analytics?.today_earnings :
@@ -104,17 +93,13 @@ export default function WorkerAnalytics() {
                 analytics?.total_earnings || 0
               )}
               sub={`${period === 'today' ? analytics?.today_jobs : period === 'week' ? analytics?.week_jobs : period === 'month' ? analytics?.month_jobs : analytics?.total_jobs || 0} jobs`}
-              accent="instant"
             />
             <StatBlock
-              icon={Star}
               label="Avg rating"
               value={Number(analytics?.avg_rating || 0).toFixed(1)}
               sub={`${analytics?.total_reviews || 0} reviews`}
-              accent="discovery"
             />
             <StatBlock
-              icon={Briefcase}
               label="Acceptance"
               value={
                 analytics?.jobs_offered > 0
@@ -122,14 +107,11 @@ export default function WorkerAnalytics() {
                   : '—'
               }
               sub={analytics?.jobs_offered > 0 ? 'of offers accepted' : 'No offers yet'}
-              accent="brand"
             />
             <StatBlock
-              icon={Clock}
               label="Completion"
               value={`${Math.round(Number(analytics?.completion_rate || 0) * 100)}%`}
               sub="jobs completed"
-              accent="brand"
             />
           </div>
 

@@ -1,17 +1,16 @@
 
 
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Search, MapPin, ChevronDown, Bell, Sun, Moon, X } from 'lucide-react'
+import { MapPin, ChevronDown, Bell, Sun, Moon, X } from 'lucide-react'
 import { useAppStore } from '@/stores/app'
 import { useAuthStore } from '@/stores/auth'
 import { CategoryGrid } from '@/components/kaargar/CategoryGrid'
-import { WorkerCard } from '@/components/kaargar/WorkerCard'
+import { ModeToggle } from '@/components/kaargar/ModeToggle'
 import { Skeleton } from '@/components/ui/skeleton'
 import { useCategories } from '@/hooks/useCategories'
 import { useNotifications } from '@/hooks/useNotifications'
-import { useQuery } from '@tanstack/react-query'
-import { api } from '@/lib/api'
 import { useState } from 'react'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { NotificationDrawer } from '@/components/kaargar/NotificationDrawer'
@@ -174,53 +173,6 @@ function ProfileMenu({ open, onClose, user, unreadCount }) {
   )
 }
 
-/* ── Inline Mode Toggle (liquid glass pill) ── */
-function InlineModeToggle() {
-  const { mode, setMode } = useAppStore()
-  const modes = [
-    { id: 'instant',   label: 'Instant',  emoji: '⚡', activeBg: 'var(--accent)', activeBorder: 'var(--accent)', activeText: '#000' },
-    { id: 'discovery', label: 'Discover', emoji: '🧭', activeBg: 'var(--accent-dim)', activeBorder: 'var(--accent-dim)', activeText: 'var(--accent-soft)' },
-  ]
-
-  return (
-    <div
-      style={{
-        display: 'inline-flex',
-        padding: '3px',
-        gap: '3px',
-        borderRadius: '9999px',
-        background: 'var(--card)',
-        border: '1px solid var(--card-border)',
-      }}
-    >
-      {modes.map(({ id, label, emoji, activeBg, activeBorder, activeText }) => {
-        const active = mode === id
-        return (
-          <button
-            key={id}
-            onClick={() => setMode(id)}
-            className="relative flex items-center gap-2 px-5 py-2 transition-all duration-200 select-none"
-            style={{
-              borderRadius: '9999px',
-              WebkitTapHighlightColor: 'transparent',
-              background: active ? activeBg : 'transparent',
-              border: active ? `1px solid ${activeBorder}` : '1px solid transparent',
-            }}
-          >
-            <span className="text-sm leading-none">{emoji}</span>
-            <span
-              className="text-sm font-semibold font-clean"
-              style={{ color: active ? activeText : 'var(--text-muted)' }}
-            >
-              {label}
-            </span>
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
 /* ── Instant content ── */
 function InstantContent({ onCategorySelect }) {
   const { data: categories = [], isLoading } = useCategories('instant')
@@ -256,94 +208,27 @@ function InstantContent({ onCategorySelect }) {
   )
 }
 
-/* ── Discovery content ── */
-function DiscoveryContent() {
-  const navigate = useNavigate()
-  const { data: categories = [], isLoading: catLoading } = useCategories('discovery')
-  const { data: recommendations = [], isLoading } = useQuery({
-    queryKey: ['recommendations'],
-    queryFn: () => api.get('/search/recommendations').then(r => r.data).catch(() => []),
-    staleTime: 5 * 60_000,
-  })
-
-  return (
-    <motion.div
-      key="discovery"
-      initial={{ opacity: 0, x: 16 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -16 }}
-      transition={{ type: 'spring', stiffness: 300, damping: 28 }}
-      className="space-y-5"
-    >
-      {/* Category grid — this used to be missing entirely from Home's
-          Discovery tab (only "Recommended for you" showed), so browsing
-          by profession was only reachable via the separate /discover
-          page. Truncated preview here (showAll left false) with the
-          "All services" card handling the overflow into the full list. */}
-      <div>
-        <p
-          className="text-xs uppercase tracking-widest mb-3 font-bold"
-          style={{ color: 'var(--text-muted)' }}
-        >Pick a service</p>
-        <CategoryGrid
-          categories={categories}
-          isLoading={catLoading}
-          mode="discovery"
-          onSelect={cat => navigate('/job/new', { state: { category: cat, mode: 'discovery' } })}
-        />
-      </div>
-
-      <div>
-        <p
-          className="text-xs uppercase tracking-widest mb-3 font-bold"
-          style={{ color: 'var(--text-muted)' }}
-        >Recommended for you</p>
-        <div className="space-y-3">
-          {isLoading ? (
-            Array.from({ length: 3 }).map((_, i) => (
-              <Skeleton key={i} className="h-20 rounded-2xl" style={{ background: 'var(--g-bg)' }} />
-            ))
-          ) : recommendations.length > 0 ? (
-            recommendations.map((worker, i) => (
-              <motion.div
-                key={worker.id}
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.07 }}
-              >
-                <WorkerCard worker={worker} />
-              </motion.div>
-            ))
-          ) : (
-            <button
-              onClick={() => navigate('/discover')}
-              className="w-full py-10 rounded-2xl text-sm transition-colors"
-              style={{
-                border: '1px solid var(--g-border)',
-                background: 'var(--g-bg)',
-                color: 'var(--text-muted)',
-              }}
-            >
-              Browse all professionals →
-            </button>
-          )}
-        </div>
-      </div>
-    </motion.div>
-  )
-}
-
 /* ══════════════════════════════════════════════
    MAIN HOMEPAGE
 ═══════════════════════════════════════════════ */
 export default function HomePage() {
   const navigate = useNavigate()
-  const { mode, theme, toggleTheme } = useAppStore()
+  const { mode, setMode, theme, toggleTheme } = useAppStore()
+
+  // Home is always the Instant page now — Discovery moved to its own route
+  // (/discover) with its own copy of the same ModeToggle, rather than
+  // rendering a second "mode" of content in place on this page. This just
+  // keeps the global `mode` store (which ModeToggle reads to decide which
+  // pill is highlighted) in sync if it was left on 'discovery' from a
+  // previous page/session — e.g. a hard refresh while still on '/'.
+  useEffect(() => {
+    if (mode !== 'instant') setMode('instant')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   const { user } = useAuthStore()
   const { unreadCount } = useNotifications()
   const [menuOpen, setMenuOpen] = useState(false)
   const [notifOpen, setNotifOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
 
   const initials = user?.full_name
     ? user.full_name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
@@ -351,15 +236,6 @@ export default function HomePage() {
 
   function handleCategorySelect(category) {
     navigate('/job/new', { state: { category } })
-  }
-
-  function handleSearch() {
-    if (!searchQuery.trim()) return
-    if (mode === 'instant') {
-      navigate('/job/new', { state: { query: searchQuery } })
-    } else {
-      navigate(`/discover?q=${encodeURIComponent(searchQuery)}`)
-    }
   }
 
   return (
@@ -480,67 +356,25 @@ export default function HomePage() {
           </div>
         </motion.div>
 
-        {/* Search bar — Discovery mode only; Instant jumps straight to categories */}
-        {mode !== 'instant' && (
-          <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="relative"
-          >
-            <div
-              className="flex items-center gap-3 px-4 py-3.5"
-              style={{
-                borderRadius: '16px',
-                background: 'var(--g-bg-mid)',
-                backdropFilter: 'blur(24px) saturate(180%)',
-                WebkitBackdropFilter: 'blur(24px) saturate(180%)',
-                border: '1px solid var(--g-border)',
-                boxShadow: '0 4px 20px rgba(0,0,0,0.15), inset 0 1px 0 var(--g-shine)',
-              }}
-            >
-              <Search style={{ width: '18px', height: '18px', color: 'var(--text-muted)', flexShrink: 0 }} />
-              <input
-                type="text"
-                placeholder="Search plumbers, electricians…"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleSearch()}
-                className="flex-1 bg-transparent outline-none text-sm"
-                style={{ color: 'var(--text-primary)' }}
-              />
-              {searchQuery && (
-                <button
-                  onClick={handleSearch}
-                  className="px-3 py-1 rounded-xl text-xs font-semibold"
-                  style={{ background: 'var(--accent)', color: '#000' }}
-                >
-                  Go
-                </button>
-              )}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Mode Toggle — inline, just below search */}
+        {/* Mode Toggle — inline, below the logo. Instant jumps straight to
+            categories (no search bar needed here — that lives on
+            /discover now). Picking "Discover"
+            here navigates to /discover (see ModeToggle) instead of
+            swapping content in place. */}
         <motion.div
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.15 }}
         >
-          <InlineModeToggle />
+          <ModeToggle />
         </motion.div>
       </div>
 
       {/* ═══════════════════════════════════════
-          MODE CONTENT
+          INSTANT CONTENT
       ═══════════════════════════════════════ */}
       <AnimatePresence mode="wait">
-        {mode === 'instant' ? (
-          <InstantContent key="instant" onCategorySelect={handleCategorySelect} />
-        ) : (
-          <DiscoveryContent key="discovery" />
-        )}
+        <InstantContent key="instant" onCategorySelect={handleCategorySelect} />
       </AnimatePresence>
 
       {/* Spacer for bottom nav */}

@@ -617,6 +617,21 @@ export default function ActiveJobPage() {
   const otherPartyAvatar = isWorkerViewer ? job?.client_avatar_url : job?.worker_avatar_url
   const chatPath = isWorkerViewer ? `/worker/chat/${jobId}` : `/chat/${jobId}`
 
+  // Customer-side only: pull in the assigned worker's public rating/portfolio
+  // so the job detail page actually shows who's coming and what they've done,
+  // instead of just a name + "Verified worker" label. Full profile is still
+  // one tap away (existing onClick → /worker/:id); this is just enough to
+  // build trust right here without leaving the job page.
+  const [workerInfo, setWorkerInfo] = useState(null)
+  const [workerMedia, setWorkerMedia] = useState([])
+  useEffect(() => {
+    if (isWorkerViewer || !job?.worker_id) { setWorkerInfo(null); setWorkerMedia([]); return }
+    let cancelled = false
+    api.get(`/workers/${job.worker_id}`).then(({ data }) => { if (!cancelled) setWorkerInfo(data) }).catch(() => {})
+    api.get(`/workers/${job.worker_id}/media`).then(({ data }) => { if (!cancelled) setWorkerMedia((data || []).slice(0, 4)) }).catch(() => {})
+    return () => { cancelled = true }
+  }, [isWorkerViewer, job?.worker_id])
+
   const cfg = STATUS_CONFIG[job?.status] || STATUS_CONFIG.assigned
   const finalAmount = job?.approved_total ?? job?.final_price
   const isCompleted = job?.status === 'completed'
@@ -744,10 +759,6 @@ export default function ActiveJobPage() {
         <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
           <GlassCard className={cn('p-4', isCompleted && 'border-emerald-500/25 bg-emerald-500/5')}>
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: 'var(--g-bg)' }}>
-                <cfg.icon className={cn('h-5 w-5', cfg.color)} />
-              </div>
               <div className="flex-1">
                 <p className={cn('font-semibold text-sm', cfg.color)}>{cfg.label}</p>
                 <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
@@ -805,9 +816,6 @@ export default function ActiveJobPage() {
       {canReportNoShow && (
         <GlassCard className="p-4" style={{ borderColor: 'rgba(245,158,11,0.25)', background: 'rgba(245,158,11,0.05)' }}>
           <div className="flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'rgba(245,158,11,0.15)' }}>
-              <AlertTriangle className="h-4 w-4" style={{ color: '#f59e0b' }} />
-            </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold" style={{ color: '#f59e0b' }}>Worker hasn't arrived</p>
               <p className="text-xs mt-0.5" style={{ color: 'var(--text-secondary)' }}>
@@ -869,9 +877,6 @@ export default function ActiveJobPage() {
       {!isWorkerViewer && job && ['awaiting_approval', 'approved'].includes(job.status) && (
         <GlassCard hover onClick={() => navigate(`/job/${jobId}/approve`)} className="p-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--accent-bg)' }}>
-              <FileText className="h-5 w-5" style={{ color: 'var(--accent)' }} />
-            </div>
             <div className="flex-1">
               <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>
                 {job.status === 'awaiting_approval' ? 'Bill ready for your review' : 'Approved — view completion code'}
@@ -935,6 +940,62 @@ export default function ActiveJobPage() {
               </motion.button>
             </div>
           </div>
+
+          {/* Rating + experience + portfolio strip — customer side only.
+              Previously this card was just a name and avatar with no way to
+              tell who's actually coming or what they've done, short of
+              tapping through to the full profile. */}
+          {!isWorkerViewer && workerInfo && (
+            <div className="mt-4 pt-4 space-y-3" style={{ borderTop: '1px solid var(--g-border)' }}>
+              <div className="flex items-center gap-4 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+                  <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                    {Number(workerInfo.avg_rating || 0).toFixed(1)}
+                  </span>
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    ({workerInfo.rating_count || 0})
+                  </span>
+                </div>
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  {workerInfo.total_jobs_completed || 0} jobs completed
+                </span>
+                {workerInfo.experience_years > 0 && (
+                  <span className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                    {workerInfo.experience_years}y experience
+                  </span>
+                )}
+              </div>
+
+              {workerInfo.bio && (
+                <p className="text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+                  {workerInfo.bio}
+                </p>
+              )}
+
+              {workerMedia.length > 0 && (
+                <div className="flex gap-2">
+                  {workerMedia.map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => navigate(`/worker/${job.worker_id}`)}
+                      className="w-14 h-14 rounded-xl overflow-hidden shrink-0"
+                      style={{ border: '1px solid var(--g-border)' }}
+                    >
+                      <img src={m.thumbnail_url || m.cloudinary_url || m.url} alt="" className="w-full h-full object-cover" style={{ display: 'block' }} />
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => navigate(`/worker/${job.worker_id}`)}
+                    className="w-14 h-14 rounded-xl flex items-center justify-center shrink-0 text-xs font-medium"
+                    style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)', color: 'var(--text-muted)' }}
+                  >
+                    View all
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
 
           {job?.location_address && (
             <div className="mt-4 pt-4 flex items-center gap-2" style={{ borderTop: '1px solid var(--g-border)' }}>
@@ -1006,7 +1067,16 @@ export default function ActiveJobPage() {
           )}
 
           {!bundleLoading && bundleDays && (
-            <div className="space-y-2">
+            // Capped height + internal scroll instead of letting a long
+            // multi-day booking (e.g. a 2-week job) push everything below
+            // it — including the Job progress timeline — way down the
+            // page. Days/slots scroll inside this box; the section itself
+            // stays a fixed, predictable size so booking details + job
+            // progress both land within roughly one screen's height.
+            <div
+              className="space-y-2 overflow-y-auto pr-1"
+              style={{ maxHeight: 264, WebkitOverflowScrolling: 'touch' }}
+            >
               {bundleDays.map(day => {
                 const dCfg = STATUS_CONFIG[day.status] || STATUS_CONFIG.assigned
                 const dayDate = day.preferred_days?.[0]
@@ -1094,9 +1164,6 @@ export default function ActiveJobPage() {
       {/* Worker: completed but customer hasn't paid yet */}
       {isWorkerViewer && isCompleted && finalAmount && paymentStatus !== 'held' && paymentStatus !== 'released' && (
         <GlassCard className="p-4 flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--accent-bg)' }}>
-            <CreditCard className="h-4 w-4" style={{ color: 'var(--accent)' }} />
-          </div>
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>Waiting for customer payment</p>
             <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{formatCurrency(finalAmount)} — you'll be notified once it's confirmed</p>
@@ -1149,7 +1216,6 @@ export default function ActiveJobPage() {
               ) : (
                 <div className="flex items-center gap-2 py-2.5 px-3 rounded-xl"
                   style={{ background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.2)' }}>
-                  <CheckCircle className="h-4 w-4 text-emerald-400 shrink-0" />
                   <div>
                     <p className="text-xs font-medium text-emerald-400">Payment held in escrow</p>
                     <p className="text-[13px] mt-0.5" style={{ color: 'var(--text-muted)' }}>

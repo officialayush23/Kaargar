@@ -19,7 +19,7 @@ from geoalchemy2.functions import ST_Distance, ST_MakePoint, ST_SetSRID
 from database import get_db
 from models import (
     Service, WorkerProfile, User, SearchHistory, UserPreference,
-    Category, Tag, ServiceTag, WorkerLocation,
+    Category, Tag, ServiceTag, WorkerLocation, ServiceMedia,
 )
 from schemas import SearchResult, SearchResponseWrapper
 from dependencies import get_current_user
@@ -27,6 +27,33 @@ from services.config import get_config
 from decimal import Decimal
 
 router = APIRouter()
+
+
+async def _service_photo_map(db: AsyncSession, service_ids: list) -> dict:
+    """
+    Batch-fetch one representative photo per service_id from ServiceMedia
+    (workers attach photos per-service via the optional service_id on
+    POST /upload/worker-post — see task "Let workers add a photo per
+    service"). Discovery's service cards (Recommended packages, Trending
+    near you) previously only ever showed a generic Lucide icon regardless
+    of whether a worker had actually uploaded a real photo for that
+    service — this powers the DB-sourced image the cards should show
+    instead. Prefers thumbnail_url (cheaper to load) over the full
+    cloudinary_url, and is_featured photos over the rest.
+    """
+    if not service_ids:
+        return {}
+    rows = (await db.execute(
+        select(ServiceMedia.service_id, ServiceMedia.cloudinary_url, ServiceMedia.thumbnail_url)
+        .where(ServiceMedia.service_id.in_(service_ids))
+        .where(ServiceMedia.type == "image")
+        .order_by(ServiceMedia.is_featured.desc(), ServiceMedia.sort_order, ServiceMedia.created_at.desc())
+    )).all()
+    photo_map = {}
+    for sid, curl, thumb in rows:
+        if sid not in photo_map:
+            photo_map[sid] = thumb or curl
+    return photo_map
 
 
 async def _update_user_preferences(db: AsyncSession, user_id: UUID) -> None:
@@ -410,7 +437,60 @@ async def recommendations(
                 results.append(_to_result(svc, wp, u))
                 seen_ids.add(svc.id)
 
+    photo_map = await _service_photo_map(db, [r.id for r in results])
+    for r in results:
+        r.photo_url = photo_map.get(r.id)
+
     return results
+
+
+@router.get("/trending-services")
+async def trending_services(
+    limit: int = Query(12, le=20),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Trending SERVICES (not workers) for the Discovery home "Trending" section.
+    Ranked by Service.total_bookings desc, tiebreak by Service.avg_rating desc.
+
+    NOTE: as of this writing, Service.total_bookings is never incremented
+    anywhere in the backend (it stays at its default of 0 for every service —
+    verified by grepping the whole BACKEND tree). Until something increments
+    it (e.g. on job completion/creation against a service), this ordering
+    effectively degrades to "tiebreak by avg_rating" for every row, since the
+    primary sort key is constant across all services. Flagging rather than
+    silently working around it — bumping total_bookings is a separate change.
+    """
+    rows = (await db.execute(
+        select(Service, WorkerProfile, User, Category)
+        .join(WorkerProfile, WorkerProfile.id == Service.worker_id)
+        .join(User, User.id == WorkerProfile.user_id)
+        .join(Category, Category.id == Service.category_id)
+        .where(Service.is_active == True)
+        .where(WorkerProfile.verification_status == "approved")
+        .order_by(Service.total_bookings.desc(), Service.avg_rating.desc())
+        .limit(limit)
+    )).all()
+
+    photo_map = await _service_photo_map(db, [svc.id for svc, _, _, _ in rows])
+
+    return [
+        {
+            "id": str(svc.id),
+            "title": svc.title,
+            "price": float(svc.price) if svc.price is not None else None,
+            "category_id": str(cat.id) if cat else None,
+            "category_name": cat.name if cat else None,
+            "worker_id": str(wp.id),
+            "worker_name": u.full_name,
+            "worker_avatar_url": u.avatar_url,
+            "worker_avg_rating": float(wp.avg_rating) if wp.avg_rating is not None else None,
+            "avg_rating": float(svc.avg_rating) if svc.avg_rating is not None else None,
+            "total_bookings": svc.total_bookings,
+            "photo_url": photo_map.get(svc.id),
+        }
+        for svc, wp, u, cat in rows
+    ]
 
 
 @router.get("/workers")

@@ -6,7 +6,7 @@ import { Outlet, NavLink, useNavigate, Navigate, useLocation } from 'react-route
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare,
-  Settings, LogOut, Menu, X, ShieldCheck, Layers,
+  Settings, LogOut, Menu, X, Layers,
   Wallet, UserCog, ChevronRight, Bell,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
@@ -53,12 +53,6 @@ function SidebarContent({ onNav, dashData }) {
     <div className="flex flex-col h-full">
       {/* Brand */}
       <div className="px-4 pt-5 pb-4 flex items-center gap-2.5">
-        <div
-          className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: 'var(--card-bg)' }}
-        >
-          <ShieldCheck size={16} style={{ color: 'var(--text-secondary)' }} />
-        </div>
         <div>
           <p className="font-bold text-sm leading-none" style={{ fontFamily: '"Playwrite NO", cursive', color: 'var(--text-primary)' }}>
             Kaargar

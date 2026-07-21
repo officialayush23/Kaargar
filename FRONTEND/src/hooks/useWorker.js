@@ -62,7 +62,30 @@ export function useWorkerSchedule() {
     queryKey: ['worker', 'schedule'],
     queryFn: async () => {
       const { data } = await api.get('/jobs/me', { params: { status: 'active', as_role: 'worker' } })
-      return data
+      const jobs = data || []
+
+      // GET /jobs/me only ever returns the PARENT row of a multi-day booking
+      // (by design — see admin's list_jobs, which does the same to avoid
+      // showing 39 separate rows in a flat job list). That's fine for a flat
+      // list, but this calendar groups jobs by date to answer "what do I have
+      // on day X" — and every child day of a multi-day booking has its OWN
+      // date, entirely different from the parent's day-1 date. Showing only
+      // the parent meant a worker booked for 39 subsequent days would see
+      // that booking on day 1 and then "no jobs scheduled" on every day
+      // after, despite being booked solid — actively misleading. Expand any
+      // multi-day parent into its full set of day-jobs (each with its own
+      // real date) via GET /jobs/{id}/bundle before grouping by date.
+      const expanded = await Promise.all(jobs.map(async (job) => {
+        if ((job.total_days ?? 1) <= 1) return [job]
+        try {
+          const { data: bundle } = await api.get(`/jobs/${job.id}/bundle`)
+          return bundle?.days?.length ? bundle.days : [job]
+        } catch {
+          return [job]  // fall back to the parent row rather than dropping it
+        }
+      }))
+
+      return expanded.flat()
     },
     refetchInterval: 30_000,
   })

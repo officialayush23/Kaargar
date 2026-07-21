@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { api } from '@/lib/api'
 import { Upload, Loader2, X, Play } from 'lucide-react'
 import { toast } from 'sonner'
+import { getErrorMessage } from '@/lib/utils'
 
 export function ProfilePhotoUpload({ currentUrl, onSuccess, children }) {
   const [uploading, setUploading] = useState(false)
@@ -56,8 +57,8 @@ export function WorkerPostUpload({ onSuccess, serviceId }) {
       })
       onSuccess?.(data)
       toast.success('Uploaded!')
-    } catch {
-      toast.error('Upload failed')
+    } catch (err) {
+      toast.error(getErrorMessage(err, 'Upload failed'))
     } finally {
       setUploading(false)
     }
