@@ -14,7 +14,7 @@ import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassModal } from '@/components/glass/GlassModal'
 import { GlassTextarea } from '@/components/glass/GlassInput'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 
 function Lightbox({ url, onClose }) {
@@ -101,7 +101,7 @@ export default function JobApprovalPage() {
       toast.success('Approved!')
       await load()
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Could not approve')
+      toast.error(getErrorMessage(err, 'Could not approve'))
     } finally {
       setApproving(false)
     }
@@ -116,7 +116,7 @@ export default function JobApprovalPage() {
       setShowReject(false)
       await load()
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Could not submit dispute')
+      toast.error(getErrorMessage(err, 'Could not submit dispute'))
     } finally {
       setRejecting(false)
     }

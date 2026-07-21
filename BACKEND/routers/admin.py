@@ -5,11 +5,16 @@ Admin router — dashboard, worker approvals, config, payouts, users.
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
+from sqlalchemy.orm import aliased
 from decimal import Decimal
+from datetime import datetime, timezone
 
 from database import get_db
-from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category
-from schemas import AdminDashboard, AdminWorkerAction, AdminConfigUpdate, AdminConfigCreate, SuccessResponse, CategoryCreate, CategoryUpdate, CategoryResponse
+from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category, JobEvent, JobItemReceipt
+from schemas import (
+    AdminDashboard, AdminWorkerAction, AdminConfigUpdate, AdminConfigCreate, SuccessResponse,
+    CategoryCreate, CategoryUpdate, CategoryResponse, PayoutMarkPaid, PayoutMarkFailed,
+)
 from dependencies import require_admin
 from services.storage import get_public_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
 from services.config import get_config
@@ -412,31 +417,235 @@ async def list_jobs(
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin: paginated list of all jobs."""
-    q = select(Job).order_by(Job.created_at.desc())
+    """
+    Admin: paginated list of all jobs.
+
+    Two things this used to get wrong:
+
+    1. It only ever returned bare Job columns (id/job_type/status/title/
+       location_address/quoted_price/created_at) — no category, client,
+       worker, or amount. AdminJobs.jsx has always expected nested
+       job.category / job.client / job.assigned_worker / job.final_amount
+       objects (it renders "—"/"Unassigned" whenever they're missing),
+       so the admin Jobs page looked empty no matter what was actually in
+       the database. Fixed by joining Category, the client User, the
+       worker's WorkerProfile+User, and Payment in ONE query — all 1:1 or
+       many:1 joins on indexed PKs/FKs, so this doesn't fan out rows or
+       turn into an N+1.
+
+    2. It never filtered on parent_job_id, so a single N-day multi-day
+       booking (see Job.parent_job_id's docstring in models.py) showed up
+       as N separate rows here — the same "bundle" bug already fixed for
+       the customer-facing GET /jobs/me, just never applied to this admin
+       endpoint. Fixed by only listing bundle *parents*
+       (parent_job_id IS NULL); total_days is still reported per row so
+       the admin can see it's a multi-day booking without the list being
+       cluttered with every individual day.
+    """
+    ClientUser = aliased(User)
+    WorkerUser = aliased(User)
+
+    q = (
+        select(Job, Category, ClientUser, WorkerProfile, WorkerUser, Payment)
+        .join(Category, Category.id == Job.category_id)
+        .join(ClientUser, ClientUser.id == Job.user_id)
+        .outerjoin(WorkerProfile, WorkerProfile.id == Job.worker_id)
+        .outerjoin(WorkerUser, WorkerUser.id == WorkerProfile.user_id)
+        .outerjoin(Payment, Payment.job_id == Job.id)
+        .where(Job.parent_job_id.is_(None))
+        .order_by(Job.created_at.desc())
+    )
     if status:
         q = q.where(Job.status == status)
+
     total = await db.scalar(select(func.count()).select_from(q.subquery()))
     q = q.offset((page - 1) * limit).limit(limit)
-    result = await db.execute(q)
-    jobs = result.scalars().all()
+    rows = (await db.execute(q)).all()
     pages = max(1, -(-total // limit))  # ceiling division
+
+    items = []
+    for job, category, client, worker_profile, worker_user, payment in rows:
+        final_amount = job.approved_total if job.approved_total is not None else (
+            job.final_price if job.final_price is not None else job.quoted_price
+        )
+        items.append({
+            "id": str(job.id),
+            "job_type": job.job_type,
+            "source": job.source,
+            "status": job.status,
+            "title": job.title,
+            "description": job.description,
+            "location_address": job.location_address,
+            "location_area": job.location_area,
+            "quoted_price": str(job.quoted_price) if job.quoted_price is not None else None,
+            "final_amount": str(final_amount) if final_amount is not None else None,
+            "payment_status": payment.status if payment else None,
+            "category": {"id": str(category.id), "name": category.name},
+            "client": {
+                "id": str(client.id),
+                "full_name": client.full_name,
+                "email": client.email,
+                "phone": client.phone,
+            },
+            "assigned_worker": (
+                {
+                    "id": str(worker_profile.id),
+                    "full_name": worker_user.full_name if worker_user else None,
+                    "phone": worker_user.phone if worker_user else None,
+                    "avg_rating": str(worker_profile.avg_rating),
+                }
+                if worker_profile is not None else None
+            ),
+            "is_bundle": bool(job.total_days and job.total_days > 1),
+            "total_days": job.total_days,
+            "created_at": job.created_at.isoformat(),
+        })
+
+    return {"items": items, "total": total, "page": page, "pages": pages}
+
+
+@router.get("/jobs/{job_id}")
+async def get_job_detail(
+    job_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin: full detail for a single job — everything list_jobs above
+    intentionally leaves out to keep the table light: the payment record,
+    every bundle day (if this is a multi-day booking), extra-item receipts,
+    and the job's event timeline (status history with actor + timestamp).
+    """
+    ClientUser = aliased(User)
+    WorkerUser = aliased(User)
+
+    row = (await db.execute(
+        select(Job, Category, ClientUser, WorkerProfile, WorkerUser, Payment)
+        .join(Category, Category.id == Job.category_id)
+        .join(ClientUser, ClientUser.id == Job.user_id)
+        .outerjoin(WorkerProfile, WorkerProfile.id == Job.worker_id)
+        .outerjoin(WorkerUser, WorkerUser.id == WorkerProfile.user_id)
+        .outerjoin(Payment, Payment.job_id == Job.id)
+        .where(Job.id == job_id)
+    )).first()
+    if row is None:
+        raise HTTPException(404, "Job not found")
+    job, category, client, worker_profile, worker_user, payment = row
+
+    # Bundle days: this row might itself be the parent, or (in principle,
+    # from a stale/legacy bundle) a child — resolve to the parent id either
+    # way so the full day list always comes back regardless of which day's
+    # id the admin clicked into.
+    bundle_root_id = job.parent_job_id or job.id
+    bundle_rows = (await db.execute(
+        select(Job)
+        .where((Job.id == bundle_root_id) | (Job.parent_job_id == bundle_root_id))
+        .order_by(Job.day_index.asc().nulls_first())
+    )).scalars().all()
+
+    items_r = await db.execute(
+        select(JobItemReceipt).where(JobItemReceipt.job_id == job.id).order_by(JobItemReceipt.created_at.asc())
+    )
+    events_r = await db.execute(
+        select(JobEvent).where(JobEvent.job_id == job.id).order_by(JobEvent.created_at.asc())
+    )
+
+    final_amount = job.approved_total if job.approved_total is not None else (
+        job.final_price if job.final_price is not None else job.quoted_price
+    )
+
     return {
-        "items": [
+        "id": str(job.id),
+        "job_type": job.job_type,
+        "source": job.source,
+        "status": job.status,
+        "title": job.title,
+        "description": job.description,
+        "location_address": job.location_address,
+        "location_area": job.location_area,
+        "location_note": job.location_note,
+        "quoted_price": str(job.quoted_price) if job.quoted_price is not None else None,
+        "final_price": str(job.final_price) if job.final_price is not None else None,
+        "approved_total": str(job.approved_total) if job.approved_total is not None else None,
+        "extra_items_total": str(job.extra_items_total) if job.extra_items_total is not None else None,
+        "final_amount": str(final_amount) if final_amount is not None else None,
+        "commission_rate": str(job.commission_rate) if job.commission_rate is not None else None,
+        "platform_fee": str(job.platform_fee) if job.platform_fee is not None else None,
+        "gst_on_fee": str(job.gst_on_fee) if job.gst_on_fee is not None else None,
+        "worker_payout": str(job.worker_payout) if job.worker_payout is not None else None,
+        "cancellation_reason": job.cancellation_reason,
+        "cancelled_by": job.cancelled_by,
+        "no_show_status": job.no_show_status,
+        "assigned_at": job.assigned_at.isoformat() if job.assigned_at else None,
+        "en_route_at": job.en_route_at.isoformat() if job.en_route_at else None,
+        "arrived_at": job.arrived_at.isoformat() if job.arrived_at else None,
+        "started_at": job.started_at.isoformat() if job.started_at else None,
+        "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+        "cancelled_at": job.cancelled_at.isoformat() if job.cancelled_at else None,
+        "created_at": job.created_at.isoformat(),
+        "category": {"id": str(category.id), "name": category.name},
+        "client": {
+            "id": str(client.id),
+            "full_name": client.full_name,
+            "email": client.email,
+            "phone": client.phone,
+        },
+        "assigned_worker": (
             {
-                "id": str(j.id),
-                "job_type": j.job_type,
-                "status": j.status,
-                "title": j.title,
-                "location_address": j.location_address,
-                "quoted_price": str(j.quoted_price) if j.quoted_price else None,
-                "created_at": j.created_at.isoformat(),
+                "id": str(worker_profile.id),
+                "full_name": worker_user.full_name if worker_user else None,
+                "phone": worker_user.phone if worker_user else None,
+                "email": worker_user.email if worker_user else None,
+                "avg_rating": str(worker_profile.avg_rating),
+                "rating_count": worker_profile.rating_count,
+                "verification_status": worker_profile.verification_status,
             }
-            for j in jobs
+            if worker_profile is not None else None
+        ),
+        "payment": (
+            {
+                "id": str(payment.id),
+                "amount": str(payment.amount),
+                "status": payment.status,
+                "payment_method": payment.payment_method,
+                "held_at": payment.held_at.isoformat() if payment.held_at else None,
+                "escrow_released_at": payment.escrow_released_at.isoformat() if payment.escrow_released_at else None,
+                "refunded_at": payment.refunded_at.isoformat() if payment.refunded_at else None,
+                "refund_amount": str(payment.refund_amount) if payment.refund_amount is not None else None,
+            }
+            if payment is not None else None
+        ),
+        "bundle": {
+            "total_days": job.total_days,
+            "is_bundle": bool(job.total_days and job.total_days > 1),
+            "days": [
+                {
+                    "id": str(b.id),
+                    "day_index": b.day_index,
+                    "date": (b.preferred_days or [None])[0],
+                    "status": b.status,
+                }
+                for b in bundle_rows
+            ],
+        },
+        "item_receipts": [
+            {
+                "id": str(it.id),
+                "name": it.name,
+                "amount": str(it.amount),
+                "is_approved": it.is_approved,
+            }
+            for it in items_r.scalars().all()
         ],
-        "total": total,
-        "page": page,
-        "pages": pages,
+        "events": [
+            {
+                "status": ev.status,
+                "actor": ev.actor,
+                "note": ev.note,
+                "created_at": ev.created_at.isoformat(),
+            }
+            for ev in events_r.scalars().all()
+        ],
     }
 
 
@@ -773,6 +982,15 @@ async def list_payouts(
                 "processed_at": p.processed_at.isoformat() if p.processed_at else None,
                 "failure_reason": p.failure_reason,
                 "created_at": p.created_at.isoformat(),
+                # Where the admin actually sends the money for a manual
+                # payout (see PayoutMarkPaid below) — there's no automated
+                # disbursement API wired up, so the admin needs these to
+                # do the transfer themselves before marking it paid.
+                "payout_upi_id": wp.payout_upi_id,
+                "payout_bank_account": wp.payout_bank_account,
+                "payout_ifsc": wp.payout_ifsc,
+                "payout_account_name": wp.payout_account_name,
+                "payout_verified": wp.payout_verified,
             }
             for p, wp, u, j in rows
         ],
@@ -780,6 +998,60 @@ async def list_payouts(
         "page": page,
         "pages": pages,
     }
+
+
+@router.post("/payouts/{payout_id}/mark-paid")
+async def mark_payout_paid(
+    payout_id: str,
+    body: PayoutMarkPaid,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin: record that a payout has actually been sent to the worker.
+
+    This is a MANUAL disbursement flow, not an automated one — Kaargar has
+    no RazorpayX/Payouts API integration wired up (that's a separate
+    KYC'd product from plain Razorpay checkout, and needs its own
+    onboarding), so today the admin transfers the money themselves via
+    UPI/NEFT outside this app using the worker's payout_upi_id /
+    payout_bank_account (see list_payouts above) and then records that
+    transfer here. transfer_reference is whatever proof-of-transfer the
+    admin has (a UPI transaction ID, bank UTR number, etc.) — stored on
+    the existing razorpay_transfer_id column, which despite the name is
+    just "the transfer reference for this payout" and isn't Razorpay-
+    specific at the DB level.
+    """
+    payout = await db.get(Payout, payout_id)
+    if payout is None:
+        raise HTTPException(404, "Payout not found")
+    if payout.status == "paid":
+        raise HTTPException(400, "Payout is already marked paid")
+
+    payout.status = "paid"
+    payout.processed_at = datetime.now(timezone.utc)
+    payout.razorpay_transfer_id = body.transfer_reference
+    payout.failure_reason = None
+    await db.commit()
+    return {"success": True, "message": "Payout marked as paid"}
+
+
+@router.post("/payouts/{payout_id}/mark-failed")
+async def mark_payout_failed(
+    payout_id: str,
+    body: PayoutMarkFailed,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: record that a payout attempt failed (bad bank details, etc.) — stays in the ledger for retry, doesn't disappear."""
+    payout = await db.get(Payout, payout_id)
+    if payout is None:
+        raise HTTPException(404, "Payout not found")
+
+    payout.status = "failed"
+    payout.failure_reason = body.reason
+    await db.commit()
+    return {"success": True, "message": "Payout marked as failed"}
 
 
 @router.get("/payouts/summary")

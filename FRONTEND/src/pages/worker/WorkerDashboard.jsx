@@ -12,7 +12,7 @@ import { useWorkerAnalytics, useWorkerStatus, useWorkerProfile } from '@/hooks/u
 import { useJobs } from '@/hooks/useJobs'
 import { useLocationPublisher } from '@/hooks/useLocationPublisher'
 import { supabase } from '@/lib/supabase'
-import { formatCurrency, formatRelativeTime } from '@/lib/utils'
+import { formatCurrency, formatRelativeTime, getErrorMessage } from '@/lib/utils'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
@@ -30,7 +30,7 @@ function VerificationBanner({ status, rejectionReason }) {
       setDone(true)
       toast.success('Reapplication submitted! We\'ll review your profile shortly.')
     } catch (e) {
-      toast.error(e?.response?.data?.detail || 'Failed to reapply')
+      toast.error(getErrorMessage(e, 'Failed to reapply'))
     } finally {
       setReapplying(false)
     }

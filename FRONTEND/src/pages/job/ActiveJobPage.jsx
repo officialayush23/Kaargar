@@ -16,7 +16,7 @@ import { GlassTextarea } from '@/components/glass/GlassInput'
 import { GlassSelect } from '@/components/glass/GlassSelect'
 import { useRazorpay } from '@/hooks/useRazorpay'
 import { decryptPhone } from '@/lib/phoneCipher'
-import { formatCurrency, getInitials } from '@/lib/utils'
+import { formatCurrency, getInitials, getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
@@ -109,7 +109,7 @@ function PayNowButton({ jobId, amount, userEmail, userName, onPaymentSuccess }) 
       const { data } = await api.post('/payments/create-order', { job_id: jobId })
       order = data
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Could not create payment order')
+      toast.error(getErrorMessage(err, 'Could not create payment order'))
       setCreating(false)
       return
     }
@@ -298,12 +298,12 @@ function CancelBookingModal({ open, onClose, jobId, onCancelled, navigate }) {
     } catch (err) {
       const status = err.response?.status
       if (status === 402 || status === 409) {
-        toast.error(err.response?.data?.detail || 'This cancellation needs to go through support')
+        toast.error(getErrorMessage(err, 'This cancellation needs to go through support'))
         onClose()
         navigate(`/support?job_id=${jobId}`)
         return
       }
-      toast.error(err.response?.data?.detail || 'Could not cancel booking')
+      toast.error(getErrorMessage(err, 'Could not cancel booking'))
     } finally {
       setLoading(false)
     }
@@ -396,7 +396,7 @@ function RescheduleModal({ open, onClose, job, jobId, onRescheduled }) {
       toast.success('Booking rescheduled')
       onRescheduled()
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Could not reschedule — must be at least 2 hours before arrival and target an open window')
+      toast.error(getErrorMessage(err, 'Could not reschedule — must be at least 2 hours before arrival and target an open window'))
     } finally {
       setLoading(false)
     }
@@ -669,7 +669,7 @@ export default function ActiveJobPage() {
       const phone = await decryptPhone(data)
       window.location.href = `tel:${phone}`
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Number not available yet')
+      toast.error(getErrorMessage(err, 'Number not available yet'))
     } finally {
       setCalling(false)
     }
@@ -682,7 +682,7 @@ export default function ActiveJobPage() {
       toast.success(successMsg)
       fetchJob()
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Action failed')
+      toast.error(getErrorMessage(err, 'Action failed'))
     } finally {
       setActionLoading(false)
     }
@@ -696,7 +696,7 @@ export default function ActiveJobPage() {
       toast.success(data?.message || 'Reported — we\'re looking into it')
       fetchJob()
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Could not submit report')
+      toast.error(getErrorMessage(err, 'Could not submit report'))
     } finally {
       setNoShowLoading(false)
     }
@@ -710,7 +710,7 @@ export default function ActiveJobPage() {
       toast.success(data?.message || 'Reported — support has been notified')
       fetchJob()
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Could not submit report')
+      toast.error(getErrorMessage(err, 'Could not submit report'))
     } finally {
       setFlagLoading(false)
     }

@@ -30,6 +30,25 @@ export function getInitials(name) {
   return name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
 }
 
+// FastAPI's own request-validation errors (422s raised by Pydantic, as
+// opposed to our own `raise HTTPException(422, "some string")` calls) put a
+// LIST of {type, loc, msg, input, ctx} objects in response.data.detail, not
+// a string. Passing that straight to toast.error(...) — a pattern used all
+// over the admin pages — renders the raw object as a React child and
+// crashes the whole page ("Objects are not valid as a React child"). This
+// normalizes either shape into a readable string.
+export function getErrorMessage(err, fallback = 'Something went wrong') {
+  const detail = err?.response?.data?.detail
+  if (!detail) return err?.message || fallback
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map(d => (typeof d === 'string' ? d : d?.msg || JSON.stringify(d)))
+      .join('; ') || fallback
+  }
+  return fallback
+}
+
 export const PUNE_AREAS = [
   'Hinjewadi', 'Kothrud', 'Aundh', 'Baner', 'Wakad',
   'Pimpri-Chinchwad', 'Hadapsar', 'Kharadi', 'Viman Nagar',

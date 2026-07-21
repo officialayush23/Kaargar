@@ -8,6 +8,7 @@ import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassTextarea } from '@/components/glass/GlassInput'
 import { api } from '@/lib/api'
+import { getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 
 const SUB_RATINGS = [
@@ -107,7 +108,7 @@ export default function ReviewPage() {
       navigate('/')
     },
     onError: (e) => {
-      toast.error(e.response?.data?.detail || 'Failed to submit review')
+      toast.error(getErrorMessage(e, 'Failed to submit review'))
     },
   })
 

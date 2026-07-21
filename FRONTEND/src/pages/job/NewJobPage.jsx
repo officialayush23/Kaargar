@@ -19,7 +19,7 @@ import { CategoryGrid } from '@/components/kaargar/CategoryGrid'
 import { GlassButton } from '@/components/glass/GlassButton'
 import { GlassInput, GlassTextarea } from '@/components/glass/GlassInput'
 import { PuneMap } from '@/components/kaargar/PuneMap'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 import { AddressBook } from '@/components/kaargar/AddressBook'
 import { useAddresses } from '@/hooks/useAddresses'
@@ -564,7 +564,7 @@ export default function NewJobPage() {
         { replace: true }
       )
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Failed to create booking')
+      toast.error(getErrorMessage(err, 'Failed to create booking'))
     } finally {
       setLoading(false)
     }

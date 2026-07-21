@@ -9,6 +9,7 @@ import {
   AlertTriangle, CheckCircle, XCircle, Clock,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
@@ -85,7 +86,7 @@ export default function AdminUsers() {
       setBanReason('')
       toast.success('User banned')
     },
-    onError: e => toast.error(e.response?.data?.detail || 'Ban failed'),
+    onError: e => toast.error(getErrorMessage(e, 'Ban failed')),
   })
 
   const unbanMut = useMutation({
@@ -94,7 +95,7 @@ export default function AdminUsers() {
       qc.invalidateQueries({ queryKey: ['admin', 'users'] })
       toast.success('User unbanned')
     },
-    onError: e => toast.error(e.response?.data?.detail || 'Unban failed'),
+    onError: e => toast.error(getErrorMessage(e, 'Unban failed')),
   })
 
   const items = data?.items || []

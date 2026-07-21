@@ -23,6 +23,7 @@ import {
   Plus, Trash2, CalendarClock, KeyRound, ImageIcon, Archive,
 } from 'lucide-react'
 import { api } from '@/lib/api'
+import { getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -302,7 +303,7 @@ export default function AdminConfig() {
   const create = useMutation({
     mutationFn: body => api.post('/admin/config', body),
     onSuccess: () => { toast.success('Setting saved'); setEditKey(null); qc.invalidateQueries({ queryKey: ['admin', 'config'] }) },
-    onError: (err) => toast.error(err?.response?.data?.detail || 'Failed to create'),
+    onError: (err) => toast.error(getErrorMessage(err, 'Failed to create')),
   })
 
   const remove = useMutation({

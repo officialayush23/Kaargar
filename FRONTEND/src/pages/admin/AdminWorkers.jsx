@@ -14,7 +14,7 @@ import {
   ShieldAlert, RefreshCw, X, ExternalLink, Loader2, Phone, Mail,
 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { formatRelativeTime } from '@/lib/utils'
+import { formatRelativeTime, getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from '@/components/ui/table'
@@ -509,7 +509,7 @@ export default function AdminWorkers() {
       toast.success('Worker approved')
       setSelectedId(null)
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Approval failed'),
+    onError: (e) => toast.error(getErrorMessage(e, 'Approval failed')),
   })
 
   const rejectMut = useMutation({
@@ -521,7 +521,7 @@ export default function AdminWorkers() {
       setRejectTarget(null)
       setSelectedId(null)
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Rejection failed'),
+    onError: (e) => toast.error(getErrorMessage(e, 'Rejection failed')),
   })
 
   const suspendMut = useMutation({
@@ -532,7 +532,7 @@ export default function AdminWorkers() {
       toast.success('Worker suspended')
       setSelectedId(null)
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Suspend failed'),
+    onError: (e) => toast.error(getErrorMessage(e, 'Suspend failed')),
   })
 
   const reuploadMut = useMutation({
@@ -540,7 +540,7 @@ export default function AdminWorkers() {
     onSuccess: () => {
       toast.success('Re-upload request sent')
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Failed'),
+    onError: (e) => toast.error(getErrorMessage(e, 'Failed')),
   })
 
   const filtered = workers.filter(w => {

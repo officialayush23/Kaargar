@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { MapPin, Clock, DollarSign, CheckCircle, XCircle, Loader2 } from 'lucide-react'
 import { api } from '@/lib/api'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 
 const TIMEOUT_SEC = 10
@@ -34,7 +34,7 @@ export default function IncomingJobModal({ job, onAccept, onDecline, onExpire })
       toast.success('Job accepted!')
       onAccept()
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Failed to accept')
+      toast.error(getErrorMessage(err, 'Failed to accept'))
       setLoading(null)
     }
   }

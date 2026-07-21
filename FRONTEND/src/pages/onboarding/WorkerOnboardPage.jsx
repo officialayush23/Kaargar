@@ -15,7 +15,7 @@ import { GlassInput, GlassTextarea } from '@/components/glass/GlassInput'
 import { GlassSelect } from '@/components/glass/GlassSelect'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
-import { PUNE_AREAS } from '@/lib/utils'
+import { PUNE_AREAS, getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 
 const RADIUS_OPTIONS = [
@@ -305,7 +305,7 @@ export default function WorkerOnboardPage() {
       ])
       toast.success('Document uploaded')
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Upload failed')
+      toast.error(getErrorMessage(e, 'Upload failed'))
     } finally {
       setDocUploading(false)
     }
@@ -327,7 +327,7 @@ export default function WorkerOnboardPage() {
       setVideoUploaded({ url: data.url, path: data.path, filename: file.name, size: file.size })
       toast.success('Intro video uploaded!')
     } catch (e) {
-      toast.error(e.response?.data?.detail || 'Video upload failed')
+      toast.error(getErrorMessage(e, 'Video upload failed'))
     } finally {
       setVideoUploading(false)
     }
@@ -422,7 +422,7 @@ export default function WorkerOnboardPage() {
         updateUser({ role: 'worker' })
         navigate('/worker')
       } else {
-        toast.error(detail || 'Failed to publish profile. Try again.')
+        toast.error(getErrorMessage(e, 'Failed to publish profile. Try again.'))
       }
     } finally {
       setLoading(false)

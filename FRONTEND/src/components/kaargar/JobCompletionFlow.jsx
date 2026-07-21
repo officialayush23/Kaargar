@@ -12,7 +12,7 @@ import { Camera, Plus, Trash2, Loader2, CheckCircle2, Clock, ShieldCheck, ArrowR
 import { api } from '@/lib/api'
 import { GlassCard } from '@/components/glass/GlassCard'
 import { GlassButton } from '@/components/glass/GlassButton'
-import { formatCurrency } from '@/lib/utils'
+import { formatCurrency, getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 
 const STEPS = ['before', 'items', 'after', 'review']
@@ -91,7 +91,7 @@ export function JobCompletionFlow({ jobId, job, onJobUpdate }) {
       })
       return data.url
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Upload failed — check your connection and try again')
+      toast.error(getErrorMessage(err, 'Upload failed — check your connection and try again'))
       return null
     } finally {
       setUploadingPhase(null)
@@ -113,7 +113,7 @@ export function JobCompletionFlow({ jobId, job, onJobUpdate }) {
       toast.success('Sent to customer for approval')
       onJobUpdate({ status: 'awaiting_approval' })
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Could not submit — check photos above')
+      toast.error(getErrorMessage(err, 'Could not submit — check photos above'))
     } finally {
       setSubmitting(false)
     }
@@ -128,7 +128,7 @@ export function JobCompletionFlow({ jobId, job, onJobUpdate }) {
       toast.success('Job completed — payment requested from customer')
       onJobUpdate({ status: 'completed' })
     } catch (err) {
-      setOtpError(err?.response?.data?.detail || 'Incorrect code')
+      setOtpError(getErrorMessage(err, 'Incorrect code'))
     } finally {
       setVerifying(false)
     }
@@ -351,7 +351,7 @@ function AddItemForm({ jobId, onDone, onCancel }) {
       })
       onDone()
     } catch (err) {
-      toast.error(err?.response?.data?.detail || 'Could not add item')
+      toast.error(getErrorMessage(err, 'Could not add item'))
     } finally {
       setSaving(false)
     }

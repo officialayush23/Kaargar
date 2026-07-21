@@ -80,7 +80,14 @@ class CategoryCreate(BaseModel):
     icon_name: Optional[str] = None
     icon_emoji: Optional[str] = None
     icon_url: Optional[str] = None
-    color_hex: Optional[str] = '#6B7280'
+    # Must be a real hex color ("#RRGGBB") — the categories.color_hex DB
+    # column is VARCHAR(7). A CSS variable string like 'var(--text-muted)'
+    # used to be the frontend's default form value here, which is 18
+    # characters and blew through this limit with a raw
+    # StringDataRightTruncationError 500 on every category save that didn't
+    # touch the color picker. max_length turns that into a clean 422
+    # instead, regardless of which client sends the bad value.
+    color_hex: Optional[str] = Field(default='#6B7280', max_length=7)
     mode: str = 'instant'          # instant | discovery | both
     gst_treatment: str = 'commission_only'  # platform_liable_full | commission_only | exempt
     is_featured: bool = False
@@ -788,6 +795,19 @@ class AdminDashboard(BaseModel):
 class AdminWorkerAction(BaseModel):
     reason: Optional[str] = None
     doc_type: Optional[str] = None  # for request-reupload: specific doc type to re-request
+
+
+class PayoutMarkPaid(BaseModel):
+    # Manual disbursement — the admin actually sends the money themselves
+    # (UPI/NEFT/bank transfer outside this app) and records the reference
+    # here. There's no automated Razorpay Payouts/RazorpayX integration
+    # wired up yet (that needs a separate KYC'd payouts account), so this
+    # is the pragmatic v1: a human did the transfer, this just records it.
+    transfer_reference: Optional[str] = None
+
+
+class PayoutMarkFailed(BaseModel):
+    reason: str
 
 
 class AdminConfigUpdate(BaseModel):

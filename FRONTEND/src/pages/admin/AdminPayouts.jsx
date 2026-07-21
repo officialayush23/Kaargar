@@ -2,12 +2,19 @@
  * AdminPayouts — payout ledger with summary stats and filterable table.
  */
 import { useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { IndianRupee, Clock, CheckCircle, XCircle, RefreshCw, AlertTriangle, ExternalLink } from 'lucide-react'
+import { toast } from 'sonner'
 import { api } from '@/lib/api'
+import { getErrorMessage } from '@/lib/utils'
 import { Skeleton } from '@/components/ui/skeleton'
 import { GlassSelect } from '@/components/glass/GlassSelect'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from '@/components/ui/dialog'
+import { Input } from '@/components/ui/input'
+import { Button } from '@/components/ui/button'
 
 const STATUS_CFG = {
   pending:    { label: 'Pending',    color: 'var(--accent)', bg: 'var(--accent-bg)',  icon: Clock },
@@ -24,6 +31,77 @@ function StatusBadge({ status }) {
       style={{ background: cfg.bg, color: cfg.color }}>
       <Icon size={10} /> {cfg.label}
     </span>
+  )
+}
+
+/* Manual disbursement — there's no automated Razorpay Payouts/RazorpayX
+   integration wired up (that's a separate KYC'd product from plain
+   Razorpay checkout), so today the admin transfers the money themselves
+   via UPI/NEFT using the worker's bank/UPI details below, then records
+   that transfer here so it moves out of "Pending". */
+function PayoutActionDialog({ payout, mode, onClose }) {
+  const [value, setValue] = useState('')
+  const queryClient = useQueryClient()
+
+  const mutation = useMutation({
+    mutationFn: () => mode === 'paid'
+      ? api.post(`/admin/payouts/${payout.id}/mark-paid`, { transfer_reference: value || undefined })
+      : api.post(`/admin/payouts/${payout.id}/mark-failed`, { reason: value }),
+    onSuccess: () => {
+      toast.success(mode === 'paid' ? 'Payout marked as paid' : 'Payout marked as failed')
+      queryClient.invalidateQueries({ queryKey: ['admin', 'payouts'] })
+      onClose()
+    },
+    onError: (err) => toast.error(getErrorMessage(err, 'Failed to update payout')),
+  })
+
+  if (!payout) return null
+  const isPaid = mode === 'paid'
+
+  return (
+    <Dialog open={!!payout} onOpenChange={onClose}>
+      <DialogContent onClose={onClose} className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{isPaid ? 'Mark payout as paid' : 'Mark payout as failed'}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          {isPaid && (
+            <div className="p-3 rounded-xl space-y-1" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>Send ₹{Number(payout.net_amount).toLocaleString('en-IN')} to</p>
+              {payout.payout_upi_id ? (
+                <p style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{payout.payout_upi_id} (UPI)</p>
+              ) : payout.payout_bank_account ? (
+                <p style={{ color: 'var(--text-primary)', fontWeight: 600 }}>
+                  {payout.payout_account_name || payout.worker_name} · {payout.payout_bank_account} · {payout.payout_ifsc}
+                </p>
+              ) : (
+                <p style={{ color: '#f87171' }}>No payout method on file for this worker — contact them before sending.</p>
+              )}
+            </div>
+          )}
+          <div className="space-y-1">
+            <label style={{ color: 'var(--text-secondary)', fontSize: 12, fontWeight: 500 }}>
+              {isPaid ? 'Transfer reference (UPI txn ID / bank UTR) — optional' : 'Reason for failure'}
+            </label>
+            <Input
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              placeholder={isPaid ? 'e.g. UPI/2024...' : 'e.g. Bank details rejected'}
+              className="text-sm"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button
+            disabled={mutation.isPending || (!isPaid && !value.trim())}
+            onClick={() => mutation.mutate()}
+          >
+            {mutation.isPending ? 'Saving…' : isPaid ? 'Confirm paid' : 'Confirm failed'}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }
 
@@ -54,6 +132,7 @@ function SummaryCard({ label, value, sub, color, delay }) {
 export default function AdminPayouts() {
   const [status, setStatus] = useState('')
   const [page, setPage] = useState(1)
+  const [actionDialog, setActionDialog] = useState(null) // { payout, mode: 'paid'|'failed' }
 
   const { data: summary } = useQuery({
     queryKey: ['admin', 'payouts', 'summary'],
@@ -118,7 +197,7 @@ export default function AdminPayouts() {
           <table className="w-full text-sm">
             <thead>
               <tr style={{ background: 'var(--card-bg)' }}>
-                {['Worker', 'Job', 'Gross', 'Platform Fee', 'GST', 'TDS', 'Net Payout', 'Status', 'Date'].map(h => (
+                {['Worker', 'Job', 'Gross', 'Platform Fee', 'GST', 'TDS', 'Net Payout', 'Status', 'Date', 'Actions'].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-medium whitespace-nowrap"
                     style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                     {h}
@@ -130,7 +209,7 @@ export default function AdminPayouts() {
               {isLoading ? (
                 Array.from({ length: 8 }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 9 }).map((_, j) => (
+                    {Array.from({ length: 10 }).map((_, j) => (
                       <td key={j} className="px-4 py-3">
                         <Skeleton style={{ height: 14, background: 'var(--card-bg)', borderRadius: 4 }} />
                       </td>
@@ -139,7 +218,7 @@ export default function AdminPayouts() {
                 ))
               ) : items.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-12 text-center" style={{ color: 'var(--text-secondary)' }}>
+                  <td colSpan={10} className="px-4 py-12 text-center" style={{ color: 'var(--text-secondary)' }}>
                     No payouts found
                   </td>
                 </tr>
@@ -164,6 +243,30 @@ export default function AdminPayouts() {
                     {p.processed_at
                       ? new Date(p.processed_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })
                       : new Date(p.created_at).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' })}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    {(p.status === 'pending' || p.status === 'processing') ? (
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setActionDialog({ payout: p, mode: 'paid' })}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors"
+                          style={{ background: 'rgba(34,197,94,0.12)', color: '#22c55e' }}
+                        >
+                          Mark paid
+                        </button>
+                        <button
+                          onClick={() => setActionDialog({ payout: p, mode: 'failed' })}
+                          className="px-2.5 py-1 rounded-lg text-xs font-semibold transition-colors"
+                          style={{ background: 'rgba(248,113,113,0.1)', color: '#f87171' }}
+                        >
+                          Mark failed
+                        </button>
+                      </div>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                        {p.razorpay_transfer_id || p.failure_reason || '—'}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -196,6 +299,12 @@ export default function AdminPayouts() {
           </div>
         )}
       </div>
+
+      <PayoutActionDialog
+        payout={actionDialog?.payout}
+        mode={actionDialog?.mode}
+        onClose={() => setActionDialog(null)}
+      />
     </div>
   )
 }

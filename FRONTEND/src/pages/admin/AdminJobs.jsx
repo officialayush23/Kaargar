@@ -3,7 +3,7 @@
  */
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Search, AlertTriangle, Zap, Clock, CheckCircle, XCircle, Eye } from 'lucide-react'
+import { Search, AlertTriangle, Zap, Clock, CheckCircle, XCircle, Eye, CalendarRange } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatRelativeTime, formatCurrency } from '@/lib/utils'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
@@ -34,24 +34,48 @@ function StatusBadge({ status }) {
 }
 
 function JobDetailDialog({ job, open, onClose }) {
+  // The row passed in from the table already has the core fields (from
+  // list_jobs), but this fetches the fuller GET /admin/jobs/{id} payload —
+  // payment record, bundle day list, item receipts, event timeline — none
+  // of which the list endpoint returns (deliberately, to keep it light).
+  const { data: detail, isLoading } = useQuery({
+    queryKey: ['admin', 'job-detail', job?.id],
+    queryFn: () => api.get(`/admin/jobs/${job.id}`).then(r => r.data),
+    enabled: open && !!job?.id,
+  })
+
   if (!job) return null
+  const d = detail || job
+
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent onClose={onClose} className="max-w-lg">
+      <DialogContent onClose={onClose} className="max-w-lg max-h-[80vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Job #{job.id?.slice(0,8)}</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            Job #{job.id?.slice(0,8)}
+            {d.bundle?.is_bundle && (
+              <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1"
+                style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--accent)' }}>
+                <CalendarRange size={11} /> {d.bundle.total_days}-day booking
+              </span>
+            )}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-2">
             {[
-              ['Category', job.category?.name || '—'],
-              ['Type', job.job_type || '—'],
-              ['Status', job.status],
-              ['Amount', job.final_amount ? formatCurrency(job.final_amount) : '—'],
-              ['Client', job.client?.full_name || '—'],
-              ['Worker', job.assigned_worker?.full_name || 'Unassigned'],
-              ['Location', job.location_area || job.location_address || '—'],
-              ['Created', formatRelativeTime(job.created_at)],
+              ['Category', d.category?.name || '—'],
+              ['Type', d.job_type || '—'],
+              ['Status', d.status],
+              ['Amount', d.final_amount ? formatCurrency(d.final_amount) : '—'],
+              ['Payment', d.payment ? `${d.payment.status} · ${formatCurrency(d.payment.amount)}` : (d.payment_status || 'No payment yet')],
+              ['Client', d.client?.full_name || '—'],
+              ['Client contact', d.client?.phone || d.client?.email || '—'],
+              ['Worker', d.assigned_worker?.full_name || 'Unassigned'],
+              ['Worker contact', d.assigned_worker?.phone || '—'],
+              ['Worker rating', d.assigned_worker ? `${d.assigned_worker.avg_rating}★ (${d.assigned_worker.rating_count ?? '—'})` : '—'],
+              ['Location', d.location_area || d.location_address || '—'],
+              ['Created', formatRelativeTime(d.created_at)],
             ].map(([k, v]) => (
               <div key={k} className="p-2.5 rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
                 <p style={{ color: 'var(--text-muted)', fontSize: 10 }}>{k}</p>
@@ -59,11 +83,51 @@ function JobDetailDialog({ job, open, onClose }) {
               </div>
             ))}
           </div>
-          {job.description && (
+
+          {d.description && (
             <div className="p-2.5 rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
               <p style={{ color: 'var(--text-muted)', fontSize: 10, marginBottom: 4 }}>Description</p>
-              <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{job.description}</p>
+              <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{d.description}</p>
             </div>
+          )}
+
+          {d.status === 'cancelled' && d.cancellation_reason && (
+            <div className="p-2.5 rounded-xl" style={{ background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.2)' }}>
+              <p style={{ color: '#f87171', fontSize: 10, marginBottom: 4 }}>Cancelled by {d.cancelled_by || '—'}</p>
+              <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{d.cancellation_reason}</p>
+            </div>
+          )}
+
+          {d.bundle?.is_bundle && d.bundle.days?.length > 0 && (
+            <div className="p-2.5 rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: 10, marginBottom: 6 }}>Bundle days ({d.bundle.days.length})</p>
+              <div className="flex flex-wrap gap-1.5">
+                {d.bundle.days.map(day => (
+                  <span key={day.id} className="text-[11px] px-2 py-1 rounded-lg"
+                    style={{ background: 'var(--surface)', color: 'var(--text-secondary)' }}>
+                    Day {day.day_index} · {day.date || '—'} · {day.status}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {d.events?.length > 0 && (
+            <div className="p-2.5 rounded-xl" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+              <p style={{ color: 'var(--text-muted)', fontSize: 10, marginBottom: 6 }}>Timeline</p>
+              <div className="space-y-1.5">
+                {d.events.map((ev, i) => (
+                  <div key={i} className="flex items-center justify-between text-xs">
+                    <span style={{ color: 'var(--text-secondary)' }}>{ev.status} <span style={{ color: 'var(--text-muted)' }}>({ev.actor})</span></span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: 10 }}>{formatRelativeTime(ev.created_at)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {isLoading && !detail && (
+            <p style={{ color: 'var(--text-muted)', fontSize: 11 }}>Loading full details…</p>
           )}
         </div>
       </DialogContent>
@@ -154,6 +218,12 @@ export default function AdminJobs() {
                 <TableRow key={job.id}>
                   <TableCell className="font-mono text-[11px]" style={{ color: 'var(--text-secondary)' }}>
                     #{job.id?.slice(0,8)}
+                    {job.is_bundle && (
+                      <span className="ml-1.5 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-semibold"
+                        style={{ background: 'rgba(245,158,11,0.15)', color: 'var(--accent)' }}>
+                        <CalendarRange size={9} /> {job.total_days}d
+                      </span>
+                    )}
                   </TableCell>
                   <TableCell style={{ color: 'var(--text-primary)' }}>{job.category?.name || '—'}</TableCell>
                   <TableCell>{job.client?.full_name || '—'}</TableCell>

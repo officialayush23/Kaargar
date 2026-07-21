@@ -2,6 +2,7 @@ import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Plus, Pencil, Trash2, Power, PowerOff, Zap, Search, ChevronUp, ChevronDown, Upload, Loader2, ImageIcon } from 'lucide-react'
 import { api } from '@/lib/api'
+import { getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -30,9 +31,20 @@ const ICON_OPTIONS = [
   'UtensilsCrossed','Shield','Users','Briefcase',
 ]
 
+// color_hex is a real DB column (VARCHAR(7), e.g. "#94A3B8") that gets sent
+// straight to the backend on save — it must be an actual hex color, never
+// the CSS variable string 'var(--text-muted)' that was here before. That
+// string is 18 characters, so it blew straight through the 7-char column
+// limit and every category create/update with an unset/default color
+// (i.e. most of them) 500'd with a StringDataRightTruncationError. The
+// CSS-variable fallback is still fine for *display* when a category has no
+// color_hex at all (see the `|| 'var(--text-muted)'` fallbacks below) —
+// it was only ever wrong as the default *form* value that gets submitted.
+const DEFAULT_COLOR_HEX = '#94A3B8' // slate-400 — visually matches --text-muted in dark mode
+
 const EMPTY_FORM = {
   name: '', slug: '', description: '', icon_name: 'Wrench', icon_emoji: '',
-  icon_url: '', color_hex: 'var(--text-muted)', mode: 'instant', is_featured: false,
+  icon_url: '', color_hex: DEFAULT_COLOR_HEX, mode: 'instant', is_featured: false,
   sort_order: 99, min_price: 150, gst_treatment: 'commission_only',
 }
 
@@ -66,7 +78,7 @@ function IconUploadButton({ categoryId, currentUrl, onUploaded }) {
       onUploaded(data.icon_url)
       toast.success('Icon uploaded')
     } catch (err) {
-      toast.error(err.response?.data?.detail || 'Upload failed')
+      toast.error(getErrorMessage(err, 'Upload failed'))
     } finally {
       setUploading(false)
     }
@@ -170,12 +182,12 @@ function CategoryForm({ initial, onSubmit, onCancel, loading }) {
             Color
           </label>
           <div className="flex items-center gap-2">
-            <input type="color" value={form.color_hex || 'var(--text-muted)'}
+            <input type="color" value={form.color_hex || DEFAULT_COLOR_HEX}
               onChange={e => set('color_hex', e.target.value)}
               className="h-9 w-12 rounded cursor-pointer"
               style={{ border: '1px solid var(--border)', background: 'none', padding: '2px' }} />
             <Input value={form.color_hex || ''} onChange={e => set('color_hex', e.target.value)}
-              placeholder="var(--text-muted)" className="font-mono text-sm" />
+              placeholder="#94A3B8" maxLength={7} className="font-mono text-sm" />
           </div>
         </div>
         <div className="space-y-1">
@@ -260,7 +272,7 @@ export default function AdminCategories() {
       setCreating(false)
       toast.success('Profession created')
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Create failed'),
+    onError: (e) => toast.error(getErrorMessage(e, 'Create failed')),
   })
 
   const updateMut = useMutation({
@@ -271,7 +283,7 @@ export default function AdminCategories() {
       setEditing(null)
       toast.success('Profession updated')
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Update failed'),
+    onError: (e) => toast.error(getErrorMessage(e, 'Update failed')),
   })
 
   const deleteMut = useMutation({
@@ -282,7 +294,7 @@ export default function AdminCategories() {
       setDeleting(null)
       toast.success(data.message || 'Done')
     },
-    onError: (e) => toast.error(e.response?.data?.detail || 'Delete failed'),
+    onError: (e) => toast.error(getErrorMessage(e, 'Delete failed')),
   })
 
   const toggleActive = (cat) => {
