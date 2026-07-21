@@ -29,6 +29,7 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models import CancellationPenalty, WorkerProfile, Review, Job, WorkerLocation, LocationHistory
+from services.config import get_config
 
 NO_SHOW_RATING_PENALTY = Decimal("0.50")
 
@@ -135,7 +136,8 @@ async def apply_no_show_rating_penalty(db: AsyncSession, wp: WorkerProfile) -> b
         # by the caller and is included in this count — prior==1 means this
         # IS their first-ever confirmed no-show.
         return False
-    wp.rating_penalty_total = (wp.rating_penalty_total or Decimal("0")) + NO_SHOW_RATING_PENALTY
+    rating_penalty = await get_config(db, "no_show_rating_penalty", NO_SHOW_RATING_PENALTY)
+    wp.rating_penalty_total = (wp.rating_penalty_total or Decimal("0")) + rating_penalty
     await recompute_worker_rating(db, wp)
     return True
 
@@ -177,7 +179,7 @@ async def find_worker_location_near(
     db: AsyncSession,
     worker_id: uuid.UUID,
     target_time: datetime,
-    window_minutes: int = LOCATION_LOOKUP_WINDOW_MIN,
+    window_minutes: int | None = None,
 ):
     """
     Best-effort location fix for `worker_id` closest to `target_time`.
@@ -188,6 +190,8 @@ async def find_worker_location_near(
     about where the worker was at arrival time. Returns None if there's no
     usable evidence.
     """
+    if window_minutes is None:
+        window_minutes = int(await get_config(db, "no_show_location_lookup_window_min", LOCATION_LOOKUP_WINDOW_MIN))
     lo = target_time - timedelta(minutes=window_minutes)
     hi = target_time + timedelta(minutes=window_minutes)
 

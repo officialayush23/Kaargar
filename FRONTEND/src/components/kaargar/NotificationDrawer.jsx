@@ -5,7 +5,7 @@ import { useNotifications } from '@/hooks/useNotifications'
 import { Button } from '@/components/ui/button'
 
 export function NotificationDrawer({ open, onClose }) {
-  const { notifications: notifs = [], isLoading, markAllRead } = useNotifications()
+  const { notifications: notifs = [], isLoading, markAllRead, markRead } = useNotifications()
 
   const handleMarkAll = () => {
     markAllRead()
@@ -58,7 +58,8 @@ export function NotificationDrawer({ open, onClose }) {
                 notifs.map((n) => (
                   <div
                     key={n.id}
-                    className={`rounded-xl p-4 ${!n.is_read ? 'border-l-2 border-brand' : ''}`}
+                    onClick={() => !n.is_read && markRead(n.id)}
+                    className={`rounded-xl p-4 cursor-pointer transition-opacity ${!n.is_read ? 'border-l-2 border-brand' : 'opacity-70'}`}
                     style={{ background: 'var(--card)', border: '1px solid var(--card-border)' }}
                   >
                     <div className="flex items-start justify-between gap-2">

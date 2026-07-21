@@ -33,7 +33,19 @@ const ICON_OPTIONS = [
 const EMPTY_FORM = {
   name: '', slug: '', description: '', icon_name: 'Wrench', icon_emoji: '',
   icon_url: '', color_hex: 'var(--text-muted)', mode: 'instant', is_featured: false,
-  sort_order: 99, min_price: 150,
+  sort_order: 99, min_price: 150, gst_treatment: 'commission_only',
+}
+
+const GST_TREATMENT_OPTIONS = [
+  { value: 'platform_liable_full', label: 'Platform pays full GST (Section 9(5) housekeeping)' },
+  { value: 'commission_only', label: 'Commission-only GST' },
+  { value: 'exempt', label: 'Exempt' },
+]
+
+const GST_TREATMENT_LABELS = {
+  platform_liable_full: 'Full GST (9(5))',
+  commission_only: 'Commission-only GST',
+  exempt: 'Exempt',
 }
 
 /* ── Icon Upload Button ── */
@@ -194,6 +206,19 @@ function CategoryForm({ initial, onSubmit, onCancel, loading }) {
         </div>
       </div>
 
+      <div className="space-y-1">
+        <label className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
+          GST Treatment
+        </label>
+        <GlassSelect value={form.gst_treatment || 'commission_only'} onChange={v => set('gst_treatment', v)}
+          options={GST_TREATMENT_OPTIONS} />
+        <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          Section 9(5) CGST Act: for housekeeping-style categories (plumbing, electrical, cleaning,
+          carpentry, painting, appliance repair, pest control) Kaargar is liable for GST on the full
+          service value, not just its commission. Everything else should stay "Commission-only".
+        </p>
+      </div>
+
       <div className="flex items-center gap-2">
         <input type="checkbox" id="featured" checked={!!form.is_featured}
           onChange={e => set('is_featured', e.target.checked)}
@@ -344,7 +369,7 @@ export default function AdminCategories() {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-              {['Order', 'Profession', 'Mode', 'Min Price', 'Status', 'Actions'].map(h => (
+              {['Order', 'Profession', 'Mode', 'Min Price', 'GST', 'Status', 'Actions'].map(h => (
                 <th key={h} className="px-4 py-3 text-left font-medium"
                   style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   {h}
@@ -354,9 +379,9 @@ export default function AdminCategories() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Loading…</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No professions found</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No professions found</td></tr>
             ) : filtered.map((cat, idx) => {
               const mc = MODE_COLORS[cat.mode] || MODE_COLORS.both
               return (
@@ -425,6 +450,17 @@ export default function AdminCategories() {
                   {/* Min price */}
                   <td className="px-4 py-3 font-mono text-sm" style={{ color: 'var(--text-secondary)' }}>
                     ₹{cat.min_price}
+                  </td>
+
+                  {/* GST treatment */}
+                  <td className="px-4 py-3">
+                    <span className="px-2 py-1 rounded-full text-xs font-medium"
+                      style={{
+                        background: cat.gst_treatment === 'platform_liable_full' ? 'rgba(245,158,11,0.12)' : 'var(--bg-elevated)',
+                        color: cat.gst_treatment === 'platform_liable_full' ? '#f59e0b' : 'var(--text-muted)',
+                      }}>
+                      {GST_TREATMENT_LABELS[cat.gst_treatment] || 'Commission-only GST'}
+                    </span>
                   </td>
 
                   {/* Status */}

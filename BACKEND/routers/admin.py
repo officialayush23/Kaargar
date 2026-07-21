@@ -12,6 +12,7 @@ from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, Platform
 from schemas import AdminDashboard, AdminWorkerAction, AdminConfigUpdate, AdminConfigCreate, SuccessResponse, CategoryCreate, CategoryUpdate, CategoryResponse
 from dependencies import require_admin
 from services.storage import get_public_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
+from services.config import get_config
 
 router = APIRouter()
 
@@ -591,6 +592,7 @@ async def admin_create_category(
         icon_emoji=body.icon_emoji,
         color_hex=body.color_hex,
         mode=body.mode,
+        gst_treatment=body.gst_treatment,
         is_featured=body.is_featured,
         sort_order=body.sort_order,
         min_price=body.min_price,
@@ -685,8 +687,9 @@ async def admin_upload_category_icon(
         raise HTTPException(400, "Only PNG, WebP, SVG, GIF, or JSON (Lottie) allowed")
 
     data = await file.read()
-    if len(data) > 5 * 1024 * 1024:
-        raise HTTPException(400, "File too large (max 5MB)")
+    max_icon_mb = int(await get_config(db, "max_category_icon_mb", 5))
+    if len(data) > max_icon_mb * 1024 * 1024:
+        raise HTTPException(400, f"File too large (max {max_icon_mb}MB)")
 
     # Store in profile_photos bucket under category_icons/ prefix
     ct = file.content_type or "image/png"

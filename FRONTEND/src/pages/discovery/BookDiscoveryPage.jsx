@@ -10,10 +10,13 @@
  *   • allow_multi_day_booking=true  → MULTI-DAY MODE: service → start date + #days → window → location → confirm
  *
  * Slot mode:      POST /jobs/book-slot  (worker assigned immediately)
- * Multi-day mode: POST /jobs/scheduled, once per selected day (each call's
- *                 preferred_days is a single-date list — the backend caps
- *                 preferred_days at 3 entries per job, so a multi-day
- *                 booking is really N separate jobs with the same worker).
+ * Multi-day mode: POST /jobs/scheduled/multi-day — ONE call for the whole
+ *                 range (start_date + num_days), created as a single atomic
+ *                 bundle server-side (one parent Job + N-1 child Jobs, same
+ *                 worker, all-or-nothing). Replaces the old per-day loop
+ *                 over POST /jobs/scheduled, which took ~1 call/day, showed
+ *                 up as N unrelated bookings, and had no atomicity — a
+ *                 mid-way failure left a partial, inconsistent booking.
  */
 
 import { useState, useMemo } from 'react'
@@ -53,7 +56,16 @@ function errMsg(e, fallback = 'Something went wrong') {
   return fallback
 }
 
-function todayStr() { return new Date().toISOString().split('T')[0] }
+// Local-calendar-date string (YYYY-MM-DD). Deliberately NOT
+// `new Date().toISOString().split('T')[0]` — toISOString() converts to UTC
+// first, which in IST (UTC+5:30) can silently return YESTERDAY's date for
+// several hours after midnight. That skew is what let a user pick a slot
+// dated a day in the past even though the day-strip is meant to start at
+// "tomorrow" — the "tomorrow" it computed was actually today, or earlier.
+function todayStr() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
 function addDays(str, n) {
   const d = new Date(str + 'T00:00:00'); d.setDate(d.getDate() + n)
   return d.toISOString().split('T')[0]
@@ -173,7 +185,7 @@ function MultiDayRangePicker({ startDate, onStartDateChange, numDays, onNumDaysC
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           style={{ padding: 12, borderRadius: 10, background: 'var(--accent-card)', border: '1px solid var(--accent-mid)' }}>
           <p style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-            {formatShort(dates[0])} → {formatShort(dates[dates.length - 1])} · {dates.length} separate booking{dates.length > 1 ? 's' : ''} with this worker
+            {formatShort(dates[0])} → {formatShort(dates[dates.length - 1])} · {dates.length}-day booking with this worker
           </p>
         </motion.div>
       )}
@@ -209,13 +221,34 @@ function SummaryRow({ icon: Icon, label, children }) {
   )
 }
 
+// Which part of the day a slot falls in — used to group the slot list for
+// a selected date into clearly-labelled Morning / Afternoon / Evening
+// sections instead of one flat grid.
+function timeSegment(hhmm) {
+  const h = parseInt(hhmm.slice(0, 2), 10)
+  if (h < 12) return 'Morning'
+  if (h < 17) return 'Afternoon'
+  return 'Evening'
+}
+const SEGMENTS = ['Morning', 'Afternoon', 'Evening']
+
+function LegendDot({ color, label }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+      <span style={{ width: 6, height: 6, borderRadius: '50%', background: color, flexShrink: 0 }} />
+      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{label}</span>
+    </div>
+  )
+}
+
 // Slot calendar — shows a week at a time, highlights available slots
 function SlotCalendar({ workerId, serviceId, selectedSlot, onSelect }) {
   const [weekOffset, setWeekOffset] = useState(0)
   const [selectedDate, setSelectedDate] = useState(null)
+  const today = todayStr()
 
-  const fromDate = addDays(todayStr(), weekOffset * 7 + 1)
-  const toDate   = addDays(todayStr(), weekOffset * 7 + 7)
+  const fromDate = addDays(today, weekOffset * 7 + 1)
+  const toDate   = addDays(today, weekOffset * 7 + 7)
 
   const { data: slots = [], isLoading } = useQuery({
     queryKey: ['slots', workerId, serviceId, fromDate, toDate],
@@ -238,8 +271,17 @@ function SlotCalendar({ workerId, serviceId, selectedSlot, onSelect }) {
     return m
   }, [slots])
 
-  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(todayStr(), weekOffset * 7 + i + 1))
-  const slotsForDay = selectedDate ? (byDate[selectedDate] || []) : []
+  const weekDays = Array.from({ length: 7 }, (_, i) => addDays(today, weekOffset * 7 + i + 1))
+  // Defensive client-side guard: never surface slots for an already-past
+  // date, even if the backend response (or a stale query) includes one.
+  const slotsForDay = selectedDate && selectedDate >= today ? (byDate[selectedDate] || []) : []
+
+  // Group the selected day's slots into Morning/Afternoon/Evening buckets
+  const groupedSlots = useMemo(() => {
+    const groups = { Morning: [], Afternoon: [], Evening: [] }
+    slotsForDay.forEach(s => { groups[timeSegment(s.slot_start.slice(0, 5))].push(s) })
+    return groups
+  }, [slotsForDay])
 
   return (
     <div>
@@ -263,25 +305,32 @@ function SlotCalendar({ workerId, serviceId, selectedSlot, onSelect }) {
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
         {weekDays.map(day => {
           const dt = new Date(day + 'T00:00:00')
+          // Past dates are never selectable, even defensively (the strip
+          // already starts at "tomorrow", but todayStr()/timezone skew or a
+          // stale week offset could otherwise let one slip through).
+          const isPast = day < today
           const hasFree = (byDate[day] || []).some(s => s.available)
           const isSelected = selectedDate === day
           return (
-            <motion.button key={day} onClick={() => setSelectedDate(day)} whileTap={{ scale: 0.93 }}
+            <motion.button key={day} type="button" disabled={isPast}
+              onClick={() => !isPast && setSelectedDate(day)}
+              whileTap={isPast ? {} : { scale: 0.93 }}
               style={{
-                flex: 1, padding: '8px 2px', borderRadius: 10, cursor: 'pointer',
+                flex: 1, padding: '8px 2px', borderRadius: 10, cursor: isPast ? 'not-allowed' : 'pointer',
                 border: isSelected ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
-                background: isSelected ? 'var(--accent-deep)' : 'var(--card-bg)',
+                background: isSelected ? 'var(--accent-deep)' : isPast ? 'rgba(255,255,255,0.02)' : 'var(--card-bg)',
+                opacity: isPast ? 0.35 : 1,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
                 transition: 'all 0.15s',
               }}>
               <span style={{ fontSize: 11, color: isSelected ? 'var(--amber)' : 'var(--text-muted)' }}>
                 {dt.toLocaleDateString('en-IN', { weekday: 'short' })}
               </span>
-              <span style={{ fontSize: 15, fontWeight: 700, color: isSelected ? 'var(--amber)' : 'var(--text-primary)' }}>
+              <span style={{ fontSize: 15, fontWeight: 700, color: isSelected ? 'var(--amber)' : isPast ? 'var(--text-muted)' : 'var(--text-primary)' }}>
                 {dt.getDate()}
               </span>
               {/* availability dot */}
-              <div style={{ width: 5, height: 5, borderRadius: '50%', background: hasFree ? '#22C55E' : 'var(--card-border)' }} />
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: isPast ? 'transparent' : hasFree ? '#22C55E' : 'var(--card-border)' }} />
             </motion.button>
           )
         })}
@@ -307,31 +356,55 @@ function SlotCalendar({ workerId, serviceId, selectedSlot, onSelect }) {
       )}
 
       {!isLoading && slotsForDay.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
-          {slotsForDay.map(slot => {
-            const isChosen = selectedSlot?.id === slot.id
-            const full = !slot.available
-            return (
-              <motion.button key={slot.id}
-                onClick={() => !full && onSelect(slot)}
-                whileTap={full ? {} : { scale: 0.95 }}
-                style={{
-                  padding: '10px 6px', borderRadius: 10, cursor: full ? 'not-allowed' : 'pointer',
-                  border: isChosen ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
-                  background: isChosen ? 'var(--accent-deep)' : full ? 'rgba(255,255,255,0.02)' : 'var(--card-bg)',
-                  opacity: full ? 0.45 : 1, transition: 'all 0.15s',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2,
-                }}>
-                <span style={{ fontSize: 12, fontWeight: 600, color: isChosen ? 'var(--amber)' : 'var(--text-primary)' }}>
-                  {to12h(slot.slot_start.slice(0, 5))}
-                </span>
-                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {full ? 'Full' : `${slot.spots_left} left`}
-                </span>
-                {isChosen && <Check size={11} style={{ color: 'var(--amber)' }} />}
-              </motion.button>
-            )
-          })}
+        <div>
+          <p style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-secondary)', marginBottom: 10 }}>
+            {formatShort(selectedDate)}
+          </p>
+          {/* Legend */}
+          <div style={{ display: 'flex', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
+            <LegendDot color="#22C55E" label="Available" />
+            <LegendDot color="var(--amber)" label="Few left" />
+            <LegendDot color="var(--text-muted)" label="Full" />
+          </div>
+
+          {SEGMENTS.filter(seg => groupedSlots[seg].length > 0).map(seg => (
+            <div key={seg} style={{ marginBottom: 16 }}>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>
+                {seg}
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+                {groupedSlots[seg].map(slot => {
+                  const isChosen = selectedSlot?.id === slot.id
+                  const full = !slot.available
+                  const few = !full && slot.spots_left != null && slot.spots_left <= 2
+                  const dotColor = full ? 'var(--text-muted)' : few ? 'var(--amber)' : '#22C55E'
+                  return (
+                    <motion.button key={slot.id} type="button"
+                      onClick={() => !full && onSelect(slot)}
+                      whileTap={full ? {} : { scale: 0.95 }}
+                      style={{
+                        padding: '10px 6px', borderRadius: 10, cursor: full ? 'not-allowed' : 'pointer',
+                        border: isChosen ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
+                        background: isChosen ? 'var(--accent-deep)' : full ? 'rgba(255,255,255,0.02)' : 'var(--card-bg)',
+                        opacity: full ? 0.45 : 1, transition: 'all 0.15s',
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+                      }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                        <span style={{ width: 5, height: 5, borderRadius: '50%', background: dotColor, flexShrink: 0 }} />
+                        <span style={{ fontSize: 12, fontWeight: 600, color: isChosen ? 'var(--amber)' : 'var(--text-primary)' }}>
+                          {to12h(slot.slot_start.slice(0, 5))}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        {full ? 'Full' : `${slot.spots_left} left`}
+                      </span>
+                      {isChosen && <Check size={11} style={{ color: 'var(--amber)' }} />}
+                    </motion.button>
+                  )
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -365,15 +438,16 @@ export default function BookDiscoveryPage() {
   const [locationLon,     setLocationLon]     = useState(null)
 
   // Multi-day booking — start date + number of days, computed into a
-  // contiguous date range. Books the SAME worker for a SEPARATE job on each
-  // day in the range (one /jobs/scheduled call per day).
+  // contiguous date range. Sent as ONE bundle (POST /jobs/scheduled/multi-day)
+  // pinned to the SAME worker for every day; multiDayDates below is purely
+  // for display (day chips in the picker/summary).
   const [multiDayStart,   setMultiDayStart]   = useState(addDays(todayStr(), 1))
   const [multiDayCount,   setMultiDayCount]   = useState(1)
   const multiDayDates = useMemo(
     () => (multiDayStart && multiDayCount ? Array.from({ length: multiDayCount }, (_, i) => addDays(multiDayStart, i)) : []),
     [multiDayStart, multiDayCount]
   )
-  const [multiDayProgress, setMultiDayProgress] = useState(null) // { done, total } while submitting
+  const [multiDayProgress, setMultiDayProgress] = useState(null) // reserved for future progress UI; multi-day bulk create is a single request today
 
   // Every service is exactly one of: slot-mode, multi-day-mode, or (rare,
   // misconfigured) neither. There's no more freeform "pick any window"
@@ -437,54 +511,41 @@ export default function BookDiscoveryPage() {
 
   const price = selectedPackage?.discounted_price ?? selectedPackage?.price ?? selectedService?.price ?? 0
 
-  // Multi-day booking — creates one /jobs/scheduled job PER selected
-  // day (same worker, same service/window), instead of one job with a
-  // preferred_days retry list. Runs sequentially so a mid-way failure still
-  // leaves the earlier days successfully booked.
+  // Multi-day booking — ONE call to /jobs/scheduled/multi-day for the whole
+  // range. The backend creates every day's Job row in a single DB
+  // transaction (one parent + N-1 children, same worker, all-or-nothing) —
+  // replaces the old pattern of looping POST /jobs/scheduled once per day,
+  // which for a long booking (e.g. 39 days) took ~1 call/day, could
+  // partially fail leaving an inconsistent booking, and showed up as N
+  // unrelated cards instead of one bundle.
   const multiDayMutation = useMutation({
     mutationFn: async () => {
-      const results = { succeeded: [], failed: [] }
-      setMultiDayProgress({ done: 0, total: multiDayDates.length })
-      for (const day of multiDayDates) {
-        try {
-          await api.post('/jobs/scheduled', {
-            source: 'discovery',
-            category_id: selectedService?.category_id || null,
-            service_id: selectedService?.id,
-            package_id: selectedPackage?.id || null,
-            preferred_worker_id: workerId,
-            title: selectedService?.title,
-            description: null,
-            preferred_days: [day],
-            window_start: to24h(windowStart),
-            window_end: to24h(windowEnd),
-            location_lat: locationLat || 18.5204, location_lon: locationLon || 73.8567,
-            location_address: address,
-            location_area: locationArea || null,
-            location_note: locationNote || null,
-            budget_max: price || null,
-          })
-          results.succeeded.push(day)
-        } catch (e) {
-          results.failed.push(day)
-        }
-        setMultiDayProgress(p => ({ done: (p?.done || 0) + 1, total: multiDayDates.length }))
-      }
-      return results
+      const { data } = await api.post('/jobs/scheduled/multi-day', {
+        source: 'discovery',
+        category_id: selectedService?.category_id || null,
+        service_id: selectedService?.id,
+        package_id: selectedPackage?.id || null,
+        preferred_worker_id: workerId,
+        title: selectedService?.title,
+        description: null,
+        start_date: multiDayStart,
+        num_days: multiDayCount,
+        window_start: to24h(windowStart),
+        window_end: to24h(windowEnd),
+        location_lat: locationLat || 18.5204, location_lon: locationLon || 73.8567,
+        location_address: address,
+        location_area: locationArea || null,
+        location_note: locationNote || null,
+        budget_max: price || null,
+      })
+      return data
     },
-    onSuccess: (results) => {
+    onSuccess: (bundle) => {
       setMultiDayProgress(null)
-      if (results.failed.length === 0) {
-        toast.success(`All ${results.succeeded.length} bookings confirmed!`)
-      } else if (results.succeeded.length > 0) {
-        toast.warning(`${results.succeeded.length} booked, ${results.failed.length} failed — check Bookings.`)
-      } else {
-        toast.error('Booking failed for all selected days')
-        return
-      }
+      toast.success(`${bundle.total_days}-day booking confirmed!`)
       navigate('/bookings')
     },
-    onError: () => { setMultiDayProgress(null); toast.error('Booking failed') },
+    onError: (e) => { setMultiDayProgress(null); toast.error(errMsg(e, 'Booking failed')) },
   })
 
   // Slot mode booking
@@ -513,9 +574,9 @@ export default function BookDiscoveryPage() {
     if (isSlotMode) slotMutation.mutate()
     else if (isMultiDayMode) multiDayMutation.mutate()
   }
-  const confirmLabel = multiDayMutation.isPending && multiDayProgress
-    ? `Booking ${multiDayProgress.done}/${multiDayProgress.total}…`
-    : isSlotMode ? 'Confirm Slot' : isMultiDayMode ? `Confirm ${multiDayDates.length} Bookings` : 'Confirm Booking'
+  const confirmLabel = multiDayMutation.isPending
+    ? 'Booking…'
+    : isSlotMode ? 'Confirm Slot' : isMultiDayMode ? `Confirm ${multiDayDates.length}-Day Booking` : 'Confirm Booking'
 
   const slide = {
     enter:  d => ({ opacity: 0, x: d > 0 ? 48 : -48 }),
@@ -659,7 +720,7 @@ export default function BookDiscoveryPage() {
                     <CalendarRange size={15} style={{ color: 'var(--amber)' }} />
                     <h3 className="font-syne font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>Which days?</h3>
                   </div>
-                  <InfoButton text="Pick a start date and how many days you need. A separate booking is created for each day, all with the same worker." />
+                  <InfoButton text="Pick a start date and how many days you need. One booking is created for the whole range, all with the same worker." />
                 </div>
                 <MultiDayRangePicker
                   startDate={multiDayStart}
@@ -699,7 +760,7 @@ export default function BookDiscoveryPage() {
               </GlassCard>
               <GlassCard className="p-4">
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                  Your days (one booking each)
+                  Your days (one booking)
                 </p>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                   {multiDayDates.map(d => <span key={d} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)', fontSize: 13, color: 'var(--amber)', fontWeight: 500 }}>{formatShort(d)}</span>)}
@@ -778,7 +839,7 @@ export default function BookDiscoveryPage() {
                 )}
                 {isMultiDayMode && (
                   <>
-                    <SummaryRow icon={Calendar} label={`${multiDayDates.length} separate bookings`}>
+                    <SummaryRow icon={Calendar} label={`${multiDayDates.length}-day booking (one bundle)`}>
                       <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 3 }}>
                         {multiDayDates.map(d => <span key={d} style={{ fontSize: 13, padding: '2px 8px', borderRadius: 20, background: 'var(--accent-deep)', color: 'var(--amber)', border: '1px solid var(--accent-mid)' }}>{formatShort(d)}</span>)}
                       </div>

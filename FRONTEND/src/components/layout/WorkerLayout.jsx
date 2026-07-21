@@ -2,13 +2,12 @@ import { useState } from 'react'
 import { Outlet, useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  LogOut, Moon, Sun, Bell, ChevronRight,
+  LogOut, Moon, Sun, Bell, ChevronRight, X,
   LayoutDashboard, Wrench, ImageIcon, TrendingUp, HelpCircle, Package, Tag
 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { Background } from '@/components/glass/Background'
 import { MobileBottomNav } from '@/components/glass/GlassNavbar'
-import { ActiveJobBar } from '@/components/kaargar/ActiveJobBar'
 import { NotificationDrawer } from '@/components/kaargar/NotificationDrawer'
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar'
 import { useAuthStore } from '@/stores/auth'
@@ -165,6 +164,19 @@ function WorkerMenu({ open, onClose }) {
                   </div>
                   {/* Language pill inside menu */}
                   <LangPill />
+                  {/* Close button — top-right of the sheet header */}
+                  <button
+                    onClick={onClose}
+                    aria-label="Close menu"
+                    className="shrink-0 flex items-center justify-center"
+                    style={{
+                      width: 34, height: 34, borderRadius: 10,
+                      background: 'var(--g-bg)', border: '1px solid var(--g-border)',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <X className="h-4 w-4" style={{ color: 'var(--text-secondary)' }} />
+                  </button>
                 </div>
               </div>
 
@@ -360,7 +372,9 @@ export function WorkerLayout() {
         </div>
       </motion.div>
 
-      <ActiveJobBar />
+      {/* Active-job indicator now lives inline inside MobileBottomNav itself
+          (between its regular links) instead of floating as a separate
+          pill above it — see GlassNavbar.jsx's MobileBottomNav. */}
       <MobileBottomNav />
     </div>
   )

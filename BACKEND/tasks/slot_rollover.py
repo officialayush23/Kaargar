@@ -43,6 +43,7 @@ async def roll_forward_slot_windows():
     from sqlalchemy import select
     from models import Service, ServiceSlotConfig
     from routers.workers import _generate_slots_core
+    from services.config import get_config
 
     try:
         async with async_session() as db:
@@ -57,8 +58,9 @@ async def roll_forward_slot_windows():
             )
             rows = result.all()
 
+            rolling_window_days = int(await get_config(db, "slot_rolling_window_days", ROLLING_WINDOW_DAYS))
             today = date.today()
-            until = today + timedelta(days=ROLLING_WINDOW_DAYS)
+            until = today + timedelta(days=rolling_window_days)
 
             total_created = 0
             for svc, cfg in rows:

@@ -236,31 +236,56 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from database import async_session
 from models import Job, WorkerProfile, WorkerLocation, JobWorkerRequest, Chat
 from services.notifications import notify_job_assigned, notify_worker_new_job
+from services.config import get_config
 from config import get_settings
 
 settings = get_settings()
 
 
-def calc_commission(job_type: str, amount: float) -> dict:
+async def calc_commission(db: AsyncSession, job_type: str, amount: float) -> dict:
     if job_type == "instant":
-        rate = 0.15
+        rate = float(await get_config(db, "commission_instant_rate", Decimal("0.12")))
     else:
-        rate = 0.10 + 0.05 * min(amount / 50_000, 1.0)
+        base = float(await get_config(db, "commission_discovery_base", Decimal("0.10")))
+        increment = float(await get_config(db, "commission_discovery_increment", Decimal("0.05")))
+        threshold = float(await get_config(db, "commission_discovery_threshold", Decimal("50000")))
+        rate = base + increment * min(amount / threshold, 1.0)
         rate = round(rate, 4)
+    gst_rate = float(await get_config(db, "gst_rate", Decimal("0.18")))
     fee = round(amount * rate, 2)
-    gst = round(fee * 0.18, 2)
+    gst = round(fee * gst_rate, 2)
     payout = round(amount - fee - gst, 2)
     return {"rate": rate, "fee": fee, "gst": gst, "payout": payout}
 
 
 async def dispatch_job(job_id: str):
-    # Redis lock has been removed for stability. 
-    # Directly running the dispatch logic.
+    # Re-acquire the dispatch lock — prevents two overlapping dispatch rounds
+    # from racing on the same job (e.g. a retried BackgroundTask, or a manual
+    # re-trigger while a round is already in flight).
+    lock_acquired = False
+    r = None
+    try:
+        import redis.asyncio as aioredis
+        r = aioredis.from_url(settings.redis_url)
+        lock_key = f"dispatch_lock:{job_id}"
+        lock_acquired = await r.set(lock_key, 1, nx=True, ex=30)
+        if not lock_acquired:
+            return
+    except Exception:
+        lock_acquired = True  # Redis unavailable — proceed without the lock rather than blocking dispatch
+
     try:
         async with async_session() as db:
             await _run_dispatch(db, job_id)
     except Exception as e:
         print(f"Dispatch error: {e}")
+    finally:
+        if r and lock_acquired:
+            try:
+                await r.delete(f"dispatch_lock:{job_id}")
+                await r.aclose()
+            except Exception:
+                pass
 
 
 async def _run_dispatch(db: AsyncSession, job_id: str):
@@ -273,7 +298,13 @@ async def _run_dispatch(db: AsyncSession, job_id: str):
     job.status = "searching"
     await db.commit()
 
-    radii = [2, 3, 4, 5]
+    radius_start = int(await get_config(db, "dispatch_radius_start_km", 2))
+    radius_max = int(await get_config(db, "dispatch_radius_max_km", 5))
+    radius_step = int(await get_config(db, "dispatch_radius_step_km", 1))
+    accept_window_sec = int(await get_config(db, "dispatch_accept_window_sec", 10))
+    max_workers_per_round = int(await get_config(db, "dispatch_max_workers_per_round", 5))
+
+    radii = list(range(radius_start, radius_max + 1, radius_step)) or [radius_start]
 
     for radius_km in radii:
         workers = await _find_workers(db, job, radius_km)
@@ -281,10 +312,10 @@ async def _run_dispatch(db: AsyncSession, job_id: str):
             continue
 
         now = datetime.now(timezone.utc)
-        expires_at = now + timedelta(seconds=10)
+        expires_at = now + timedelta(seconds=accept_window_sec)
         requests_created = []
 
-        for wp, distance_km, score in workers[:5]:
+        for wp, distance_km, score in workers[:max_workers_per_round]:
             req = JobWorkerRequest(
                 job_id=job.id,
                 worker_id=wp.id,

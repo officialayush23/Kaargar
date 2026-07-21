@@ -65,6 +65,7 @@ class CategoryResponse(KaargarBase):
     icon_url: Optional[str] = None   # custom PNG/SVG/Lottie from Supabase Storage
     color_hex: Optional[str] = None
     mode: str
+    gst_treatment: str = "commission_only"
     is_active: bool
     is_featured: bool
     sort_order: int
@@ -81,6 +82,7 @@ class CategoryCreate(BaseModel):
     icon_url: Optional[str] = None
     color_hex: Optional[str] = '#6B7280'
     mode: str = 'instant'          # instant | discovery | both
+    gst_treatment: str = 'commission_only'  # platform_liable_full | commission_only | exempt
     is_featured: bool = False
     sort_order: int = 99
     min_price: Decimal = Decimal('150')
@@ -95,6 +97,7 @@ class CategoryUpdate(BaseModel):
     icon_url: Optional[str] = None
     color_hex: Optional[str] = None
     mode: Optional[str] = None
+    gst_treatment: Optional[str] = None
     is_active: Optional[bool] = None
     is_featured: Optional[bool] = None
     sort_order: Optional[int] = None
@@ -502,6 +505,13 @@ class JobResponse(KaargarBase):
     after_photos: Optional[List[str]] = None
     extra_items_total: Optional[Decimal] = None
     approved_total: Optional[Decimal] = None
+    # Multi-day booking bundle
+    parent_job_id: Optional[UUID] = None
+    day_index: Optional[int] = None
+    total_days: Optional[int] = None
+    # Populated only on parent (top-level) jobs with total_days > 1 by
+    # GET /jobs/me — e.g. "2/5 days done". Not stored on the model.
+    bundle_status: Optional[str] = None
 
     # Coerce datetime.time → 'HH:MM' string for window fields
     @field_validator('window_start', 'window_end', mode='before')
@@ -819,14 +829,16 @@ class ScheduledJobCreate(BaseModel):
     User creates a scheduled (discovery/package) job.
     preferred_days: list of ISO date strings, max 3, must be today or future.
     window_start / window_end: 'HH:MM' strings, window must be ≥ 1 hour.
-    preferred_worker_id: if set, the job is pinned to that specific worker
-                         (used for direct-worker discovery bookings).
+    preferred_worker_id: REQUIRED — the job is always pinned to a specific
+                         worker at booking time (the discovery booking flow
+                         always has the customer pick a worker's profile
+                         first). There is no lazy/system-assigns-later mode.
     """
     category_id: Optional[UUID] = None          # resolved from service if omitted
     service_id: Optional[UUID] = None
     package_id: Optional[UUID] = None
     package_order_id: Optional[UUID] = None
-    preferred_worker_id: Optional[UUID] = None  # pre-select worker (discovery flow)
+    preferred_worker_id: UUID = Field(..., description="Worker pinned at booking time — required, no lazy assignment")
     source: str = Field("scheduled", pattern="^(scheduled|package|discovery)$")
     # Location
     location_lat: float
@@ -1001,6 +1013,80 @@ class ScheduledJobResponse(KaargarBase):
         if hasattr(v, 'strftime'):          # datetime.time object from ORM
             return v.strftime('%H:%M')
         return str(v)
+
+
+class MultiDayBookingCreate(BaseModel):
+    """
+    Book a multi-day service (e.g. a 39-day security-guard booking) as ONE
+    bundle. Replaces the old client-side pattern of calling POST
+    /jobs/scheduled once per day — that produced N unrelated Job rows with no
+    shared identity and no atomicity (a mid-way failure left a partial,
+    inconsistent booking). This endpoint creates all N day-jobs in a single
+    DB transaction: either the whole bundle is created, or none of it is.
+
+    start_date + num_days define a contiguous run of days
+    (start_date, start_date+1, ..., start_date+num_days-1) — the multi-day
+    picker in BookDiscoveryPage always books a contiguous range, never
+    arbitrary scattered dates.
+    """
+    category_id: Optional[UUID] = None
+    service_id: Optional[UUID] = None
+    package_id: Optional[UUID] = None
+    preferred_worker_id: UUID = Field(..., description="Worker pinned at booking time — required, no lazy assignment")
+    source: str = Field("discovery", pattern="^(scheduled|package|discovery)$")
+    # Location
+    location_lat: float
+    location_lon: float
+    location_address: str
+    location_area: Optional[str] = None
+    location_note: Optional[str] = None
+    # Scheduling
+    start_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="First day of the booking, YYYY-MM-DD")
+    num_days: int = Field(..., ge=1, le=90)
+    window_start: str = Field(..., pattern=r"^\d{2}:\d{2}$")
+    window_end: str   = Field(..., pattern=r"^\d{2}:\d{2}$")
+    # Optional extras
+    title: Optional[str] = None
+    description: Optional[str] = None
+    budget_max: Optional[Decimal] = None
+
+    @field_validator("start_date")
+    @classmethod
+    def validate_start_date(cls, v):
+        try:
+            d = date.fromisoformat(v)
+        except ValueError:
+            raise ValueError(f"Invalid date format: {v}. Use YYYY-MM-DD.")
+        # Server-side "no past dates" enforcement — independent of whatever
+        # the client's date-picker already restricts (a separate bug let a
+        # July-20 slot through on July 21 because that check only existed
+        # client-side).
+        if d < date.today():
+            raise ValueError(f"start_date cannot be in the past: {v}")
+        return v
+
+    @field_validator("window_end")
+    @classmethod
+    def validate_window(cls, v, info):
+        start = info.data.get("window_start")
+        if start:
+            t_start = time.fromisoformat(start)
+            t_end   = time.fromisoformat(v)
+            if t_end <= t_start:
+                raise ValueError("window_end must be after window_start")
+            from datetime import datetime as dt
+            delta = dt.combine(date.today(), t_end) - dt.combine(date.today(), t_start)
+            if delta.total_seconds() < 3600:
+                raise ValueError("Time window must be at least 1 hour")
+        return v
+
+
+class JobBundleResponse(BaseModel):
+    """Response for POST /jobs/scheduled/multi-day and GET /jobs/{id}/bundle —
+    the parent job plus the full ordered list of day-jobs (parent included)."""
+    parent_job_id: UUID
+    total_days: int
+    days: List[JobResponse]
 
 
 # ─── Slot Scheduling Schemas ────────────────────────────────────────────────

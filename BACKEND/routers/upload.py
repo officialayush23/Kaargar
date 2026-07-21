@@ -21,6 +21,7 @@ from services.storage import (
     verification_video_path,
     BUCKET_PROFILE, BUCKET_POSTS, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO,
 )
+from services.config import get_config
 
 router = APIRouter()
 
@@ -39,8 +40,9 @@ async def upload_profile_photo(
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(400, "Only JPEG/PNG/WebP images allowed")
     data = await file.read()
-    if len(data) > MAX_IMAGE_SIZE:
-        raise HTTPException(400, "Image must be under 10MB")
+    max_image_mb = int(await get_config(db, "max_image_upload_mb", 10))
+    if len(data) > max_image_mb * 1024 * 1024:
+        raise HTTPException(400, f"Image must be under {max_image_mb}MB")
 
     path = profile_photo_path(str(user.id))
     url = upload_file(BUCKET_PROFILE, path, data, file.content_type)
@@ -64,9 +66,11 @@ async def upload_worker_post(
         raise HTTPException(400, "Only images or videos allowed")
 
     data = await file.read()
-    max_size = MAX_VIDEO_SIZE if is_video else MAX_IMAGE_SIZE
+    max_image_mb = int(await get_config(db, "max_image_upload_mb", 10))
+    max_video_mb = int(await get_config(db, "max_video_upload_mb", 100))
+    max_size = (max_video_mb if is_video else max_image_mb) * 1024 * 1024
     if len(data) > max_size:
-        raise HTTPException(400, f"File too large")
+        raise HTTPException(400, f"File too large (max {max_video_mb if is_video else max_image_mb}MB)")
 
     wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
     wp = wp_result.scalar_one_or_none()
@@ -133,13 +137,13 @@ async def upload_verification_video(
     Registers a worker_documents record with type='verification_video' so admin can review it.
     Max 200MB (longer intro videos).
     """
-    MAX_VERIF_VIDEO = 200 * 1024 * 1024
     if file.content_type not in ALLOWED_VIDEO_TYPES:
         raise HTTPException(400, "Only MP4/MOV/WebM video files allowed")
 
     data = await file.read()
-    if len(data) > MAX_VERIF_VIDEO:
-        raise HTTPException(400, "Video must be under 200MB")
+    max_verif_video_mb = int(await get_config(db, "max_verification_video_mb", 200))
+    if len(data) > max_verif_video_mb * 1024 * 1024:
+        raise HTTPException(400, f"Video must be under {max_verif_video_mb}MB")
 
     path = verification_video_path(str(user.id), file.filename or "intro.mp4")
     url = upload_file(BUCKET_VERIFICATION_VIDEO, path, data, file.content_type)

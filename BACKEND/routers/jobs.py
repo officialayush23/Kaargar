@@ -25,6 +25,7 @@ from schemas import (
     JobRejectRequest, JobOtpVerifyRequest, JobCompletionCodeResponse,
     JobContactResponse, JobWorkerLocationResponse,
     JobNoShowReport, NoShowReportResponse, JobCustomerUnavailableFlag,
+    MultiDayBookingCreate, JobBundleResponse,
 )
 from dependencies import get_current_user
 from services.storage import (
@@ -37,6 +38,7 @@ from services.penalties import (
     find_worker_location_near, haversine_km, apply_no_show_rating_penalty,
     NO_SHOW_PROXIMITY_KM,
 )
+from services.config import get_config
 
 router = APIRouter()
 
@@ -157,6 +159,11 @@ async def my_jobs(
     else:
         q = select(Job).where(Job.user_id == user.id)
 
+    # Only top-level bundle rows — a multi-day booking (parent + children,
+    # see Job.parent_job_id) must show as ONE card here, not one per day.
+    # Day-by-day detail is fetched separately via GET /jobs/{id}/bundle.
+    q = q.where(Job.parent_job_id.is_(None))
+
     if status == "active":
         q = q.where(Job.status.in_(active_statuses))
     elif status != "all":
@@ -183,11 +190,30 @@ async def my_jobs(
         )
         worker_map = {row.id: row.full_name for row in wrows.all()}
 
+    # Bundle roll-up: for parent jobs with total_days > 1, count how many
+    # days (parent + children, grouped by the bundle's own id) have reached
+    # each status, so the customer can see "2/5 days done" on the one card
+    # without fetching the full bundle detail.
+    bundle_ids = [j.id for j in jobs if (j.total_days or 1) > 1]
+    bundle_counts: dict = {}
+    if bundle_ids:
+        bundle_key = sa_func.coalesce(Job.parent_job_id, Job.id)
+        rows = await db.execute(
+            select(bundle_key.label("bundle_id"), Job.status, sa_func.count())
+            .where(bundle_key.in_(bundle_ids))
+            .group_by(bundle_key, Job.status)
+        )
+        for bundle_id, j_status, cnt in rows.all():
+            bundle_counts.setdefault(bundle_id, {})[j_status] = cnt
+
     out = []
     for j in jobs:
         resp = JobResponse.model_validate(j)
         resp.category_name = cat_map.get(j.category_id)
         resp.worker_name = worker_map.get(j.worker_id) if j.worker_id else None
+        if (j.total_days or 1) > 1:
+            done = bundle_counts.get(j.id, {}).get("completed", 0)
+            resp.bundle_status = f"{done}/{j.total_days} days done"
         out.append(resp)
     return out
 
@@ -229,6 +255,21 @@ async def get_job(
     if c:
         resp.client_name = c.full_name
         resp.client_avatar_url = c.avatar_url
+
+    # Bundle roll-up — same "N/total days done" summary my_jobs computes,
+    # so ActiveJobPage shows it consistently whether the job list or this
+    # single-job endpoint populated `job`. Only meaningful on the parent
+    # (job.parent_job_id is None implies job.id IS the bundle key).
+    if (job.total_days or 1) > 1 and job.parent_job_id is None:
+        bundle_key = sa_func.coalesce(Job.parent_job_id, Job.id)
+        rows = await db.execute(
+            select(Job.status, sa_func.count())
+            .where(bundle_key == job.id)
+            .group_by(Job.status)
+        )
+        done = sum(cnt for st, cnt in rows.all() if st == "completed")
+        resp.bundle_status = f"{done}/{job.total_days} days done"
+
     return resp
 
 
@@ -376,15 +417,17 @@ async def cancel_job(
     ASSIGNED_STATUSES = {"assigned", "confirmed", "en_route", "arrived", "started"}
     if is_worker and job.status in ASSIGNED_STATUSES:
         # Deduct cancellation score (floor at 0.0)
-        new_score = max(Decimal("0.00"), (wp.cancellation_score or Decimal("1.00")) - Decimal("0.10"))
+        score_deduct = await get_config(db, "cancellation_score_deduct", Decimal("0.10"))
+        new_score = max(Decimal("0.00"), (wp.cancellation_score or Decimal("1.00")) - score_deduct)
         wp.cancellation_score = new_score
 
-        # Record penalty record (₹100, pending collection)
+        # Record penalty record (pending collection)
+        penalty_amount = await get_config(db, "penalty_worker_cancel_amount", Decimal("100.00"))
         penalty = CancellationPenalty(
             job_id       = job.id,
             charged_to   = user.id,
             charged_role = "worker",
-            amount       = Decimal("100.00"),
+            amount       = penalty_amount,
             reason       = "Worker cancelled an assigned job",
             status       = "pending",
         )
@@ -426,12 +469,15 @@ async def cancel_job(
             prior_offenses = await count_customer_offenses(db, user.id)
             is_first_offense = prior_offenses == 0
 
-            if hours_to_arrival < 6 and not is_first_offense:
+            late_cutoff_hours = float(await get_config(db, "cancellation_late_cutoff_hours", Decimal("6")))
+            repeat_offense_pct = await get_config(db, "cancellation_repeat_offense_pct", Decimal("0.50"))
+
+            if hours_to_arrival < late_cutoff_hours and not is_first_offense:
                 # Too close to arrival, and this customer has done this before —
                 # self-service is blocked; they have to go through support.
                 raise HTTPException(
                     403,
-                    "This booking starts in under 6 hours and you've cancelled "
+                    f"This booking starts in under {late_cutoff_hours:g} hours and you've cancelled "
                     "before — please contact support to cancel (a 100% charge applies).",
                 )
 
@@ -442,11 +488,11 @@ async def cancel_job(
                     pct=Decimal("0"),
                 )
             else:
-                # >=6h before arrival and a repeat offense — self-service allowed, 50% charge.
+                # >=cutoff hours before arrival and a repeat offense — self-service allowed, partial charge.
                 await record_customer_offense(
                     db, job, user.id,
                     reason=f"Customer cancellation — repeat offense, {hours_to_arrival:.1f}h before arrival",
-                    pct=Decimal("0.50"),
+                    pct=repeat_offense_pct,
                 )
 
     # ── Trigger refund if payment was held ────────────────────────────────────
@@ -598,11 +644,10 @@ async def reject_job(
 
     # Track consecutive rejects
     wp.consecutive_rejects = (wp.consecutive_rejects or 0) + 1
-    from config import get_settings
-    threshold = 5
+    threshold = int(await get_config(db, "auto_offline_reject_threshold", 5))
     if wp.consecutive_rejects >= threshold:
-        from datetime import timedelta
-        wp.auto_offline_until = datetime.now(timezone.utc) + timedelta(minutes=5)
+        offline_minutes = int(await get_config(db, "auto_offline_minutes", 5))
+        wp.auto_offline_until = datetime.now(timezone.utc) + timedelta(minutes=offline_minutes)
         wp.status = "offline"
         wp.consecutive_rejects = 0
 
@@ -673,7 +718,7 @@ async def _finalize_job_completion(db, job, wp, user_id):
         job.final_price = job.quoted_price
     if job.final_price and not job.worker_payout:
         from services.matching import calc_commission
-        commission = calc_commission(job.job_type or "instant", float(job.final_price))
+        commission = await calc_commission(db, job.job_type or "instant", float(job.final_price))
         job.commission_rate = Decimal(str(commission["rate"]))
         job.platform_fee   = Decimal(str(commission["fee"]))
         job.gst_on_fee     = Decimal(str(commission["gst"]))
@@ -696,7 +741,8 @@ async def _finalize_job_completion(db, job, wp, user_id):
         wp.total_earnings = (wp.total_earnings or Decimal("0")) + job.worker_payout
         wp.pending_payout = (wp.pending_payout or Decimal("0")) + job.worker_payout
 
-    new_score = min(Decimal("1.00"), (wp.cancellation_score or Decimal("1.00")) + Decimal("0.02"))
+    score_recover = await get_config(db, "cancellation_score_recover", Decimal("0.02"))
+    new_score = min(Decimal("1.00"), (wp.cancellation_score or Decimal("1.00")) + score_recover)
     wp.cancellation_score = new_score
 
     await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
@@ -768,8 +814,9 @@ async def upload_job_media(
     if file.content_type not in ALLOWED_MEDIA_TYPES:
         raise HTTPException(400, "Only JPEG/PNG/WebP images allowed")
     data = await file.read()
-    if len(data) > MAX_MEDIA_SIZE:
-        raise HTTPException(400, "Image must be under 10MB")
+    max_image_mb = int(await get_config(db, "max_image_upload_mb", 10))
+    if len(data) > max_image_mb * 1024 * 1024:
+        raise HTTPException(400, f"Image must be under {max_image_mb}MB")
 
     if kind in ("before", "after"):
         path = job_before_after_path(str(user.id), str(job_id), kind, file.filename or "photo.jpg")
@@ -829,12 +876,13 @@ async def add_job_item(
     if job.status != "started":
         raise HTTPException(409, "Extra items can only be added while the job is in progress")
 
-    # Cap: 20 items per job (sane ceiling, not a hard product limit)
+    # Cap: sane ceiling per job, not a hard product limit
+    max_extra_items = int(await get_config(db, "max_extra_items_per_job", 20))
     count_result = await db.execute(
         select(sa_func.count()).select_from(JobItemReceipt).where(JobItemReceipt.job_id == job_id)
     )
-    if (count_result.scalar() or 0) >= 20:
-        raise HTTPException(400, "Maximum of 20 extra items per job")
+    if (count_result.scalar() or 0) >= max_extra_items:
+        raise HTTPException(400, f"Maximum of {max_extra_items} extra items per job")
 
     item = JobItemReceipt(
         job_id=job_id,
@@ -986,8 +1034,9 @@ async def approve_job_bill(
     job.status = "approved"
 
     # Generate the completion OTP — never returned to the worker's client.
+    otp_expiry_hours = float(await get_config(db, "completion_code_expiry_hours", Decimal("4")))
     job.completion_otp_code = f"{secrets.randbelow(1_000_000):06d}"
-    job.completion_otp_expires_at = job.approved_at + timedelta(hours=4)
+    job.completion_otp_expires_at = job.approved_at + timedelta(hours=otp_expiry_hours)
     job.completion_otp_attempts = 0
     job.completion_otp_locked_until = None
 
@@ -1099,14 +1148,16 @@ async def verify_completion_otp(
         raise HTTPException(410, "Completion code expired — ask the customer to re-approve")
 
     if body.code != job.completion_otp_code:
+        max_attempts = int(await get_config(db, "completion_code_max_attempts", 5))
+        lockout_minutes = int(await get_config(db, "completion_code_lockout_minutes", 15))
         job.completion_otp_attempts = (job.completion_otp_attempts or 0) + 1
-        if job.completion_otp_attempts >= 5:
-            job.completion_otp_locked_until = now + timedelta(minutes=15)
+        if job.completion_otp_attempts >= max_attempts:
+            job.completion_otp_locked_until = now + timedelta(minutes=lockout_minutes)
             job.completion_otp_attempts = 0
             await db.commit()
-            raise HTTPException(423, "Too many wrong attempts — locked for 15 minutes")
+            raise HTTPException(423, f"Too many wrong attempts — locked for {lockout_minutes} minutes")
         await db.commit()
-        raise HTTPException(400, f"Incorrect code ({5 - job.completion_otp_attempts} attempts left)")
+        raise HTTPException(400, f"Incorrect code ({max_attempts - job.completion_otp_attempts} attempts left)")
 
     # ── Match — finalize the job using the customer-approved total ───────────
     job.final_price = job.approved_total
@@ -1159,16 +1210,11 @@ async def create_scheduled_job(
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Create a scheduled job — two modes:
-
-    Direct worker (preferred_worker_id set):
-      • Pinned to that specific worker immediately (status='confirmed').
-      • Worker is notified right away.
-      • Used by the discovery booking flow when user picked a specific worker.
-
-    Lazy assignment (no preferred_worker_id):
-      • status='scheduled', scheduler assigns the best worker ~2h before window.
-      • Used for generic/category-based bookings.
+    Create a scheduled job. preferred_worker_id is required — the discovery
+    booking flow always has the customer pick a specific worker's profile
+    first, so the job is always pinned to that worker immediately
+    (status='confirmed') and the worker is notified right away. There is no
+    lazy/system-assigns-later mode.
     """
     from datetime import time as _time, date as _date
     from models import Notification
@@ -1189,7 +1235,7 @@ async def create_scheduled_job(
             category_id = svc.category_id
 
     # Last-resort: fall back to the pinned worker's primary category (handles services with NULL category_id)
-    if category_id is None and body.preferred_worker_id:
+    if category_id is None:
         wc_r = await db.execute(
             select(WorkerCategory).where(WorkerCategory.worker_id == body.preferred_worker_id).limit(1)
         )
@@ -1220,15 +1266,14 @@ async def create_scheduled_job(
             else:
                 quoted_price = unit_price
 
-    is_direct = body.preferred_worker_id is not None
-    initial_status = "confirmed" if is_direct else "scheduled"
+    initial_status = "confirmed"
 
     job = Job(
         user_id          = user.id,
         category_id      = category_id,
         service_id       = body.service_id,
         package_id       = body.package_id,
-        worker_id        = body.preferred_worker_id,  # None → lazy; UUID → direct
+        worker_id        = body.preferred_worker_id,
         job_type         = body.source,
         source           = body.source,
         status           = initial_status,
@@ -1246,7 +1291,7 @@ async def create_scheduled_job(
         location_geom    = _make_geom(body.location_lon, body.location_lat),
         budget_max       = body.budget_max,
         quoted_price     = quoted_price,
-        assigned_at      = now_utc if is_direct else None,
+        assigned_at      = now_utc,
     )
     db.add(job)
     await db.flush()
@@ -1254,55 +1299,277 @@ async def create_scheduled_job(
     event_meta = {
         "preferred_days": body.preferred_days,
         "window": f"{body.window_start}–{body.window_end}",
+        "pinned_worker_id": str(body.preferred_worker_id),
     }
-    if is_direct:
-        event_meta["pinned_worker_id"] = str(body.preferred_worker_id)
 
     await _log_event(db, job.id, initial_status, "user", user.id, event_meta)
 
     # ── Notify user ───────────────────────────────────────────────────────────
     first_day = _date.fromisoformat(body.preferred_days[0]).strftime('%d %b')
-    if is_direct:
-        user_notif_body = (
-            f"Your booking is confirmed for {first_day} "
-            f"between {body.window_start} – {body.window_end}. "
-            f"Your worker will arrive within this window."
-        )
-    else:
-        user_notif_body = (
-            f"We'll assign the best worker and notify you on {first_day} "
-            f"(or your next preferred date) between {body.window_start} – {body.window_end}."
-        )
+    user_notif_body = (
+        f"Your booking is confirmed for {first_day} "
+        f"between {body.window_start} – {body.window_end}. "
+        f"Your worker will arrive within this window."
+    )
 
     db.add(Notification(
         user_id = user.id,
         type    = "job_scheduled_confirm",
-        title   = "Booking confirmed!" if is_direct else "Booking received!",
+        title   = "Booking confirmed!",
         body    = user_notif_body,
         data    = {"job_id": str(job.id)},
     ))
 
-    # ── If direct booking, notify the chosen worker immediately ───────────────
-    if is_direct:
-        wp_r = await db.execute(
-            select(WorkerProfile).where(WorkerProfile.id == body.preferred_worker_id)
+    # ── Notify the chosen worker immediately ───────────────────────────────────
+    wp_r = await db.execute(
+        select(WorkerProfile).where(WorkerProfile.id == body.preferred_worker_id)
+    )
+    wp = wp_r.scalar_one_or_none()
+    if wp:
+        db.add(Notification(
+            user_id = wp.user_id,
+            type    = "job_assigned",
+            title   = "New Booking",
+            body    = (
+                f"You have a new booking on {first_day} "
+                f"between {body.window_start} – {body.window_end}."
+            ),
+            data    = {"job_id": str(job.id)},
+        ))
+
+    await db.commit()
+    await db.refresh(job)
+    return job
+
+
+@router.post("/scheduled/multi-day", response_model=JobBundleResponse, status_code=201)
+async def create_multi_day_booking(
+    body: MultiDayBookingCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Create a multi-day booking (e.g. a 39-day security-guard booking) as ONE
+    atomic bundle instead of the old pattern of calling POST /jobs/scheduled
+    once per day from the frontend.
+
+    All N day-jobs are built in memory and added to the session together,
+    then flushed/committed ONCE — either every day is created or (on any
+    error, which triggers a rollback) none of them are. There is no window
+    where a partial bundle can be left behind by a mid-way failure, and no
+    per-day network round trip.
+
+    Day 1 is the "parent" (parent_job_id=NULL, day_index=1, total_days=N).
+    Days 2..N point back at the parent via parent_job_id. Each day still
+    gets its own independent arrived/started/approve/OTP/payment lifecycle —
+    only the grouping/visibility changes, not the per-day job lifecycle.
+
+    Worker assignment:
+      preferred_worker_id is required — every day is pinned to that worker
+      immediately (status='confirmed'), matching single-day direct booking
+      behavior — no availability re-check, same as POST /jobs/scheduled with
+      preferred_worker_id. There is no lazy/system-assigns-later mode.
+    """
+    from datetime import time as _time
+    from models import Notification
+
+    now_utc = datetime.now(timezone.utc)
+    start_date = date.fromisoformat(body.start_date)
+    all_dates = [start_date + timedelta(days=i) for i in range(body.num_days)]
+
+    # Server-side "no past days" guard, independent of client-side validation.
+    # MultiDayBookingCreate.start_date already rejects a past start_date, so
+    # no day in this forward-contiguous range can be in the past — this is
+    # defense in depth against that invariant ever changing silently.
+    today = now_utc.date()
+    if any(d < today for d in all_dates):
+        raise HTTPException(400, "Cannot book a day in the past")
+
+    window_start = _time.fromisoformat(body.window_start)
+    window_end   = _time.fromisoformat(body.window_end)
+
+    # ── Resolve category + per-day price (mirrors create_scheduled_job) ──────
+    category_id = body.category_id
+    svc = None
+    if body.service_id:
+        svc_r = await db.execute(select(Service).where(Service.id == body.service_id))
+        svc = svc_r.scalar_one_or_none()
+        if svc and category_id is None:
+            category_id = svc.category_id
+    if category_id is None:
+        wc_r = await db.execute(
+            select(WorkerCategory).where(WorkerCategory.worker_id == body.preferred_worker_id).limit(1)
         )
+        wc = wc_r.scalar_one_or_none()
+        if wc:
+            category_id = wc.category_id
+    if category_id is None:
+        raise HTTPException(422, "category_id is required — please pick a service or pass category_id")
+
+    total_price = None
+    if svc is not None:
+        unit_price = svc.base_price if svc.base_price is not None else svc.price
+        if unit_price is not None:
+            is_per_day = svc.allow_multi_day_booking and svc.price_type in ("per_day", "fixed")
+            total_price = unit_price * body.num_days if is_per_day else unit_price
+    per_day_price = (total_price / body.num_days) if total_price is not None else None
+    if per_day_price is not None:
+        per_day_price = per_day_price.quantize(Decimal("0.01"))
+
+    chosen_worker_id = body.preferred_worker_id
+    initial_status = "confirmed"
+    location_geom = _make_geom(body.location_lon, body.location_lat)
+
+    jobs: list[Job] = []
+    for i, d in enumerate(all_dates):
+        jobs.append(Job(
+            user_id          = user.id,
+            category_id      = category_id,
+            service_id       = body.service_id,
+            package_id       = body.package_id,
+            worker_id        = chosen_worker_id,
+            job_type         = body.source,
+            source           = body.source,
+            status           = initial_status,
+            is_flexible      = True,
+            preferred_days   = [d.isoformat()],
+            window_start     = window_start,
+            window_end       = window_end,
+            title            = body.title,
+            description      = body.description,
+            location_lat     = Decimal(str(body.location_lat)),
+            location_lon     = Decimal(str(body.location_lon)),
+            location_address = body.location_address,
+            location_area    = body.location_area,
+            location_note    = body.location_note,
+            location_geom    = location_geom,
+            budget_max       = body.budget_max,
+            quoted_price     = per_day_price,
+            assigned_at      = now_utc,
+            day_index        = i + 1,
+            total_days       = body.num_days,
+        ))
+
+    # Day 1 is the parent. Flush it alone first to get its generated UUID,
+    # then attach it as parent_job_id on every other day. Still ONE
+    # transaction end-to-end — nothing commits until the very end below, so
+    # a failure anywhere in this function rolls back every day, not just the
+    # ones after the failure point.
+    parent = jobs[0]
+    db.add(parent)
+    await db.flush()
+
+    for j in jobs[1:]:
+        j.parent_job_id = parent.id
+    db.add_all(jobs[1:])
+    await db.flush()
+
+    for j in jobs:
+        await _log_event(db, j.id, initial_status, "user", user.id, {
+            "day_index": j.day_index, "total_days": j.total_days, "date": j.preferred_days[0],
+        })
+
+    first_day_str = all_dates[0].strftime('%d %b')
+    last_day_str  = all_dates[-1].strftime('%d %b')
+    user_body = (
+        f"Your {body.num_days}-day booking is confirmed, {first_day_str} – {last_day_str}, "
+        f"between {body.window_start} – {body.window_end} daily."
+    )
+    db.add(Notification(
+        user_id = user.id,
+        type    = "job_scheduled_confirm",
+        title   = "Multi-day booking confirmed!",
+        body    = user_body,
+        data    = {"job_id": str(parent.id), "total_days": body.num_days},
+    ))
+
+    if chosen_worker_id:
+        wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == chosen_worker_id))
         wp = wp_r.scalar_one_or_none()
         if wp:
             db.add(Notification(
                 user_id = wp.user_id,
                 type    = "job_assigned",
-                title   = "New Booking",
+                title   = "New multi-day booking",
                 body    = (
-                    f"You have a new booking on {first_day} "
-                    f"between {body.window_start} – {body.window_end}."
+                    f"You have a {body.num_days}-day booking, {first_day_str} – {last_day_str}, "
+                    f"between {body.window_start} – {body.window_end} daily."
                 ),
-                data    = {"job_id": str(job.id)},
+                data    = {"job_id": str(parent.id), "total_days": body.num_days},
             ))
 
     await db.commit()
-    await db.refresh(job)
-    return job
+    for j in jobs:
+        await db.refresh(j)
+
+    return JobBundleResponse(parent_job_id=parent.id, total_days=body.num_days, days=jobs)
+
+
+@router.get("/{job_id}/bundle", response_model=JobBundleResponse)
+async def get_job_bundle(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Given a parent (or any child) job id, returns the full ordered list of
+    day-jobs in that bundle (parent + all children, ordered by day_index),
+    each with its own status/arrived/started/price/payment state. Used by
+    ActiveJobPage to render a day-by-day list under one bundle card.
+    """
+    from models import Category as CatModel, User as UserModel, WorkerProfile as WP
+
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404, "Job not found")
+
+    bundle_key = job.parent_job_id or job.id
+    days_result = await db.execute(
+        select(Job)
+        .where(sa_func.coalesce(Job.parent_job_id, Job.id) == bundle_key)
+        .order_by(Job.day_index)
+    )
+    days = days_result.scalars().all()
+    if not days:
+        raise HTTPException(404, "Job not found")
+
+    parent = next((d for d in days if d.id == bundle_key), days[0])
+
+    # Authorization: the customer who booked it, or any worker assigned to
+    # at least one day in the bundle.
+    if parent.user_id != user.id:
+        wp_r = await db.execute(select(WP).where(WP.user_id == user.id))
+        wp = wp_r.scalar_one_or_none()
+        if not wp or not any(d.worker_id == wp.id for d in days):
+            raise HTTPException(403)
+
+    # Enrich each day with category name + worker name (batch lookups).
+    cat = await db.execute(select(CatModel.name).where(CatModel.id == parent.category_id))
+    cat_name = cat.scalar_one_or_none()
+
+    worker_ids = list({d.worker_id for d in days if d.worker_id})
+    worker_map: dict = {}
+    if worker_ids:
+        wrows = await db.execute(
+            select(WP.id, UserModel.full_name)
+            .join(UserModel, UserModel.id == WP.user_id)
+            .where(WP.id.in_(worker_ids))
+        )
+        worker_map = {row.id: row.full_name for row in wrows.all()}
+
+    day_responses = []
+    for d in days:
+        resp = JobResponse.model_validate(d)
+        resp.category_name = cat_name
+        resp.worker_name = worker_map.get(d.worker_id) if d.worker_id else None
+        day_responses.append(resp)
+
+    return JobBundleResponse(
+        parent_job_id=bundle_key,
+        total_days=parent.total_days or len(days),
+        days=day_responses,
+    )
 
 
 @router.post("/book-slot", response_model=ScheduledJobResponse, status_code=201)
@@ -1335,6 +1602,13 @@ async def book_slot(
         raise HTTPException(404, "Slot not found")
     if slot.is_blocked:
         raise HTTPException(409, "This slot is no longer available")
+    # Previously the capacity check below was dead code (an unreachable
+    # second `raise` right after the unconditional one above), so a slot at
+    # capacity was never actually rejected here — booked_count could exceed
+    # capacity via this endpoint despite the DB CHECK constraint (which the
+    # DB trigger — not this code path — is what actually enforced it, at the
+    # cost of a raw IntegrityError instead of a clean 409).
+    if slot.booked_count >= slot.capacity:
         raise HTTPException(409, "This slot is fully booked — please pick another time")
 
     # ── Load service ──────────────────────────────────────────────────────────
@@ -1345,6 +1619,13 @@ async def book_slot(
 
     now_utc = datetime.now(timezone.utc)
     slot_dt = datetime.combine(slot.slot_date, slot.slot_start, tzinfo=timezone.utc)
+    if slot_dt <= now_utc:
+        # Server-side "not in the past" guard — a slot listing fetched
+        # earlier (e.g. when "today" was still yesterday, or simply left
+        # open in a background tab) could otherwise still be submitted after
+        # its date/time has already passed. This must be enforced here,
+        # independent of any client-side date-picker validation.
+        raise HTTPException(400, "This slot is in the past — please pick another time")
     price   = svc.base_price if svc.base_price is not None else svc.price
 
     # ── Create job (worker pre-assigned from slot) ────────────────────────────
@@ -1418,7 +1699,7 @@ async def reschedule_job(
     customer typed in).
     """
     from datetime import time as _time
-    from services.scheduling import check_worker_availability, find_eligible_workers, create_schedule_block
+    from services.scheduling import check_worker_availability, create_schedule_block
 
     result = await db.execute(
         select(Job).where(Job.id == job_id, Job.user_id == user.id)
@@ -1433,7 +1714,10 @@ async def reschedule_job(
 
     now = datetime.now(timezone.utc)
     current_arrival = get_arrival_datetime(job)
-    if current_arrival is not None and current_arrival - now < timedelta(hours=2):
+    free_reschedule_min_hours = float(
+        await get_config(db, "cancellation_free_reschedule_min_hours", Decimal("2"))
+    )
+    if current_arrival is not None and current_arrival - now < timedelta(hours=free_reschedule_min_hours):
         raise HTTPException(
             409,
             "Too close to your scheduled arrival window to reschedule — "
@@ -1491,49 +1775,44 @@ async def reschedule_job(
     new_window_start = _time.fromisoformat(body.window_start)
     new_window_end   = _time.fromisoformat(body.window_end)
 
+    # Every scheduled/discovery/package job has a worker pinned at booking
+    # time (preferred_worker_id is required on creation — there is no
+    # lazy/system-assigns-later mode), so we only ever check real conflicts
+    # for the already-assigned worker: time-off + other bookings' schedule
+    # blocks, not the worker's generic recurring weekly hours. A pinned
+    # booking was never validated against those hours when it was created,
+    # so re-applying that gate here rejected reschedules of perfectly valid
+    # bookings whose window simply falls outside the worker's generic hours
+    # (round-the-clock guard bookings being the clearest case — confirmed
+    # live in prod: a worker with worker_availability of 09:00–18:00
+    # Mon–Fri had 39 confirmed bookings for a 06:00–07:00 daily window).
+    # exclude_job_id=job.id also stops this job's OWN current schedule block
+    # (if it has one) from being misread as a conflict with itself.
     valid_days = []
-    if job.worker_id:
-        # Already has a specific worker — the new window must fit THEIR calendar.
-        for d_str in body.preferred_days:
-            d = date.fromisoformat(d_str)
-            if await check_worker_availability(db, job.worker_id, d, new_window_start, new_window_end):
-                valid_days.append(d_str)
-        if not valid_days:
-            raise HTTPException(
-                409,
-                "Your assigned worker isn't available on any of those days/window — "
-                "try a different time, or cancel and rebook.",
-            )
-    else:
-        # Lazy assignment — no worker pinned yet, so "open" means at least one
-        # eligible worker exists for at least one of the candidate days.
-        probe = Job(
-            location_lat=job.location_lat, location_lon=job.location_lon,
-            window_start=new_window_start, window_end=new_window_end,
+    for d_str in body.preferred_days:
+        d = date.fromisoformat(d_str)
+        if await check_worker_availability(
+            db, job.worker_id, d, new_window_start, new_window_end,
+            require_weekly_hours=False, exclude_job_id=job.id,
+        ):
+            valid_days.append(d_str)
+    if not valid_days:
+        raise HTTPException(
+            409,
+            "Your assigned worker isn't available on any of those days/window — "
+            "try a different time, or cancel and rebook.",
         )
-        for d_str in body.preferred_days:
-            d = date.fromisoformat(d_str)
-            workers = await find_eligible_workers(db, probe, d)
-            if workers:
-                valid_days.append(d_str)
-        if not valid_days:
-            raise HTTPException(
-                409, "No workers are available on any of those days/window — try a different time."
-            )
 
-    # Drop any existing reservation — recreated below if a worker is pinned.
+    # Drop any existing reservation — recreated below.
     await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
 
     job.preferred_days = valid_days
     job.window_start   = new_window_start
     job.window_end      = new_window_end
 
-    if job.worker_id:
-        chosen_date = date.fromisoformat(valid_days[0])
-        job.assigned_date = chosen_date
-        await create_schedule_block(db, job.worker_id, job.id, chosen_date, new_window_start, new_window_end)
-    else:
-        job.assigned_date = None
+    chosen_date = date.fromisoformat(valid_days[0])
+    job.assigned_date = chosen_date
+    await create_schedule_block(db, job.worker_id, job.id, chosen_date, new_window_start, new_window_end)
 
     await _log_event(db, job.id, job.status, "user", user.id, {
         "rescheduled": True, "preferred_days": valid_days,
@@ -1547,17 +1826,16 @@ async def reschedule_job(
         body="Your booking has been moved to your new preferred time.",
         data={"job_id": str(job.id)},
     ))
-    if job.worker_id:
-        wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
-        wp = wp_r.scalar_one_or_none()
-        if wp:
-            db.add(Notification(
-                user_id=wp.user_id,
-                type="job_rescheduled",
-                title="Booking rescheduled",
-                body="A customer moved their booking with you to a new time.",
-                data={"job_id": str(job.id)},
-            ))
+    wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
+    wp = wp_r.scalar_one_or_none()
+    if wp:
+        db.add(Notification(
+            user_id=wp.user_id,
+            type="job_rescheduled",
+            title="Booking rescheduled",
+            body="A customer moved their booking with you to a new time.",
+            data={"job_id": str(job.id)},
+        ))
 
     await db.commit()
     await db.refresh(job)
@@ -1624,7 +1902,8 @@ async def report_no_show(
 
     distance_km = haversine_km(float(loc.lat), float(loc.lon), float(job.location_lat), float(job.location_lon))
 
-    if distance_km > NO_SHOW_PROXIMITY_KM:
+    no_show_proximity_km = float(await get_config(db, "no_show_proximity_km", Decimal(str(NO_SHOW_PROXIMITY_KM))))
+    if distance_km > no_show_proximity_km:
         # Clearly nowhere near — auto-confirm.
         job.no_show_status = "confirmed"
         job.status = "cancelled"
@@ -1713,7 +1992,7 @@ async def flag_customer_unavailable(
         pct = Decimal("0")
         reason = "Customer unavailable on worker arrival — first offense (forgiven)"
     else:
-        pct = Decimal("0.50")
+        pct = await get_config(db, "cancellation_repeat_offense_pct", Decimal("0.50"))
         reason = "Customer unavailable on worker arrival — repeat offense"
     await record_customer_offense(db, job, job.user_id, reason=reason, pct=pct)
 

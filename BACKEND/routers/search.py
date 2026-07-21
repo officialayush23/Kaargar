@@ -24,6 +24,8 @@ from models import (
 )
 from schemas import SearchResult, SearchResponseWrapper
 from dependencies import get_current_user
+from services.config import get_config
+from decimal import Decimal
 
 router = APIRouter()
 
@@ -201,9 +203,9 @@ async def search(
         # Pull a bounded candidate pool (bigger than one page) so min/max
         # price/distance normalization reflects the real spread of matching
         # results, then rank + paginate in Python.
-        W_RATING = 0.45
-        W_DISTANCE = 0.35
-        W_PRICE = 0.20
+        W_RATING = float(await get_config(db, "search_weight_rating", Decimal("0.45")))
+        W_DISTANCE = float(await get_config(db, "search_weight_distance", Decimal("0.35")))
+        W_PRICE = float(await get_config(db, "search_weight_price", Decimal("0.20")))
         have_distance = distance_col is not None
 
         if not have_distance:
@@ -225,11 +227,11 @@ async def search(
             min_dist, max_dist = (min(dists), max(dists)) if dists else (0.0, 0.0)
             dist_span = (max_dist - min_dist) or 1.0
 
-        def _blended_score(row):
+        def _blended_score(row, service_rating_weight, worker_rating_weight):
             svc, wp = row[0], row[1]
             svc_rating = float(svc.avg_rating or 0) / 5.0
             worker_rating = float(wp.avg_rating or 0) / 5.0
-            rating_component = 0.70 * svc_rating + 0.30 * worker_rating
+            rating_component = service_rating_weight * svc_rating + worker_rating_weight * worker_rating
 
             if svc.price is not None:
                 price_component = 1.0 - ((float(svc.price) - min_price) / price_span)
@@ -248,9 +250,12 @@ async def search(
 
             return score
 
+        service_rating_weight = float(await get_config(db, "search_rating_service_weight", Decimal("0.70")))
+        worker_rating_weight = float(await get_config(db, "search_rating_worker_weight", Decimal("0.30")))
+
         ranked = sorted(
             pool_rows,
-            key=lambda r: (_blended_score(r), r[4]),  # relevance_col is index 4
+            key=lambda r: (_blended_score(r, service_rating_weight, worker_rating_weight), r[4]),  # relevance_col is index 4
             reverse=True,
         )
         rows = ranked[offset:offset + limit]

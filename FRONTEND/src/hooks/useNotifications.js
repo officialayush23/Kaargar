@@ -23,6 +23,25 @@ export function useNotifications() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
   })
 
+  // Mark a single notification read (called when the user opens/clicks it).
+  // Optimistically flips is_read locally so the badge count and the item's
+  // unread dot update immediately, without waiting on a refetch.
+  const markReadMutation = useMutation({
+    mutationFn: (id) => api.patch(`/notifications/${id}/read`),
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: ['notifications'] })
+      const previous = qc.getQueryData(['notifications'])
+      qc.setQueryData(['notifications'], (old = []) =>
+        old.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+      )
+      return { previous }
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previous) qc.setQueryData(['notifications'], context.previous)
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ['notifications'] }),
+  })
+
   // Supabase Realtime subscription
   useEffect(() => {
     if (!user?.id) return
@@ -66,5 +85,6 @@ export function useNotifications() {
     notifications,
     unreadCount,
     markAllRead: markAllMutation.mutate,
+    markRead: markReadMutation.mutate,
   }
 }

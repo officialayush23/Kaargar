@@ -5,7 +5,6 @@ import { Background } from '@/components/glass/Background'
 import { MobileBottomNav } from '@/components/glass/GlassNavbar'
 import { OnboardingWalkthrough, useOnboarding } from '@/components/kaargar/OnboardingWalkthrough'
 import { PhonePrompt } from '@/components/kaargar/PhonePrompt'
-import { ActiveJobBar } from '@/components/kaargar/ActiveJobBar'
 import { useAuthStore } from '@/stores/auth'
 
 // Routes where the bottom nav should be hidden (full-screen experiences)
@@ -45,7 +44,9 @@ export function AppLayout() {
         <Outlet />
       </motion.main>
 
-      {!hideNav && <ActiveJobBar />}
+      {/* Active-job indicator now lives inline inside MobileBottomNav itself
+          (between its regular links) instead of floating as a separate
+          pill above it — see GlassNavbar.jsx's MobileBottomNav. */}
       {!hideNav && <MobileBottomNav />}
 
       <AnimatePresence>

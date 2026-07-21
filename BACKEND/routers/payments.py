@@ -11,10 +11,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
 
+from decimal import Decimal
+
 from database import get_db
 from models import User, Job, Payment
 from schemas import PaymentOrderCreate, PaymentOrderResponse, PaymentVerifyRequest, PaymentResponse, SuccessResponse
 from dependencies import get_current_user
+from services.config import get_config
 from config import get_settings
 
 settings = get_settings()
@@ -44,9 +47,11 @@ async def create_order(
     if not charge_amount:
         raise HTTPException(400, "Job price not set yet")
 
+    min_amount_inr = float(await get_config(db, "payment_min_amount_inr", Decimal("1")))
+    min_amount_paise = int(min_amount_inr * 100)
     amount_paise = int(charge_amount * 100)
-    if amount_paise < 100:
-        raise HTTPException(400, "Amount must be at least ₹1 (100 paise)")
+    if amount_paise < min_amount_paise:
+        raise HTTPException(400, f"Amount must be at least ₹{min_amount_inr:g} ({min_amount_paise} paise)")
     client = _razorpay_client()
     order = client.order.create({
         "amount": amount_paise,
@@ -107,11 +112,12 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
         )
         payment = result.scalar_one_or_none()
         if payment:
+            escrow_hold_hours = float(await get_config(db, "escrow_hold_hours", Decimal("2")))
             payment.status = "held"
             payment.razorpay_payment_id = rz_payment_id
             payment.payment_method = rp_payment.get("method")
             payment.held_at = datetime.now(timezone.utc)
-            payment.escrow_release_due_at = datetime.now(timezone.utc) + timedelta(hours=2)
+            payment.escrow_release_due_at = datetime.now(timezone.utc) + timedelta(hours=escrow_hold_hours)
             payment.last_webhook_event = event
             payment.last_webhook_at = datetime.now(timezone.utc)
             await db.commit()
@@ -159,10 +165,11 @@ async def verify_payment(
     if not payment:
         raise HTTPException(404, "Payment record not found")
 
+    escrow_hold_hours = float(await get_config(db, "escrow_hold_hours", Decimal("2")))
     payment.status = "held"
     payment.razorpay_payment_id = rz_payment_id
     payment.held_at = datetime.now(timezone.utc)
-    payment.escrow_release_due_at = datetime.now(timezone.utc) + timedelta(hours=2)
+    payment.escrow_release_due_at = datetime.now(timezone.utc) + timedelta(hours=escrow_hold_hours)
     await db.commit()
     return {"status": "ok", "payment_id": str(payment.id)}
 

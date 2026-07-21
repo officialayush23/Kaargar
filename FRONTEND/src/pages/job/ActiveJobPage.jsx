@@ -463,6 +463,11 @@ export default function ActiveJobPage() {
   const [rescheduleOpen, setRescheduleOpen] = useState(false)
   const [noShowLoading, setNoShowLoading] = useState(false)
   const [flagLoading, setFlagLoading] = useState(false)
+  // Multi-day bundle — day-by-day list, only fetched when this job is the
+  // parent of a multi-day booking (total_days > 1). GET /jobs/me now only
+  // ever returns the bundle's parent row, so `job` here IS that parent.
+  const [bundleDays, setBundleDays] = useState(null)
+  const [bundleLoading, setBundleLoading] = useState(false)
 
   const isWorkerViewer = user?.role === 'worker'
 
@@ -504,6 +509,19 @@ export default function ActiveJobPage() {
       .subscribe()
     return () => supabase.removeChannel(channel)
   }, [jobId, fetchJob, isWorkerViewer])
+
+  const isBundle = (job?.total_days ?? 1) > 1
+
+  useEffect(() => {
+    if (!isBundle) { setBundleDays(null); return }
+    let cancelled = false
+    setBundleLoading(true)
+    api.get(`/jobs/${jobId}/bundle`)
+      .then(({ data }) => { if (!cancelled) setBundleDays(data.days || []) })
+      .catch(() => { if (!cancelled) setBundleDays(null) })
+      .finally(() => { if (!cancelled) setBundleLoading(false) })
+    return () => { cancelled = true }
+  }, [jobId, isBundle, job?.status])
 
   // The "other party" card: customer sees the worker, worker sees the customer.
   const otherPartyName   = isWorkerViewer ? job?.client_name : job?.worker_name
@@ -877,6 +895,73 @@ export default function ActiveJobPage() {
               </span>
             </div>
           </div>
+        </GlassCard>
+      )}
+
+      {/* Multi-day bundle — day-by-day progress under this one card. This
+          job IS the bundle's parent (GET /jobs/me only ever returns parent
+          rows now), so job.total_days/job.bundle_status describe the whole
+          bundle while each entry below is one day's own Job row with its
+          own independent status/price/lifecycle. */}
+      {isBundle && (
+        <GlassCard className="p-5">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-xs uppercase tracking-widest font-medium" style={{ color: 'var(--text-muted)' }}>
+              {job.total_days}-day booking
+            </p>
+            {job.bundle_status && (
+              <span className="text-xs font-semibold font-mono" style={{ color: 'var(--amber-400, #f59e0b)' }}>
+                {job.bundle_status}
+              </span>
+            )}
+          </div>
+
+          {bundleLoading && (
+            <div className="flex items-center justify-center py-6">
+              <Loader2 className="h-5 w-5 animate-spin" style={{ color: 'var(--text-muted)' }} />
+            </div>
+          )}
+
+          {!bundleLoading && bundleDays && (
+            <div className="space-y-2">
+              {bundleDays.map(day => {
+                const dCfg = STATUS_CONFIG[day.status] || STATUS_CONFIG.assigned
+                const dayDate = day.preferred_days?.[0]
+                return (
+                  <div
+                    key={day.id}
+                    className="flex items-center gap-3 p-3 rounded-xl"
+                    style={{
+                      background: day.id === job.id ? 'var(--accent-bg)' : 'var(--g-bg)',
+                      border: '1px solid var(--g-border)',
+                    }}
+                  >
+                    <div
+                      className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 text-xs font-bold shrink-0"
+                      style={{ background: 'var(--card-bg, rgba(255,255,255,0.05))', color: 'var(--text-secondary)' }}
+                    >
+                      {day.day_index}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                        {dayDate
+                          ? new Date(`${dayDate}T00:00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })
+                          : `Day ${day.day_index}`}
+                      </p>
+                      <p className={cn('text-xs mt-0.5 flex items-center gap-1', dCfg.color)}>
+                        <dCfg.icon className="h-3 w-3" /> {dCfg.label}
+                      </p>
+                    </div>
+                    {(day.approved_total ?? day.final_price ?? day.quoted_price) != null && (
+                      <p className="text-xs font-mono shrink-0" style={{ color: 'var(--text-muted)' }}>
+                        {formatCurrency(day.approved_total ?? day.final_price ?? day.quoted_price)}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </GlassCard>
       )}
 

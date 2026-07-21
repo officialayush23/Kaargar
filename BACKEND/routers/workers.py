@@ -37,6 +37,7 @@ from schemas import (
 from dependencies import get_current_user
 from services.storage import get_public_url, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
 from services.translation import translate_and_store
+from services.config import get_config
 
 router = APIRouter()
 
@@ -410,10 +411,11 @@ async def create_service(
             "bookable (allow_multi_day_booking) — choose one booking mode.",
         )
 
-    # ── Auto-recompute slot_duration_min from duration_min (+60min buffer) ────
+    # ── Auto-recompute slot_duration_min from duration_min (+ buffer) ─────────
     # for slot-mode services, regardless of whatever the client sent.
     if dump.get("requires_slot") and dump.get("duration_min") is not None:
-        dump["slot_duration_min"] = dump["duration_min"] + 60
+        slot_buffer_min = int(await get_config(db, "slot_duration_buffer_min", 60))
+        dump["slot_duration_min"] = dump["duration_min"] + slot_buffer_min
 
     svc = Service(worker_id=wp.id, **dump)
     db.add(svc)
@@ -480,11 +482,12 @@ async def update_service(
         )
 
     # ── Auto-recompute slot_duration_min when duration_min changes ────────────
-    # Fixed 60-minute buffer, for slot-mode services. Overrides any
+    # Buffer minutes, for slot-mode services. Overrides any
     # slot_duration_min the client tried to send directly.
     duration_changed = "duration_min" in updates and updates["duration_min"] is not None
     if final_requires_slot and duration_changed:
-        updates["slot_duration_min"] = updates["duration_min"] + 60
+        slot_buffer_min = int(await get_config(db, "slot_duration_buffer_min", 60))
+        updates["slot_duration_min"] = updates["duration_min"] + slot_buffer_min
 
     for k, v in updates.items():
         setattr(svc, k, v)

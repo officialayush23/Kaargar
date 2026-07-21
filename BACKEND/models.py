@@ -81,6 +81,11 @@ class Category(Base):
     icon_emoji: Mapped[str | None] = mapped_column(String(10))
     color_hex: Mapped[str | None] = mapped_column(String(7))
     mode: Mapped[str] = mapped_column(String(20), default="both")
+    # Section 9(5) CGST Act: for the platform-liable categories (plumbing, electrical,
+    # cleaning, carpentry, painting, appliance-repair, pest-control) Kaargar itself is
+    # liable for GST on the full service value, not just its commission. Everything
+    # else defaults to commission_only (GST charged on the platform's commission fee).
+    gst_treatment: Mapped[str] = mapped_column(String(30), default="commission_only")
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     is_featured: Mapped[bool] = mapped_column(Boolean, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
@@ -426,6 +431,18 @@ class Job(Base):
     # plain varchar, values enforced in application code.
     no_show_reported_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     no_show_status: Mapped[str | None] = mapped_column(String(20))
+
+    # ── Multi-day booking bundle (migration 013) ──────────────
+    # A multi-day booking (e.g. a 39-day security-guard booking) is created as
+    # N Job rows in ONE transaction instead of N unrelated bookings. The first
+    # day is the "parent" (parent_job_id=NULL, day_index=1); every subsequent
+    # day points back at the parent via parent_job_id. total_days is
+    # denormalized onto every row in the bundle (parent + children alike) so
+    # any single row can tell you the size of the bundle it belongs to.
+    # ON DELETE CASCADE: deleting the parent job deletes every day under it.
+    parent_job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"))
+    day_index: Mapped[int | None] = mapped_column(Integer)
+    total_days: Mapped[int | None] = mapped_column(Integer)
 
     user = relationship("User")
     worker = relationship("WorkerProfile")
