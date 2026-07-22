@@ -4,11 +4,14 @@ Runs as FastAPI BackgroundTask (not Celery).
 """
 
 import asyncio
+import logging
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
 
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
+logger = logging.getLogger(__name__)
 
 from database import async_session
 from models import Job, WorkerProfile, JobWorkerRequest, Chat
@@ -133,11 +136,107 @@ async def _run_dispatch(db: AsyncSession, job_id: str):
                 req.status = "expired"
         await db.commit()
 
-    # All radii exhausted
+    # All radii exhausted — a bare "0 rows" here has been effectively
+    # undebuggable from outside a live DB session (this sandbox can't reach
+    # the production Postgres to run ad-hoc diagnostic queries), and every
+    # prior "no workers available" report has had to be diagnosed blind from
+    # app-level symptoms alone. Log a stage-by-stage breakdown of exactly
+    # which WHERE clause is eliminating every candidate, so the next
+    # occurrence is self-diagnosing from the server log instead of guesswork.
+    await _log_no_match_diagnostics(db, job, radius_max)
+
     await db.execute(
         Job.__table__.update().where(Job.id == job.id).values(status="failed")
     )
     await db.commit()
+
+
+async def _log_no_match_diagnostics(db: AsyncSession, job: Job, radius_km: int) -> None:
+    try:
+        sql = text("""
+            SELECT
+                count(*) FILTER (WHERE true)                                        AS total_workers,
+                count(*) FILTER (WHERE wp.status = 'online')                        AS online,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved')                        AS approved,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true)                             AS instant_available,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM worker_categories wc
+                        WHERE wc.worker_id = wp.id AND wc.category_id = :category_id
+                    ))                                                              AS offers_category,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM worker_categories wc
+                        WHERE wc.worker_id = wp.id AND wc.category_id = :category_id
+                    )
+                    AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())) AS not_auto_offline,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM worker_categories wc
+                        WHERE wc.worker_id = wp.id AND wc.category_id = :category_id
+                    )
+                    AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
+                    AND wl.updated_at > NOW() - INTERVAL '2 minutes')                AS fresh_location,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM worker_categories wc
+                        WHERE wc.worker_id = wp.id AND wc.category_id = :category_id
+                    )
+                    AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
+                    AND wl.updated_at > NOW() - INTERVAL '2 minutes'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM worker_time_off wto
+                        WHERE wto.worker_id = wp.id
+                          AND NOW() BETWEEN wto.start_datetime AND wto.end_datetime
+                    ))                                                              AS not_on_leave,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM worker_categories wc
+                        WHERE wc.worker_id = wp.id AND wc.category_id = :category_id
+                    )
+                    AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
+                    AND wl.updated_at > NOW() - INTERVAL '2 minutes'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM worker_time_off wto
+                        WHERE wto.worker_id = wp.id
+                          AND NOW() BETWEEN wto.start_datetime AND wto.end_datetime
+                    )
+                    AND ST_DWithin(
+                        wl.geom::geography,
+                        ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                        :radius_m
+                    ))                                                              AS in_radius
+            FROM worker_profiles wp
+            LEFT JOIN worker_locations wl ON wl.worker_id = wp.id
+        """)
+        row = (await db.execute(sql, {
+            "lat": float(job.location_lat),
+            "lon": float(job.location_lon),
+            "radius_m": radius_km * 1000,
+            "category_id": job.category_id,
+        })).one()
+        logger.warning(
+            "Dispatch failed for job %s (no worker matched at %skm radius). "
+            "Funnel — total:%s online:%s approved:%s instant_available:%s "
+            "offers_category:%s not_auto_offline:%s fresh_location(<=2min):%s "
+            "not_on_leave:%s in_radius:%s.",
+            job.id, radius_km, *row,
+        )
+    except Exception as e:
+        logger.warning("Dispatch diagnostics query itself failed for job %s: %s", job.id, e)
 
 
 async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
@@ -165,6 +264,15 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
             wp.status = 'online'
             AND wp.verification_status = 'approved'
             AND wp.is_instant_available = true
+            -- Matching used to be category-blind — any online/approved/
+            -- instant-available worker within radius was eligible for
+            -- dispatch regardless of what services they actually registered
+            -- for (an electrician job could reach a plumber). Restrict to
+            -- workers who've actually added this job's category.
+            AND EXISTS (
+                SELECT 1 FROM worker_categories wc
+                WHERE wc.worker_id = wp.id AND wc.category_id = :category_id
+            )
             AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
             AND wl.updated_at > NOW() - INTERVAL '2 minutes'
             -- Explicit "I'm on leave" windows (worker_time_off) still exclude
@@ -194,6 +302,7 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
         "lon": float(job.location_lon),
         "radius_km": radius_km,
         "radius_m": radius_km * 1000,
+        "category_id": job.category_id,
     })
     rows = result.fetchall()
 

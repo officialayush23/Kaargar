@@ -10,8 +10,9 @@ export const useAppStore = create(
       theme: 'dark', // 'dark' | 'light'
 
       // Location state
-      currentLocation: null,   // { lat, lon, address, label }
-      savedAddresses: [],       // [{ id, label, address, lat, lon, type }]
+      currentLocation: null,     // { lat, lon, address, label }
+      locationFetchedAt: null,   // epoch ms — used to silently refresh a stale cache
+      savedAddresses: [],        // [{ id, label, address, lat, lon, type }]
       activeAddressId: null,
 
       setMode: (mode) => set({ mode }),
@@ -32,7 +33,7 @@ export const useAppStore = create(
           return { theme: next }
         }),
 
-      setCurrentLocation: (loc) => set({ currentLocation: loc }),
+      setCurrentLocation: (loc) => set({ currentLocation: loc, locationFetchedAt: Date.now() }),
 
       saveAddress: (addr) =>
         set((s) => ({
@@ -58,6 +59,13 @@ export const useAppStore = create(
         selectedArea: s.selectedArea,
         savedAddresses: s.savedAddresses,
         activeAddressId: s.activeAddressId,
+        // Persisted so the app doesn't re-prompt for / re-fetch GPS on every
+        // page load and every page (NewJobPage, Discovery's "Nearest" sort,
+        // SearchingPage's map, etc.) — fetched once (see AppLayout) and
+        // reused until explicitly changed via AddressModal or until stale
+        // (see LOCATION_MAX_AGE_MS in AppLayout).
+        currentLocation: s.currentLocation,
+        locationFetchedAt: s.locationFetchedAt,
       }),
     }
   )

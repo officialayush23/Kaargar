@@ -22,7 +22,6 @@ import { PuneMap } from '@/components/kaargar/PuneMap'
 import { formatCurrency, getErrorMessage } from '@/lib/utils'
 import { toast } from 'sonner'
 import { AddressBook } from '@/components/kaargar/AddressBook'
-import { useAddresses } from '@/hooks/useAddresses'
 import { cn } from '@/lib/utils'
 
 const STEPS = ['service', 'location', 'estimate', 'confirm']
@@ -115,32 +114,6 @@ function CategoryStep({ mode, onSelect }) {
 
 // ── Step 2: Location ─────────────────────────────────────────
 
-
-function SavedAddressPicker({ onSelect }) {
-  const { data: addresses = [] } = useAddresses()
-  if (!addresses.length) return null
-  return (
-    <div style={{ marginBottom: 4 }}>
-      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-        Saved addresses
-      </p>
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
-        {addresses.map(addr => (
-          <button key={addr.id} onClick={() => onSelect(addr)}
-            style={{
-              flexShrink: 0, padding: '7px 13px', borderRadius: 20,
-              border: addr.is_default ? '1.5px solid var(--brand)' : '1px solid var(--card-border)',
-              background: addr.is_default ? 'var(--accent-bg)' : 'var(--card-bg)',
-              color: addr.is_default ? 'var(--brand)' : 'var(--text-secondary)',
-              fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}>
-            {addr.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  )
-}
 
 function LocationStep({ location, onLocationSelect, category }) {
   const { getLocation, loading: geoLoading } = useGeoLocation()
@@ -303,13 +276,24 @@ function LocationStep({ location, onLocationSelect, category }) {
           {geoLoading ? 'Detecting…' : 'Use current location'}
         </button>
 
-        {/* Saved addresses pill strip */}
-        <SavedAddressPicker onSelect={(addr) => {
-          setAddressInput(addr.address_line)
-          if (addr.lat && addr.lon) {
-            onLocationSelect({ lat: parseFloat(addr.lat), lon: parseFloat(addr.lon), address: addr.address_line })
-          }
-        }} />
+        {/* Saved addresses — full add/edit/tag management (Home, Work,
+            Other, or a custom label), not just a read-only picker, so a
+            one-off address typed for this job can actually be saved for
+            reuse next time instead of being thrown away after this booking. */}
+        <div>
+          <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+            Saved addresses
+          </p>
+          <AddressBook
+            picker
+            onSelect={(addr) => {
+              setAddressInput(addr.address_line)
+              if (addr.lat && addr.lon) {
+                onLocationSelect({ lat: parseFloat(addr.lat), lon: parseFloat(addr.lon), address: addr.address_line })
+              }
+            }}
+          />
+        </div>
 
         {/* Description */}
         <GlassTextarea

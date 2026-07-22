@@ -541,7 +541,7 @@ function DiscoveryHome({ onSearch, navigate }) {
 export default function DiscoveryPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate = useNavigate()
-  const { mode, setMode } = useAppStore()
+  const { mode, setMode, currentLocation } = useAppStore()
 
   // Keep the global mode store in sync with actually being on this page —
   // so the shared ModeToggle at the top always shows "Discover" active
@@ -561,11 +561,18 @@ export default function DiscoveryPage() {
 
   const currentQuery = searchParams.get('q') || ''
 
-  // "Nearest" needs the customer's coordinates — fetch them lazily the first
-  // time that sort is picked (not on every render/mount) and cache in state.
+  // "Nearest" needs the customer's coordinates — reuse the location already
+  // cached at login (AppLayout) instead of firing a fresh GPS request every
+  // time this sort is picked. Only falls back to a live fetch if the cache
+  // is empty (e.g. permission was denied earlier) or has no coordinates
+  // (an area picked by name via AddressModal has no lat/lon).
   async function handleSortChange(value) {
     setSort(value)
     if (value === 'distance' && !coords) {
+      if (currentLocation?.lat && currentLocation?.lon) {
+        setCoords({ lat: currentLocation.lat, lon: currentLocation.lon })
+        return
+      }
       const loc = await getLocation()
       if (loc) setCoords({ lat: loc.lat, lon: loc.lon })
     }

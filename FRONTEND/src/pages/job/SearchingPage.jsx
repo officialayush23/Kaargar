@@ -298,23 +298,32 @@ export default function SearchingPage() {
   const [nearbyWorkers, setNearbyWorkers] = useState([])
   const { theme } = useAppStore()
 
-  // User's real geo position (falls back to Pune center)
-  const [userCoords, setUserCoords] = useState({
-    longitude: PUNE_CENTER.longitude,
-    latitude:  PUNE_CENTER.latitude,
-  })
-  const [viewState, setViewState] = useState({
-    longitude: PUNE_CENTER.longitude,
-    latitude:  PUNE_CENTER.latitude,
+  // User's location for the map pin — reuse the location already cached at
+  // login (AppLayout) instead of firing an independent, disconnected GPS
+  // request here. That old fetch used low accuracy + a 60s maximumAge and
+  // had nothing to do with the location the job itself was created against,
+  // so the pin could drift from where nearby-workers were actually being
+  // searched around. Falls back to a live fetch only if the cache is empty,
+  // and to Pune's center if that also fails.
+  const { currentLocation } = useAppStore()
+  const [userCoords, setUserCoords] = useState(() =>
+    currentLocation?.lat && currentLocation?.lon
+      ? { longitude: currentLocation.lon, latitude: currentLocation.lat }
+      : { longitude: PUNE_CENTER.longitude, latitude: PUNE_CENTER.latitude }
+  )
+  const [viewState, setViewState] = useState(() => ({
+    longitude: userCoords.longitude,
+    latitude:  userCoords.latitude,
     zoom: 14.5,
     pitch: 30,
     bearing: 0,
-  })
+  }))
 
   const channelRef = useRef(null)
 
-  // Geolocate user on mount
+  // Only fetch fresh GPS here if there was no cached location at all.
   useEffect(() => {
+    if (currentLocation?.lat && currentLocation?.lon) return
     if (!navigator.geolocation) return
     navigator.geolocation.getCurrentPosition(
       ({ coords }) => {
@@ -325,6 +334,7 @@ export default function SearchingPage() {
       () => {}, // silently fall back to Pune center
       { enableHighAccuracy: false, timeout: 6000, maximumAge: 60000 }
     )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // Job status subscription
@@ -544,7 +554,7 @@ export default function SearchingPage() {
             </button>
           </motion.div>
         ) : (
-          <SearchingStatus key="searching" />
+          <SearchingStatus key="searching" nearbyCount={nearbyWorkers.length} />
         )}
       </AnimatePresence>
     </div>

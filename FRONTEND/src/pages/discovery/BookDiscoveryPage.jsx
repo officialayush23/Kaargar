@@ -35,8 +35,8 @@ import { GlassInput } from '@/components/glass/GlassInput'
 import { GlassSelect } from '@/components/glass/GlassSelect'
 import { InfoButton } from '@/components/kaargar/InfoButton'
 import { MapLocationPicker } from '@/components/kaargar/MapLocationPicker'
+import { AddressBook } from '@/components/kaargar/AddressBook'
 import { api } from '@/lib/api'
-import { useAddresses } from '@/hooks/useAddresses'
 import { toast } from 'sonner'
 import { MobileBottomNav } from '@/components/glass/GlassNavbar'
 
@@ -93,28 +93,17 @@ const TIME_OPTS = timeOptions()
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 
+// Full add/edit/tag address management (Home, Work, Other, or custom),
+// not just a read-only picker — reuses the same AddressBook component the
+// Profile page and Instant flow use, so an address typed for this booking
+// can actually be saved for reuse instead of being thrown away afterward.
 function SavedAddressPicker({ onSelect }) {
-  const { data: addresses = [] } = useAddresses()
-  if (!addresses.length) return null
   return (
     <div style={{ marginBottom: 10 }}>
       <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
         Saved addresses
       </p>
-      <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 2, scrollbarWidth: 'none' }}>
-        {addresses.map(addr => (
-          <button key={addr.id} onClick={() => onSelect(addr)}
-            style={{
-              flexShrink: 0, padding: '6px 13px', borderRadius: 20,
-              border: addr.is_default ? '1.5px solid var(--brand)' : '1px solid var(--card-border)',
-              background: addr.is_default ? 'var(--accent-bg)' : 'var(--card-bg)',
-              color: addr.is_default ? 'var(--brand)' : 'var(--text-secondary)',
-              fontSize: 12, fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap',
-            }}>
-            {addr.label}
-          </button>
-        ))}
-      </div>
+      <AddressBook picker onSelect={onSelect} />
     </div>
   )
 }
