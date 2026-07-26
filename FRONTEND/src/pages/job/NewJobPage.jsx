@@ -666,7 +666,14 @@ export default function NewJobPage() {
 
   const STEPS = mode === 'instant' ? STEPS_INSTANT : STEPS_BASE
 
-  const [step, setStep] = useState(routeState.category ? 'location' : 'service')
+  // A category can arrive pre-selected via route state (e.g. tapping a
+  // profession card on HomePage) — skip straight past the profession step
+  // in that case, but Instant mode still needs the service-pick step first
+  // (profession -> service), so land on 'pick' there instead of jumping
+  // all the way to 'location' like Discovery does.
+  const [step, setStep] = useState(
+    routeState.category ? (mode === 'instant' ? 'pick' : 'location') : 'service'
+  )
   const [category, setCategory] = useState(routeState.category || null)
   const [service, setService] = useState(null)
   const [location, setLocation] = useState(currentLocation || null)

@@ -6,7 +6,6 @@ import { supabase } from '@/lib/supabase'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
 import { Background } from '@/components/glass/Background'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { toast } from 'sonner'
@@ -17,6 +16,20 @@ const slide = {
   exit:   (d) => ({ x: d < 0 ? 40 : -40, opacity: 0 }),
 }
 const trans = { type: 'spring', stiffness: 380, damping: 30 }
+
+// Flat, fully opaque card — no backdrop-blur, no translucency. Deliberately
+// not using the app's .glass utility (blurred + semi-transparent) here;
+// this page should read as solid/matte, not glossy.
+function FlatCard({ children, className = '' }) {
+  return (
+    <div
+      className={`rounded-2xl ${className}`}
+      style={{ background: 'var(--bg-elevated, var(--card-bg))', border: '1px solid var(--card-border)' }}
+    >
+      {children}
+    </div>
+  )
+}
 
 function PasswordInput({ value, onChange, placeholder = 'Password', ...rest }) {
   const [show, setShow] = useState(false)
@@ -135,7 +148,7 @@ export default function LoginPage() {
   return (
     <div
       className="min-h-screen flex flex-col items-center justify-center px-4 py-12"
-      style={{ background: 'var(--page-bg)' }}
+      style={{ background: 'var(--page-bg)', fontFamily: "'Poppins', sans-serif" }}
     >
       <Background />
 
@@ -152,7 +165,7 @@ export default function LoginPage() {
         }}>
           Kaargar
         </span>
-        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
+        <p className="text-sm mt-1" style={{ color: 'var(--text-muted)', fontFamily: "'Poppins', sans-serif" }}>
           Hyperlocal services, Pune
         </p>
       </motion.div>
@@ -164,47 +177,51 @@ export default function LoginPage() {
           {step === 'intent' && (
             <motion.div key="intent" custom={direction} variants={slide}
               initial="enter" animate="center" exit="exit" transition={trans}>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-center text-xl">Welcome back</CardTitle>
-                  <CardDescription className="text-center">How do you use Kaargar?</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3">
+              <FlatCard>
+                <div className="p-5 pb-3">
+                  <h2 className="text-center text-xl font-semibold" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-primary)' }}>
+                    Welcome back
+                  </h2>
+                  <p className="text-center text-sm mt-1" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-muted)' }}>
+                    How do you use Kaargar?
+                  </p>
+                </div>
+                <div className="p-5 pt-2 space-y-3">
                   <button
                     onClick={() => { setIntent('user'); go('email') }}
                     className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
-                    style={{ background: 'var(--g-bg)', border: '1.5px solid var(--accent-border)' }}
+                    style={{ background: 'var(--card-bg)', border: '1.5px solid var(--accent-border)' }}
                   >
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-                      style={{ background: 'var(--accent-bg)' }}>
+                      style={{ background: 'var(--accent-deep)' }}>
                       <Search size={18} style={{ color: 'var(--accent)' }} />
                     </div>
                     <div>
-                      <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>I need services</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Book workers instantly</p>
+                      <p className="font-semibold text-sm" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-primary)' }}>I need services</p>
+                      <p className="text-xs" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-muted)' }}>Book workers instantly</p>
                     </div>
                   </button>
 
                   <button
                     onClick={() => { setIntent('worker'); go('email') }}
                     className="w-full flex items-center gap-4 p-4 rounded-2xl text-left transition-all"
-                    style={{ background: 'var(--g-bg)', border: '1.5px solid var(--accent-dim)' }}
+                    style={{ background: 'var(--card-bg)', border: '1.5px solid var(--card-border)' }}
                   >
                     <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
                       style={{ background: 'var(--accent-deep)' }}>
                       <Zap size={18} style={{ color: 'var(--accent)' }} />
                     </div>
                     <div>
-                      <p className="font-semibold text-sm" style={{ color: 'var(--text-primary)' }}>I am a worker</p>
-                      <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Manage jobs &amp; earnings</p>
+                      <p className="font-semibold text-sm" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-primary)' }}>I am a worker</p>
+                      <p className="text-xs" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-muted)' }}>Manage jobs &amp; earnings</p>
                     </div>
                   </button>
 
-                  <p className="text-center text-xs pt-1" style={{ color: 'var(--text-muted)' }}>
+                  <p className="text-center text-xs pt-1" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-muted)' }}>
                     Same account — role assigned automatically
                   </p>
-                </CardContent>
-              </Card>
+                </div>
+              </FlatCard>
             </motion.div>
           )}
 
@@ -212,8 +229,8 @@ export default function LoginPage() {
           {step === 'email' && (
             <motion.div key="email" custom={direction} variants={slide}
               initial="enter" animate="center" exit="exit" transition={trans}>
-              <Card>
-                <CardHeader>
+              <FlatCard>
+                <div className="p-5 pb-3">
                   <button onClick={() => go('intent', -1)}
                     className="flex items-center gap-1 mb-2 text-sm"
                     style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
@@ -225,13 +242,13 @@ export default function LoginPage() {
                       background: 'var(--accent-deep)',
                       color: 'var(--accent)',
                     }}>
-                      {intent === 'worker' ? '⚡ Worker' : '🔍 Customer'}
+                      {intent === 'worker' ? 'Worker' : 'Customer'}
                     </span>
                   </div>
-                  <CardTitle>Your email</CardTitle>
-                  <CardDescription>We'll sign you in or create your account</CardDescription>
-                </CardHeader>
-                <CardContent>
+                  <h2 className="text-lg font-semibold" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-primary)' }}>Your email</h2>
+                  <p className="text-sm" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-muted)' }}>We'll sign you in or create your account</p>
+                </div>
+                <div className="p-5 pt-0">
                   <form onSubmit={(e) => { e.preventDefault(); if (email) go('credentials') }} className="space-y-4">
                     <Input
                       type="email"
@@ -243,12 +260,12 @@ export default function LoginPage() {
                       autoComplete="email"
                     />
                     <Button type="submit" className="w-full" disabled={!email}
-                      style={{ background: accentColor }}>
+                      style={{ background: accentColor, fontFamily: "'Poppins', sans-serif" }}>
                       Continue
                     </Button>
                   </form>
-                </CardContent>
-              </Card>
+                </div>
+              </FlatCard>
             </motion.div>
           )}
 
@@ -256,8 +273,8 @@ export default function LoginPage() {
           {step === 'credentials' && (
             <motion.div key="credentials" custom={direction} variants={slide}
               initial="enter" animate="center" exit="exit" transition={trans}>
-              <Card>
-                <CardHeader>
+              <FlatCard>
+                <div className="p-5 pb-3">
                   <button onClick={() => go('email', -1)}
                     className="flex items-center gap-1 mb-2 text-sm"
                     style={{ color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
@@ -272,6 +289,7 @@ export default function LoginPage() {
                         onClick={() => setMode(m)}
                         className="flex-1 py-2 rounded-lg text-sm font-medium transition-all"
                         style={{
+                          fontFamily: "'Poppins', sans-serif",
                           background: mode === m ? accentColor : 'transparent',
                           color: mode === m ? '#fff' : 'var(--text-muted)',
                           border: 'none', cursor: 'pointer',
@@ -282,10 +300,12 @@ export default function LoginPage() {
                     ))}
                   </div>
 
-                  <CardTitle>{mode === 'signin' ? 'Welcome back' : 'Create account'}</CardTitle>
-                  <CardDescription style={{ wordBreak: 'break-all' }}>{email}</CardDescription>
-                </CardHeader>
-                <CardContent>
+                  <h2 className="text-lg font-semibold" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-primary)' }}>
+                    {mode === 'signin' ? 'Welcome back' : 'Create account'}
+                  </h2>
+                  <p className="text-sm" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-muted)', wordBreak: 'break-all' }}>{email}</p>
+                </div>
+                <div className="p-5 pt-0">
                   <form onSubmit={handleCredentials} className="space-y-3">
                     {mode === 'signup' && (
                       <Input
@@ -305,21 +325,21 @@ export default function LoginPage() {
                     />
                     <Button type="submit" className="w-full"
                       disabled={loading || !password || (mode === 'signup' && !fullName.trim())}
-                      style={{ background: accentColor }}>
+                      style={{ background: accentColor, fontFamily: "'Poppins', sans-serif" }}>
                       {loading ? 'Please wait…' : mode === 'signin' ? 'Sign In' : 'Create Account'}
                     </Button>
                     {mode === 'signin' && (
                       <div className="text-center">
                         <button type="button" onClick={handleForgotPassword}
                           className="text-xs"
-                          style={{ color: accentColor, background: 'none', border: 'none', cursor: 'pointer' }}>
+                          style={{ fontFamily: "'Poppins', sans-serif", color: accentColor, background: 'none', border: 'none', cursor: 'pointer' }}>
                           Forgot password?
                         </button>
                       </div>
                     )}
                   </form>
-                </CardContent>
-              </Card>
+                </div>
+              </FlatCard>
             </motion.div>
           )}
 
@@ -327,26 +347,28 @@ export default function LoginPage() {
           {step === 'check-email' && (
             <motion.div key="check-email" custom={direction} variants={slide}
               initial="enter" animate="center" exit="exit" transition={trans}>
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-center">Check your inbox</CardTitle>
-                  <CardDescription className="text-center">
+              <FlatCard>
+                <div className="p-5 pb-3">
+                  <h2 className="text-center text-lg font-semibold" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-primary)' }}>
+                    Check your inbox
+                  </h2>
+                  <p className="text-center text-sm mt-1" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-muted)' }}>
                     We sent a confirmation link to{' '}
                     <strong style={{ color: 'var(--text-primary)', wordBreak: 'break-all' }}>
                       {email}
                     </strong>.
                     Click it to activate your account, then sign in.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-3 text-center">
-                  <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
+                  </p>
+                </div>
+                <div className="p-5 pt-2 space-y-3 text-center">
+                  <p className="text-xs" style={{ fontFamily: "'Poppins', sans-serif", color: 'var(--text-muted)' }}>
                     Check spam if you don't see it within a minute.
                   </p>
-                  <Button variant="outline" className="w-full" onClick={() => { setMode('signin'); go('credentials', -1) }}>
+                  <Button variant="outline" className="w-full" style={{ fontFamily: "'Poppins', sans-serif" }} onClick={() => { setMode('signin'); go('credentials', -1) }}>
                     Back to Sign In
                   </Button>
-                </CardContent>
-              </Card>
+                </div>
+              </FlatCard>
             </motion.div>
           )}
 
