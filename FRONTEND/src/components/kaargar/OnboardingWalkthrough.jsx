@@ -28,9 +28,9 @@ const SLIDES = [
   {
     emoji: '🔍',
     title: 'Discover & Schedule',
-    subtitle: 'Plan ahead, your way.',
-    body: 'Browse the Discover tab to find top-rated workers and services. Pick up to 3 preferred days and a time window — we\'ll confirm the best worker and notify you before they arrive.',
-    hint: 'Tap "Discover" in the bottom nav to explore.',
+    subtitle: "Job not in Instant? It's here.",
+    body: 'Instant only lists the exact services we\'ve curated per profession. Anything more specific, custom, or bundled — plus worker offers and money-saving packages — lives in Discover. Browse top-rated workers, pick up to 3 preferred days and a time window, and we\'ll confirm the best worker before they arrive.',
+    hint: 'Tap "Discover" in the bottom nav, or "Try Discover" from any Instant booking.',
   },
   {
     emoji: '📋',

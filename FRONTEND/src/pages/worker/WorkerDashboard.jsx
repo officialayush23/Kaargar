@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import {
   TrendingUp, Briefcase, Star, ChevronRight, Clock,
-  ShieldCheck, RefreshCw,
+  ShieldCheck, RefreshCw, Zap,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth'
@@ -16,6 +17,63 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 import IncomingJobModal from './IncomingJobModal'
+
+// ── Instant quota showcase ───────────────────────────────────────────────
+// Purely motivational — a soft target with no penalty for missing it (per
+// explicit decision: "Soft target, no penalty"). Never gates availability,
+// dispatch eligibility, or earnings.
+function QuotaBar({ label, completed, target }) {
+  const pct = target > 0 ? Math.min(100, Math.round((completed / target) * 100)) : 0
+  const hit = completed >= target && target > 0
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>{label}</span>
+        <span className="text-xs font-mono" style={{ color: hit ? 'var(--accent)' : 'var(--text-muted)' }}>
+          {completed}/{target}
+        </span>
+      </div>
+      <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--g-bg)' }}>
+        <motion.div
+          className="h-full rounded-full"
+          style={{ background: hit ? 'var(--accent)' : 'var(--text-muted)' }}
+          initial={{ width: 0 }}
+          animate={{ width: `${pct}%` }}
+          transition={{ duration: 0.4 }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function InstantQuotaCard() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['worker-instant-quota'],
+    queryFn: () => api.get('/workers/me/instant-quota').then(r => r.data),
+    staleTime: 60 * 1000,
+  })
+
+  if (isLoading || !data) return null
+
+  return (
+    <GlassCard className="p-4 space-y-3">
+      <div className="flex items-center gap-2">
+        <Zap className="h-3.5 w-3.5" style={{ color: 'var(--accent)' }} />
+        <p className="text-xs uppercase tracking-widest font-medium" style={{ color: 'var(--text-muted)' }}>
+          Instant jobs — your pace
+        </p>
+      </div>
+      <div className="space-y-3">
+        <QuotaBar label="Today" completed={data.today.completed} target={data.today.target} />
+        <QuotaBar label="This week" completed={data.week.completed} target={data.week.target} />
+        <QuotaBar label="This month" completed={data.month.completed} target={data.month.target} />
+      </div>
+      <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+        Just a friendly pace check — no penalty for missing a target.
+      </p>
+    </GlassCard>
+  )
+}
 
 function VerificationBanner({ status, rejectionReason }) {
   const [reapplying, setReapplying] = useState(false)
@@ -290,6 +348,9 @@ export default function WorkerDashboard() {
           </div>
         )}
       </div>
+
+      {/* Instant quota showcase */}
+      <InstantQuotaCard />
 
       {/* Quick links */}
       <div className="grid grid-cols-3 gap-3">

@@ -263,6 +263,81 @@ function SOSModal({ open, onClose, jobId, chatPath, navigate }) {
   )
 }
 
+/* ─── "Worker not arrived?" failsafe — customer-facing bottom sheet ────────
+   Auto-surfaces once a job has sat pre-arrival for longer than a grace
+   period without progressing — a quick two-button escape hatch (call the
+   worker directly, or reach support) instead of making the customer hunt
+   for a "report no-show" flow buried in an overflow menu. */
+function WorkerNotArrivedSheet({ open, onClose, onCallWorker, calling }) {
+  return (
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 flex items-end justify-center"
+        >
+          <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={onClose} />
+          <motion.div
+            initial={{ y: '100%' }}
+            animate={{ y: 0 }}
+            exit={{ y: '100%' }}
+            transition={{ type: 'spring', damping: 28, stiffness: 300 }}
+            className="relative w-full max-w-lg glass-strong rounded-t-3xl p-6 pb-8 space-y-4"
+          >
+            <div className="w-10 h-1 rounded-full mx-auto" style={{ background: 'var(--g-border)' }} />
+            <div>
+              <p className="text-base font-semibold" style={{ color: 'var(--text-primary)' }}>Worker not arrived?</p>
+              <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                It's taking a bit longer than expected. You can reach the worker directly or talk to support.
+              </p>
+            </div>
+            <div className="space-y-2.5">
+              <button
+                onClick={onCallWorker}
+                disabled={calling}
+                className="w-full flex items-center gap-3 p-4 rounded-2xl transition-colors text-left disabled:opacity-60"
+                style={{ background: 'var(--accent-bg)', border: '1px solid var(--accent-border)' }}
+              >
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--accent-deep)' }}>
+                  <Phone className="h-5 w-5" style={{ color: 'var(--accent)' }} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Call worker</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+                    {calling ? 'Connecting…' : 'Check where they are'}
+                  </p>
+                </div>
+              </button>
+              <a
+                href={`tel:${INSTANT_SUPPORT_PHONE}`}
+                className="flex items-center gap-3 p-4 rounded-2xl transition-colors"
+                style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)' }}
+              >
+                <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ background: 'var(--g-bg)' }}>
+                  <PhoneCall className="h-5 w-5" style={{ color: 'var(--text-secondary)' }} />
+                </div>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Talk to support</p>
+                  <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>Call the Kaargar helpline now</p>
+                </div>
+              </a>
+            </div>
+            <button
+              onClick={onClose}
+              className="w-full text-center text-xs py-2"
+              style={{ color: 'var(--text-muted)' }}
+            >
+              Dismiss
+            </button>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  )
+}
+
 function timeOptions() {
   const o = []
   for (let h = 6; h <= 22; h++) for (const m of [0, 30]) {
@@ -663,6 +738,73 @@ export default function ActiveJobPage() {
   const canReportNoShow = !isWorkerViewer && isScheduledBooking && isPreArrival && arrivalTimePassed
   const canFlagCustomerUnavailable = isWorkerViewer && job?.status === 'arrived'
 
+  // ── Geofencing (worker's own "I've arrived" gate) ─────────────────────────
+  // The backend already blocks POST /jobs/{id}/arrived if the worker's last
+  // known WorkerLocation is beyond arrival_geofence_m — this is the client
+  // side of the same rule: proactively disable the button and show live
+  // distance, so the worker isn't surprised by a 400 after tapping it. The
+  // backend check is what's actually authoritative (a worker could always
+  // call the API directly), this is purely UX.
+  const preArrivedWorkerStatuses = ['assigned', 'confirmed', 'en_route']
+  const needsGeofenceCheck = isWorkerViewer && job && preArrivedWorkerStatuses.includes(job.status)
+  const [myDistanceKm, setMyDistanceKm] = useState(null)
+  const [geoError, setGeoError] = useState(null)
+
+  useEffect(() => {
+    if (!needsGeofenceCheck || !navigator.geolocation || job?.location_lat == null) {
+      setMyDistanceKm(null)
+      return
+    }
+    const destLat = Number(job.location_lat)
+    const destLon = Number(job.location_lon)
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        setGeoError(null)
+        const R = 6371
+        const toRad = (d) => (d * Math.PI) / 180
+        const dLat = toRad(pos.coords.latitude - destLat)
+        const dLon = toRad(pos.coords.longitude - destLon)
+        const a = Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRad(destLat)) * Math.cos(toRad(pos.coords.latitude)) * Math.sin(dLon / 2) ** 2
+        setMyDistanceKm(R * 2 * Math.asin(Math.sqrt(a)))
+      },
+      () => setGeoError('Location permission needed to confirm arrival'),
+      { enableHighAccuracy: true, maximumAge: 4000, timeout: 10_000 },
+    )
+    return () => navigator.geolocation.clearWatch(watchId)
+  }, [needsGeofenceCheck, job?.location_lat, job?.location_lon])
+
+  const geofenceMeters = job?.arrival_geofence_m ?? 150
+  const withinGeofence = myDistanceKm != null && myDistanceKm * 1000 <= geofenceMeters
+  // Only actually gate the button once we have a real distance reading —
+  // if geolocation hasn't resolved yet, don't permanently lock the worker
+  // out (the server-side check still applies either way).
+  const arrivedButtonDisabled = needsGeofenceCheck && myDistanceKm != null && !withinGeofence
+
+  // ── "Worker not arrived?" failsafe (customer-facing) ──────────────────────
+  // Auto-surfaces after a grace period once the job has sat pre-arrival too
+  // long — a manual dismiss suppresses it for the rest of this page visit
+  // (it can reopen on a fresh load/reload if the job is still stuck).
+  const NOT_ARRIVED_GRACE_MIN = 15
+  const [notArrivedOpen, setNotArrivedOpen] = useState(false)
+  const [notArrivedDismissed, setNotArrivedDismissed] = useState(false)
+  const notArrivedEligible = !isWorkerViewer && job && ['assigned', 'confirmed', 'en_route'].includes(job.status)
+  const sinceAssigned = job?.assigned_at ? new Date(job.assigned_at) : null
+
+  useEffect(() => {
+    if (!notArrivedEligible || !sinceAssigned || notArrivedDismissed) {
+      setNotArrivedOpen(false)
+      return
+    }
+    const elapsedMin = (Date.now() - sinceAssigned.getTime()) / 60000
+    if (elapsedMin >= NOT_ARRIVED_GRACE_MIN) {
+      setNotArrivedOpen(true)
+      return
+    }
+    const timer = setTimeout(() => setNotArrivedOpen(true), (NOT_ARRIVED_GRACE_MIN - elapsedMin) * 60000)
+    return () => clearTimeout(timer)
+  }, [notArrivedEligible, sinceAssigned?.getTime(), notArrivedDismissed])
+
   // pull user info from store if available
   let userEmail = ''
   let userName = ''
@@ -847,14 +989,28 @@ export default function ActiveJobPage() {
 
       {/* Worker: arrived / start-job actions */}
       {isWorkerViewer && job && ['assigned', 'confirmed', 'en_route', 'arrived'].includes(job.status) && (
-        <GlassButton
-          variant="brand" size="lg" className="w-full" loading={actionLoading}
-          onClick={() => job.status === 'arrived'
-            ? handleWorkerAction('start', 'Job started')
-            : handleWorkerAction('arrived', 'Marked as arrived')}
-        >
-          {job.status === 'arrived' ? 'Start job' : "I've arrived"}
-        </GlassButton>
+        <div className="space-y-1.5">
+          <GlassButton
+            variant="brand" size="lg" className="w-full" loading={actionLoading}
+            disabled={job.status !== 'arrived' && arrivedButtonDisabled}
+            onClick={() => job.status === 'arrived'
+              ? handleWorkerAction('start', 'Job started')
+              : handleWorkerAction('arrived', 'Marked as arrived')}
+          >
+            {job.status === 'arrived' ? 'Start job' : "I've arrived"}
+          </GlassButton>
+          {job.status !== 'arrived' && needsGeofenceCheck && (
+            geoError ? (
+              <p className="text-xs text-center" style={{ color: '#f59e0b' }}>{geoError}</p>
+            ) : myDistanceKm != null && !withinGeofence ? (
+              <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>
+                You're {myDistanceKm < 1 ? `${Math.round(myDistanceKm * 1000)}m` : `${myDistanceKm.toFixed(1)}km`} away — get within {geofenceMeters}m to confirm arrival.
+              </p>
+            ) : myDistanceKm == null ? (
+              <p className="text-xs text-center" style={{ color: 'var(--text-muted)' }}>Checking your location…</p>
+            ) : null
+          )}
+        </div>
       )}
 
       {/* Worker: flag that the customer wasn't there once arrived */}
@@ -1263,6 +1419,13 @@ export default function ActiveJobPage() {
         jobId={jobId}
         chatPath={chatPath}
         navigate={navigate}
+      />
+
+      <WorkerNotArrivedSheet
+        open={notArrivedOpen}
+        onClose={() => { setNotArrivedOpen(false); setNotArrivedDismissed(true) }}
+        onCallWorker={handleCall}
+        calling={calling}
       />
 
       <CancelBookingModal

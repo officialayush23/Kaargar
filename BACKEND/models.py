@@ -226,9 +226,55 @@ class Service(Base):
     # the worker and the specific service allow it.
     allow_multi_day_booking: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Links this worker's listing to the admin-curated catalog entry
+    # (migration 013). NULL means this is a free-text listing — still valid
+    # for Discover, but never surfaced in the curated Instant-mode browsing
+    # list. See ServiceCatalog above.
+    catalog_service_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("service_catalog.id", ondelete="SET NULL"))
+
     worker = relationship("WorkerProfile", back_populates="services")
     category = relationship("Category")
     slot_config = relationship("ServiceSlotConfig", back_populates="service", uselist=False)
+
+
+# ── 8.5 SERVICE CATALOG (admin-curated, migration 013) ────────
+# The atomic bookable unit for Instant mode. A `Service` row (above) is a
+# specific worker's listing; `ServiceCatalog` is the platform-wide, curated
+# name that many workers' Service rows can point to via
+# Service.catalog_service_id. Instant-mode customer browsing/dispatch is
+# driven by this table, not raw category — see SYSTEM_OVERVIEW.md §11 and
+# services/matching.py. Discover stays free-text/uncontrolled by design.
+class ServiceCatalog(Base):
+    __tablename__ = "service_catalog"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    category_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("categories.id", ondelete="CASCADE"), nullable=False)
+    name: Mapped[str] = mapped_column(String(150), nullable=False)
+    description: Mapped[str | None] = mapped_column(Text)
+    icon_url: Mapped[str | None] = mapped_column(Text)
+    # Optional per-service price floor/reference (migration 014). Falls back
+    # to the parent Category.min_price when unset — see routers/workers.py's
+    # price-floor validation and routers/categories.py's customer-facing
+    # display fallback.
+    base_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    # approved | pending | rejected — see migration 013 for the full semantics.
+    status: Mapped[str] = mapped_column(String(20), default="approved")
+    submitted_by_worker_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("worker_profiles.id", ondelete="SET NULL"))
+    rejection_reason: Mapped[str | None] = mapped_column(Text)
+    reviewed_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+    reviewed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Aggregate "times availed" across ALL workers offering this catalog
+    # service — incremented on job completion (see routers/jobs.py
+    # _finalize_job_completion). Distinct from Service.total_bookings, which
+    # is per-worker.
+    total_bookings: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = now()
+    updated_at: Mapped[datetime] = now()
+    created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id"))
+
+    category = relationship("Category")
 
 
 # ── 9. SERVICE TAGS ───────────────────────────────────────────
@@ -356,6 +402,12 @@ class Job(Base):
     service_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("services.id"))
     package_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("packages.id"))
     category_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("categories.id"), nullable=False)
+    # Instant-mode only: the curated catalog service the customer picked
+    # (profession -> service selection). service_id above means something
+    # different — a specific worker's pinned Service row for Discovery.
+    # NULL here means this job predates the catalog (or was created without
+    # picking a specific service) — matching.py falls back to category-only.
+    catalog_service_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("service_catalog.id", ondelete="SET NULL"))
     offer_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("offers.id"))
     job_type: Mapped[str] = mapped_column(String(20), nullable=False)
     status: Mapped[str] = mapped_column(String(30), default="requested")

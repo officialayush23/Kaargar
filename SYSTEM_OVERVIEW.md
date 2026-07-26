@@ -368,7 +368,57 @@ grep); those columns now store Supabase Storage public URLs and paths, same as b
 
 ---
 
-## 11. Environment variables — plain-language reference
+## 11. Planned: services (not professions) as the Instant-mode bookable unit
+
+**Status: design only, not yet built.** Flagged during a product discussion, not by a code audit —
+included here so the reasoning and the fix shape are captured before implementation.
+
+**The gap.** Instant mode currently stops at profession selection: a customer picks "Electrician,"
+describes the work in free text, and the matching engine (`services/matching.py`, see §3) dispatches
+to the best-scoring worker who has that category in `worker_categories` — with no check that the
+worker actually offers the specific job the customer described. A worker who lists "Electrician" to
+do switchboard repairs could be dispatched for a ceiling-fan installation they've never done. The
+customer also never gets to see or pick from the specific things an electrician on this platform
+actually offers (fan installation, switchboard repair, geyser repair, bulb/light fitting, etc.) —
+they just type free text and hope.
+
+**How Urban Company solves this.** They don't expose "profession" as a bookable unit at all — the
+customer selects a specific service (e.g. "fan installation"), and only after that does the system
+auto-match a professional. Profession is purely an internal grouping (which workers to train, whom
+to notify) — never a customer-facing choice. This is also why their auto-assignment doesn't feel
+like a gamble: since the service itself is the atomic booking unit, every worker eligible for that
+match has already self-declared capability for that exact service, not just the broad category.
+
+**The fix — make Instant mode two-step, not one-step:**
+
+1. **Profession stays as a browsing category only** (Electrician, Plumber, Cleaner, ...) — helps
+   the customer navigate the grid, sets nothing else.
+2. **Service becomes the actual bookable unit** (Fan installation, Switchboard repair, Bulb/light
+   fitting, Geyser repair, ...) — this is what the customer taps to create the job, and this is
+   what should drive both the base price and the worker match.
+
+The data model already supports this without a rebuild — `Service` (§ models.py) is already
+scoped `worker_id` + `category_id` with its own `price`/`title`, and workers already declare
+individual services under a profession (see `WorkerServices.jsx` / `routers/workers.py`'s
+service endpoints). The gap is purely that the customer-facing Instant flow (`NewJobPage.jsx`'s
+category step) stops one level too early, and the backend match in `_find_workers` (§3) filters
+`worker_categories` by `category_id` only — it would need to filter by `service_id` instead (or in
+addition), i.e. only notify workers who have a matching `Service` row for that exact job, not just
+the parent category. This is a query-level change to the `EXISTS` clause in `_find_workers`, not a
+schema change.
+
+**Edge case to design for — the customer doesn't know the exact service name.** "Something's wrong
+with my electricity" doesn't map cleanly to "switchboard repair" or "MCB tripping fix." Handle this
+with a fallback option under each profession — "Not sure — describe your issue" — that books a
+generic diagnostic-visit service with its own base price (the worker visits, diagnoses, and the
+actual fix becomes an itemized extra through the existing `extra_items_total` / approval flow
+already built for job completion, see §5). This preserves the same price-integrity guarantee
+(everything still funnels through a real, priced `Service` row) without forcing a customer to
+self-diagnose before they can book.
+
+---
+
+## 12. Environment variables — plain-language reference
 
 See `CLAUDE.md` for the authoritative table (field names, aliases, defaults). In short:
 

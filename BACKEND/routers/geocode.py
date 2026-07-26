@@ -1,65 +1,110 @@
 """
-Geocoding router — wraps Google Maps APIs.
+Geocoding router — wraps Mapbox's Geocoding v6 API.
+
+Migrated off Google Places/Geocoding (the user reported Places had stopped
+working — likely billing/API-enablement drift on the Google Cloud project).
+Mapbox was already the app's map-rendering vendor (VITE_MAPBOX_TOKEN is used
+by PuneMap/JobTrackingMap/SearchingPage for tiles), so this consolidates
+geocoding onto the same vendor/account instead of adding a third — same
+100k-request/month free tier, single key to manage, decent India coverage.
+
 GET  /v1/geocode/forward?address=...           → { lat, lon, formatted_address, place_id }
 GET  /v1/geocode/reverse?lat=...&lon=...       → { formatted_address, area, city }
 GET  /v1/geocode/autocomplete?input=...        → [{ description, place_id, main_text, secondary_text }]
-GET  /v1/geocode/place?place_id=...            → { lat, lon, formatted_address }
+GET  /v1/geocode/place?place_id=...            → { lat, lon, formatted_address, name }
+
+Response shapes are unchanged from the old Google-backed version, so
+FRONTEND/src/hooks/useGeocoding.js and every caller (MapLocationPicker,
+NewJobPage, BookDiscoveryPage, AddressModal, ...) needed zero changes.
+
+Mapbox's v6 forward-geocoding response already returns full coordinates per
+suggestion (unlike Google Places autocomplete, which only returns a
+place_id you then have to resolve separately) — so instead of adding a
+second "place details" API call, `place_id` returned from /autocomplete and
+/forward is a small base64-encoded JSON blob carrying {lat, lon, address,
+name} directly. /place just decodes it — no extra network round-trip, no
+extra API surface to keep in sync with Mapbox.
 """
 
-import httpx
+import base64
+import json
 import logging
+
+import httpx
 from fastapi import APIRouter, HTTPException, Query
+
 from config import get_settings
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
 router = APIRouter()
 
-GMAPS_BASE      = "https://maps.googleapis.com/maps/api"
-PLACES_NEW_BASE = "https://places.googleapis.com/v1"
+MAPBOX_GEOCODE_BASE = "https://api.mapbox.com/search/geocode/v6"
 
-# In-memory API availability flags — reset on server restart.
-# Avoids hammering disabled APIs on every keystroke.
-_places_new_available  = True   # Places API (New)
-_places_legacy_available = True  # Legacy Places Autocomplete
+# Pune bias center — kept from the old Google implementation's fixed radius
+# bias, since this app is Pune-only today.
+PUNE_LON, PUNE_LAT = 73.8567, 18.5204
 
 
-def _key() -> str:
-    if not settings.google_maps_api_key:
-        raise HTTPException(503, "Geocoding service not configured (GOOGLE_MAPS_API_KEY missing)")
-    return settings.google_maps_api_key
+def _token() -> str:
+    if not settings.mapbox_access_token:
+        raise HTTPException(503, "Geocoding service not configured (MAPBOX_ACCESS_TOKEN missing)")
+    return settings.mapbox_access_token
+
+
+def _encode_place_id(lat: float, lon: float, address: str | None, name: str | None) -> str:
+    payload = json.dumps({"lat": lat, "lon": lon, "address": address, "name": name})
+    return base64.urlsafe_b64encode(payload.encode()).decode()
+
+
+def _decode_place_id(place_id: str) -> dict:
+    try:
+        raw = base64.urlsafe_b64decode(place_id.encode()).decode()
+        return json.loads(raw)
+    except Exception:
+        raise HTTPException(400, "Invalid place_id")
+
+
+def _feature_to_result(feature: dict) -> dict:
+    coords = feature.get("geometry", {}).get("coordinates", [None, None])
+    lon, lat = coords[0], coords[1]
+    props = feature.get("properties", {})
+    address = props.get("full_address") or props.get("place_formatted") or props.get("name")
+    name = props.get("name")
+    return {"lat": lat, "lon": lon, "address": address, "name": name}
 
 
 @router.get("/forward")
 async def geocode_forward(address: str = Query(..., min_length=3)):
-    """Convert a text address to lat/lon. Restricted to India."""
+    """Convert a text address to lat/lon. Restricted to India, biased to Pune."""
     try:
         async with httpx.AsyncClient(timeout=8) as client:
-            resp = await client.get(f"{GMAPS_BASE}/geocode/json", params={
-                "address": address,
-                "region": "in",
-                "components": "country:IN",
-                "key": _key(),
+            resp = await client.get(f"{MAPBOX_GEOCODE_BASE}/forward", params={
+                "q": address,
+                "country": "in",
+                "proximity": f"{PUNE_LON},{PUNE_LAT}",
+                "limit": 1,
+                "access_token": _token(),
             })
-        data = resp.json()
-        if data.get("status") not in ("OK", "ZERO_RESULTS"):
-            logger.warning("Geocode forward error: %s", data.get("status"))
+        if resp.status_code != 200:
+            logger.warning("Mapbox forward geocode HTTP %s", resp.status_code)
             return {"results": []}
-        results = data.get("results", [])
-        if not results:
+        features = resp.json().get("features", [])
+        if not features:
             return {"results": []}
-        top = results[0]
-        loc = top["geometry"]["location"]
+        r = _feature_to_result(features[0])
+        if r["lat"] is None:
+            return {"results": []}
         return {
-            "lat": loc["lat"],
-            "lon": loc["lng"],
-            "formatted_address": top["formatted_address"],
-            "place_id": top.get("place_id"),
+            "lat": r["lat"],
+            "lon": r["lon"],
+            "formatted_address": r["address"],
+            "place_id": _encode_place_id(r["lat"], r["lon"], r["address"], r["name"]),
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Geocode forward exception: %s", e)
+        logger.error("Mapbox forward geocode exception: %s", e)
         return {"results": []}
 
 
@@ -68,203 +113,93 @@ async def geocode_reverse(lat: float = Query(...), lon: float = Query(...)):
     """Convert lat/lon to a human-readable address."""
     try:
         async with httpx.AsyncClient(timeout=8) as client:
-            resp = await client.get(f"{GMAPS_BASE}/geocode/json", params={
-                "latlng": f"{lat},{lon}",
-                "key": _key(),
-                "result_type": "street_address|route|sublocality|locality",
+            resp = await client.get(f"{MAPBOX_GEOCODE_BASE}/reverse", params={
+                "longitude": lon,
+                "latitude": lat,
+                "access_token": _token(),
             })
-        data = resp.json()
-        if data.get("status") not in ("OK", "ZERO_RESULTS"):
-            logger.warning("Reverse geocode error: %s", data.get("status"))
+        if resp.status_code != 200:
+            logger.warning("Mapbox reverse geocode HTTP %s", resp.status_code)
             return {"formatted_address": None, "area": None, "city": "Pune"}
-        results = data.get("results", [])
-        if not results:
+        features = resp.json().get("features", [])
+        if not features:
             return {"formatted_address": None, "area": None, "city": "Pune"}
-        top = results[0]
-        components = {
-            c["types"][0]: c["long_name"]
-            for c in top.get("address_components", [])
-            if c.get("types")
-        }
+        props = features[0].get("properties", {})
+        context = props.get("context", {})
         area = (
-            components.get("sublocality_level_1")
-            or components.get("sublocality")
-            or components.get("neighborhood")
+            (context.get("neighborhood") or {}).get("name")
+            or (context.get("locality") or {}).get("name")
+            or (context.get("district") or {}).get("name")
         )
+        city = (context.get("place") or {}).get("name") or "Pune"
         return {
-            "formatted_address": top["formatted_address"],
+            "formatted_address": props.get("full_address") or props.get("place_formatted"),
             "area": area,
-            "city": components.get("locality", "Pune"),
+            "city": city,
         }
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("Reverse geocode exception: %s", e)
+        logger.error("Mapbox reverse geocode exception: %s", e)
         return {"formatted_address": None, "area": None, "city": "Pune"}
 
 
 @router.get("/autocomplete")
 async def place_autocomplete(input: str = Query(..., min_length=2)):
     """
-    Place autocomplete using Places API (New).
-    Falls back to empty list on any error — never returns 502.
+    Address autocomplete via Mapbox's forward-geocoding endpoint with
+    autocomplete=true — Mapbox returns full suggestions (with coordinates)
+    directly from this one call, so there's no separate "session token +
+    suggest + retrieve" dance needed the way Google Places required.
+    Falls back to an empty list on any error — never returns 502.
     """
-    key = _key()
-
-    global _places_new_available, _places_legacy_available
-
-    # ── Try Places API (New) first ───────────────────────────────
-    if _places_new_available:
-        try:
-            async with httpx.AsyncClient(timeout=8) as client:
-                resp = await client.post(
-                    f"{PLACES_NEW_BASE}/places:autocomplete",
-                    headers={"X-Goog-Api-Key": key, "Content-Type": "application/json"},
-                    json={
-                        "input": input,
-                        "locationBias": {
-                            "circle": {
-                                "center": {"latitude": 18.5204, "longitude": 73.8567},
-                                "radius": 30000.0,
-                            }
-                        },
-                        "includedRegionCodes": ["in"],
-                    },
-                )
-            if resp.status_code == 200:
-                data = resp.json()
-                results = []
-                for s in data.get("suggestions", [])[:8]:
-                    p = s.get("placePrediction", {})
-                    if not p:
-                        continue
-                    text = p.get("text", {}).get("text", "")
-                    sf = p.get("structuredFormat", {})
-                    results.append({
-                        "description": text,
-                        "place_id": p.get("placeId", ""),
-                        "main_text": sf.get("mainText", {}).get("text", text),
-                        "secondary_text": sf.get("secondaryText", {}).get("text", ""),
-                    })
-                return results
-            elif resp.status_code in (403, 400):
-                logger.warning("Places API (New) disabled (HTTP %s) — switching to fallback for this session",
-                               resp.status_code)
-                _places_new_available = False
-            else:
-                logger.warning("Places API (New) HTTP %s", resp.status_code)
-        except Exception as e:
-            logger.warning("Places API (New) exception: %s", e)
-
-    # ── Fallback: legacy Places Autocomplete ────────────────────
-    if _places_legacy_available:
-        try:
-            async with httpx.AsyncClient(timeout=8) as client:
-                resp = await client.get(f"{GMAPS_BASE}/place/autocomplete/json", params={
-                    "input": input,
-                    "components": "country:in",
-                    "location": "18.5204,73.8567",
-                    "radius": 30000,
-                    "key": key,
-                })
-            data = resp.json()
-            status = data.get("status")
-            if status in ("OK", "ZERO_RESULTS"):
-                return [
-                    {
-                        "description": p["description"],
-                        "place_id": p["place_id"],
-                        "main_text": p.get("structured_formatting", {}).get("main_text", ""),
-                        "secondary_text": p.get("structured_formatting", {}).get("secondary_text", ""),
-                    }
-                    for p in data.get("predictions", [])[:8]
-                ]
-            else:
-                logger.warning("Legacy autocomplete disabled (%s) — switching to geocoding fallback", status)
-                _places_legacy_available = False
-        except Exception as e:
-            logger.error("Legacy autocomplete exception: %s", e)
-
-    # ── Final fallback: Geocoding API (always enabled) ───────────
-    # Returns address matches — less precise than Places but works without
-    # Places API being enabled.
     try:
         async with httpx.AsyncClient(timeout=8) as client:
-            resp = await client.get(f"{GMAPS_BASE}/geocode/json", params={
-                "address": f"{input}, Pune, Maharashtra, India",
-                "region": "in",
-                "components": "country:IN",
-                "key": key,
+            resp = await client.get(f"{MAPBOX_GEOCODE_BASE}/forward", params={
+                "q": input,
+                "autocomplete": "true",
+                "country": "in",
+                "proximity": f"{PUNE_LON},{PUNE_LAT}",
+                "limit": 8,
+                "access_token": _token(),
             })
-        data = resp.json()
-        if data.get("status") not in ("OK", "ZERO_RESULTS"):
-            logger.warning("Geocoding API fallback error: %s", data.get("status"))
+        if resp.status_code != 200:
+            logger.warning("Mapbox autocomplete HTTP %s", resp.status_code)
             return []
+        features = resp.json().get("features", [])
         results = []
-        for r in data.get("results", [])[:6]:
-            addr = r.get("formatted_address", "")
-            place_id = r.get("place_id", "")
-            # Split into main (first part) and secondary (rest)
-            parts = addr.split(",", 1)
+        for f in features:
+            r = _feature_to_result(f)
+            if r["lat"] is None:
+                continue
+            props = f.get("properties", {})
             results.append({
-                "description": addr,
-                "place_id": place_id,
-                "main_text": parts[0].strip(),
-                "secondary_text": parts[1].strip() if len(parts) > 1 else "",
+                "description": r["address"] or r["name"] or "",
+                "place_id": _encode_place_id(r["lat"], r["lon"], r["address"], r["name"]),
+                "main_text": r["name"] or (r["address"] or "").split(",")[0].strip(),
+                "secondary_text": props.get("place_formatted", ""),
             })
         return results
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error("Geocoding API fallback exception: %s", e)
+        logger.error("Mapbox autocomplete exception: %s", e)
         return []
 
 
 @router.get("/place")
 async def place_details(place_id: str = Query(...)):
-    """Resolve a place_id to lat/lon + address. Tries Places API (New) then legacy."""
-    key = _key()
-
-    # ── Places API (New) ─────────────────────────────────────────
-    try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            resp = await client.get(
-                f"{PLACES_NEW_BASE}/places/{place_id}",
-                headers={"X-Goog-Api-Key": key},
-                params={"fields": "location,displayName,formattedAddress"},
-            )
-        if resp.status_code == 200:
-            data = resp.json()
-            loc = data.get("location", {})
-            return {
-                "lat": loc.get("latitude"),
-                "lon": loc.get("longitude"),
-                "formatted_address": data.get("formattedAddress"),
-                "name": data.get("displayName", {}).get("text"),
-            }
-        logger.warning("Places API (New) details HTTP %s", resp.status_code)
-    except Exception as e:
-        logger.warning("Places API (New) details exception: %s — trying legacy", e)
-
-    # ── Fallback: legacy Place Details ───────────────────────────
-    try:
-        async with httpx.AsyncClient(timeout=8) as client:
-            resp = await client.get(f"{GMAPS_BASE}/place/details/json", params={
-                "place_id": place_id,
-                "fields": "geometry,formatted_address,name",
-                "key": key,
-            })
-        data = resp.json()
-        if data.get("status") != "OK":
-            raise HTTPException(502, f"Place details error: {data.get('status')}")
-        result = data["result"]
-        loc = result["geometry"]["location"]
-        return {
-            "lat": loc["lat"],
-            "lon": loc["lng"],
-            "formatted_address": result.get("formatted_address"),
-            "name": result.get("name"),
-        }
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("Legacy place details exception: %s", e)
-        raise HTTPException(502, "Place details unavailable")
+    """
+    Resolve a place_id back to lat/lon + address. Since /autocomplete and
+    /forward already encode the full result into place_id (see module
+    docstring), this is a pure local decode — no Mapbox call needed.
+    """
+    decoded = _decode_place_id(place_id)
+    if decoded.get("lat") is None or decoded.get("lon") is None:
+        raise HTTPException(400, "Invalid place_id")
+    return {
+        "lat": decoded["lat"],
+        "lon": decoded["lon"],
+        "formatted_address": decoded.get("address"),
+        "name": decoded.get("name"),
+    }

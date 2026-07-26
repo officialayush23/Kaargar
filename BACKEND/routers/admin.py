@@ -2,7 +2,7 @@
 Admin router — dashboard, worker approvals, config, payouts, users.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import aliased
@@ -10,10 +10,11 @@ from decimal import Decimal
 from datetime import datetime, timezone
 
 from database import get_db
-from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category, JobEvent, JobItemReceipt
+from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category, JobEvent, JobItemReceipt, ServiceCatalog, Service
 from schemas import (
     AdminDashboard, AdminWorkerAction, AdminConfigUpdate, AdminConfigCreate, SuccessResponse,
     CategoryCreate, CategoryUpdate, CategoryResponse, PayoutMarkPaid, PayoutMarkFailed,
+    ServiceCatalogCreate, ServiceCatalogUpdate, ServiceCatalogResponse,
 )
 from dependencies import require_admin
 from services.storage import get_public_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
@@ -876,10 +877,24 @@ async def admin_delete_category(
         .where(WorkerCategory.category_id == cat.id)
     )
 
-    if worker_count and worker_count > 0:
+    # A category with no registered workers could still have live Instant
+    # catalog services under it (created ahead of any worker signing up, or
+    # left over after all workers who offered them moved on) — hard-deleting
+    # the category would ON DELETE CASCADE those service_catalog rows away
+    # silently. Treat that the same as "still in use."
+    catalog_count = await db.scalar(
+        select(func.count(ServiceCatalog.id)).where(ServiceCatalog.category_id == cat.id)
+    )
+
+    if (worker_count and worker_count > 0) or (catalog_count and catalog_count > 0):
         cat.is_active = False
         await db.commit()
-        return SuccessResponse(message=f"Category deactivated ({worker_count} workers still use it)")
+        reasons = []
+        if worker_count:
+            reasons.append(f"{worker_count} workers")
+        if catalog_count:
+            reasons.append(f"{catalog_count} Instant services")
+        return SuccessResponse(message=f"Category deactivated ({' and '.join(reasons)} still use it)")
     else:
         await db.delete(cat)
         await db.commit()
@@ -931,6 +946,237 @@ async def admin_upload_category_icon(
     await db.commit()
     await db.refresh(cat)
     return cat
+
+
+# ── SERVICE CATALOG (admin-curated, migration 013) ──────────────
+# The atomic bookable unit for Instant mode — see SYSTEM_OVERVIEW.md §11.
+# Workers pick from these (option 2 from the design session: curated list +
+# reviewed custom additions). Mirrors the categories CRUD pattern above.
+
+@router.get("/service-catalog", response_model=list[ServiceCatalogResponse])
+async def admin_list_service_catalog(
+    category_id: str | None = Query(None),
+    sort: str | None = Query(None, description="'bookings' to rank by total_bookings desc — the system-service ranking view"),
+    zero_workers: bool = Query(False, description="Only catalog services with no active worker offering them yet — for the rankings page's 'needs adoption' filter"),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: list catalog (Instant-mode) services, optionally filtered by
+    category, optionally ranked by popularity (sort=bookings). Also computes
+    worker_count per entry (how many active worker Service rows link to it)
+    so the rankings page can surface catalog services nobody has opted into
+    yet — that filter belongs here, not on the plain catalog-management list."""
+    import uuid as _uuid
+    q = select(ServiceCatalog)
+    if category_id:
+        q = q.where(ServiceCatalog.category_id == _uuid.UUID(category_id))
+    if sort == "bookings":
+        q = q.order_by(ServiceCatalog.total_bookings.desc(), ServiceCatalog.name)
+    else:
+        q = q.order_by(ServiceCatalog.sort_order, ServiceCatalog.name)
+    result = await db.execute(q)
+    entries = result.scalars().all()
+    if not entries:
+        return []
+
+    entry_ids = [e.id for e in entries]
+    count_rows = (await db.execute(
+        select(Service.catalog_service_id, func.count(Service.id).label("worker_count"))
+        .where(Service.catalog_service_id.in_(entry_ids), Service.is_active == True)
+        .group_by(Service.catalog_service_id)
+    )).all()
+    count_map = {row.catalog_service_id: int(row.worker_count) for row in count_rows}
+
+    out = []
+    for e in entries:
+        wc = count_map.get(e.id, 0)
+        if zero_workers and wc > 0:
+            continue
+        resp = ServiceCatalogResponse.model_validate(e)
+        resp.worker_count = wc
+        out.append(resp)
+    return out
+
+
+@router.post("/service-catalog", response_model=ServiceCatalogResponse)
+async def admin_create_service_catalog(
+    body: ServiceCatalogCreate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: add a new curated Instant service under a category. This is a
+    fully standalone action — it never touches, renames, or links any
+    worker's existing listing (the rankings page is just inspiration for
+    what to add, not a source you link from). Every worker already
+    registered under this category gets notified so they can opt in
+    themselves from their own Services page."""
+    from models import Notification, WorkerCategory, WorkerProfile as WP
+
+    cat = await db.scalar(select(Category).where(Category.id == body.category_id))
+    if not cat:
+        raise HTTPException(404, "Category not found")
+
+    entry = ServiceCatalog(
+        category_id=body.category_id,
+        name=body.name,
+        description=body.description,
+        icon_url=body.icon_url,
+        base_price=body.base_price,
+        sort_order=body.sort_order,
+        status="approved",
+        created_by=admin.id,
+    )
+    db.add(entry)
+    await db.flush()
+
+    # Notify every worker registered under this profession — they can't opt
+    # in to something they don't know exists.
+    worker_user_ids = (await db.execute(
+        select(WP.user_id)
+        .join(WorkerCategory, WorkerCategory.worker_id == WP.id)
+        .where(WorkerCategory.category_id == body.category_id)
+    )).scalars().all()
+
+    for uid in worker_user_ids:
+        db.add(Notification(
+            user_id=uid,
+            type="new_instant_service",
+            title=f"New Instant service: {entry.name}",
+            body=f"\"{entry.name}\" is now available in Instant mode for {cat.name}. Add it from your Services page to start getting matched for it.",
+            data={"category_id": str(body.category_id), "catalog_service_id": str(entry.id)},
+        ))
+
+    await db.commit()
+    await db.refresh(entry)
+    return entry
+
+
+@router.patch("/service-catalog/{entry_id}", response_model=ServiceCatalogResponse)
+async def admin_update_service_catalog(
+    entry_id: str,
+    body: ServiceCatalogUpdate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: edit a catalog service (name, category, active state, etc)."""
+    import uuid as _uuid
+    entry = await db.scalar(select(ServiceCatalog).where(ServiceCatalog.id == _uuid.UUID(entry_id)))
+    if not entry:
+        raise HTTPException(404, "Catalog service not found")
+    for field, value in body.model_dump(exclude_unset=True).items():
+        setattr(entry, field, value)
+    await db.commit()
+    await db.refresh(entry)
+    return entry
+
+
+@router.get("/worker-services/top")
+async def admin_top_worker_services(
+    limit: int = Query(30, le=100),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin: ranking of free-text, worker-added services (Discover-only —
+    catalog_service_id IS NULL) by total_bookings — "what's actually
+    performing well that we haven't made an official Instant service yet."
+    Each row is one worker's own listing (not deduplicated/grouped by name —
+    same real-world job can appear multiple times under different sellers'
+    own titles, same as the Discover browsing experience itself). This is
+    purely a signal for admin — creating an Instant service from it (POST
+    /admin/service-catalog) is a standalone form, never linked back to the
+    worker listing that inspired it.
+    """
+    from models import User as UserModel
+    rows = (await db.execute(
+        select(Service, WorkerProfile, UserModel, Category)
+        .join(WorkerProfile, WorkerProfile.id == Service.worker_id)
+        .join(UserModel, UserModel.id == WorkerProfile.user_id)
+        .join(Category, Category.id == Service.category_id)
+        .where(Service.catalog_service_id.is_(None))
+        .where(Service.is_active == True)
+        .order_by(Service.total_bookings.desc())
+        .limit(limit)
+    )).all()
+
+    return [
+        {
+            "id": str(svc.id),
+            "title": svc.title,
+            "description": svc.description,
+            "price": float(svc.price) if svc.price is not None else None,
+            "total_bookings": svc.total_bookings,
+            "avg_rating": float(svc.avg_rating) if svc.avg_rating is not None else None,
+            "category_id": str(cat.id),
+            "category_name": cat.name,
+            "worker_id": str(wp.id),
+            "worker_name": u.full_name,
+        }
+        for svc, wp, u, cat in rows
+    ]
+
+
+@router.delete("/service-catalog/{entry_id}", response_model=SuccessResponse)
+async def admin_delete_service_catalog(
+    entry_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: soft-delete (deactivate) a catalog service. Hard-delete only if no worker has linked to it."""
+    import uuid as _uuid
+    entry = await db.scalar(select(ServiceCatalog).where(ServiceCatalog.id == _uuid.UUID(entry_id)))
+    if not entry:
+        raise HTTPException(404, "Catalog service not found")
+
+    worker_count = await db.scalar(
+        select(func.count(Service.id)).where(Service.catalog_service_id == entry.id)
+    )
+    if worker_count and worker_count > 0:
+        entry.is_active = False
+        await db.commit()
+        return SuccessResponse(message=f"Deactivated ({worker_count} workers still linked to it)")
+    else:
+        await db.delete(entry)
+        await db.commit()
+        return SuccessResponse(message="Catalog service deleted")
+
+
+@router.post("/service-catalog/{entry_id}/upload-icon", response_model=ServiceCatalogResponse)
+async def admin_upload_service_catalog_icon(
+    entry_id: str,
+    file: UploadFile = File(...),
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Admin: upload an icon/photo for one Instant catalog service — shown to
+    customers browsing that profession's service list. Same shape as
+    admin_upload_category_icon, stored in the dedicated instant_services
+    bucket instead of profile_photos so these assets are managed separately
+    from user avatars/category icons."""
+    import uuid as _uuid
+    from services.storage import BUCKET_INSTANT_SERVICES
+
+    entry = await db.scalar(select(ServiceCatalog).where(ServiceCatalog.id == _uuid.UUID(entry_id)))
+    if not entry:
+        raise HTTPException(404, "Catalog service not found")
+
+    allowed_types = {"image/png", "image/webp", "image/jpeg", "image/gif"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(400, "Only PNG, WebP, JPEG, or GIF allowed")
+
+    data = await file.read()
+    max_icon_mb = int(await get_config(db, "max_category_icon_mb", 5))
+    if len(data) > max_icon_mb * 1024 * 1024:
+        raise HTTPException(400, f"File too large (max {max_icon_mb}MB)")
+
+    ext = {"image/png": "png", "image/webp": "webp", "image/jpeg": "jpg", "image/gif": "gif"}[file.content_type]
+    path = f"catalog_icons/{entry_id}.{ext}"
+    url = upload_file(BUCKET_INSTANT_SERVICES, path, data, file.content_type)
+
+    entry.icon_url = url
+    await db.commit()
+    await db.refresh(entry)
+    return entry
 
 
 # ── PAYOUTS ─────────────────────────────────────────────────────

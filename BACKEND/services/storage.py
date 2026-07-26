@@ -1,6 +1,7 @@
 """
 Supabase Storage helper.
-Buckets: profile_photos, worker_post, documents, verification_video_worker
+Buckets: profile_photos, worker_post, documents, verification_video_worker,
+job_before_after, job_item_photos, instant-services
 """
 
 from supabase import create_client
@@ -16,6 +17,13 @@ BUCKET_DOCUMENTS = "documents"
 BUCKET_VERIFICATION_VIDEO = "verification_video_worker"
 BUCKET_JOB_BEFORE_AFTER = "job_before_after"
 BUCKET_JOB_ITEM_PHOTOS = "job_item_photos"
+# Icon/photo assets for admin-curated Instant-mode catalog services
+# (ServiceCatalog.icon_url) — public-read, admin-only write (enforced at the
+# API layer via require_admin on the upload endpoint; the bucket itself is
+# public since these icons are shown to every customer browsing Instant).
+# Bucket already exists in Supabase as "instant_services" (underscore, not
+# hyphen — matches this project's other bucket names like job_before_after).
+BUCKET_INSTANT_SERVICES = "instant_services"
 
 
 def get_public_url(bucket: str, path: str) -> str:

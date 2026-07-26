@@ -1,9 +1,17 @@
 """
-Translation service — Groq llama-3.1-8b-instant + Redis cache.
+Translation service — Sarvam AI (/translate) + Redis cache.
+
+Migrated off Groq's llama-3.1-8b-instant (generic chat-completion prompted
+to translate) onto Sarvam AI's purpose-built Translation API, which is
+specifically tuned for Indic languages — a better fit for an app that only
+ever translates English/Hindi/Marathi. The caching layers (Redis + the
+durable content_translations Postgres table) and every public function
+signature below are unchanged, so no caller anywhere else in the codebase
+needed to change.
 
 Flow:
   1. Check Redis cache (key: trans:{md5_of_text}:{lang})
-  2. If miss → call Groq API → store result in Redis (TTL 7 days) + DB
+  2. If miss → call Sarvam's /translate → store result in Redis (TTL 7 days) + DB
   3. Return translated text
 
 Usage:
@@ -20,10 +28,10 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
-LANG_NAMES = {
-    "en": "English",
-    "hi": "Hindi",
-    "mr": "Marathi",
+# Sarvam's language codes are BCP-47-ish with an -IN region suffix.
+SARVAM_LANG_CODES = {
+    "hi": "hi-IN",
+    "mr": "mr-IN",
 }
 
 SUPPORTED_LANGS = {"en", "hi", "mr"}
@@ -84,8 +92,8 @@ async def translate_text(text: str, target_lang: str) -> str:
         except Exception:
             pass
 
-    # 2. Call Groq
-    translated = await _call_groq(text, target_lang)
+    # 2. Call Sarvam
+    translated = await _call_sarvam(text, target_lang)
 
     # 3. Cache result in Redis (7 days)
     if r and translated != text:
@@ -99,45 +107,54 @@ async def translate_text(text: str, target_lang: str) -> str:
     return translated
 
 
-async def _call_groq(text: str, target_lang: str) -> str:
-    """Call Groq API for translation. Returns original text on any error."""
+SARVAM_TRANSLATE_URL = "https://api.sarvam.ai/translate"
+# Sarvam's mayura:v1 model caps input at 1000 chars; service/package titles
+# and descriptions are short, so this is generous headroom, not a real limit.
+SARVAM_MAX_CHARS = 1000
+
+
+async def _call_sarvam(text: str, target_lang: str) -> str:
+    """Call Sarvam AI's /translate endpoint. Returns original text on any error."""
     try:
         from config import get_settings
         settings = get_settings()
 
-        if not settings.groq_api_key:
-            logger.warning("GROQ_API_KEY not set — skipping translation")
+        if not settings.sarvam_api_key:
+            logger.warning("SARVAM_API_KEY not set — skipping translation")
             return text
 
-        from groq import AsyncGroq
-        client = AsyncGroq(api_key=settings.groq_api_key)
+        if len(text) > SARVAM_MAX_CHARS:
+            logger.warning("Text too long for Sarvam translate (%d chars) — skipping", len(text))
+            return text
 
-        lang_name = LANG_NAMES[target_lang]
+        import httpx
 
-        response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are a professional translator for an Indian service marketplace app. "
-                        "Translate text accurately and naturally. "
-                        "For service/job category names, use common local terminology. "
-                        "Return ONLY the translated text — no explanations, no quotes, no extra text."
-                    ),
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                SARVAM_TRANSLATE_URL,
+                headers={
+                    "api-subscription-key": settings.sarvam_api_key,
+                    "Content-Type": "application/json",
                 },
-                {
-                    "role": "user",
-                    "content": f"Translate to {lang_name}:\n\n{text}",
+                json={
+                    "input": text,
+                    "source_language_code": "auto",
+                    "target_language_code": SARVAM_LANG_CODES[target_lang],
+                    "model": "sarvam-translate:v1",
+                    "mode": "formal",
                 },
-            ],
-            max_tokens=512,
-            temperature=0.1,  # Low temperature = consistent, literal translations
-        )
+            )
 
-        translated = response.choices[0].message.content.strip()
+        if resp.status_code != 200:
+            logger.error("Sarvam translate HTTP %s: %s", resp.status_code, resp.text[:200])
+            return text
 
-        # Sanity check — if Groq returns something suspiciously long, fall back
+        data = resp.json()
+        translated = (data.get("translated_text") or "").strip()
+        if not translated:
+            return text
+
+        # Sanity check — if Sarvam returns something suspiciously long, fall back
         if len(translated) > len(text) * 5:
             logger.warning("Translation result suspiciously long — using original")
             return text
@@ -145,7 +162,7 @@ async def _call_groq(text: str, target_lang: str) -> str:
         return translated
 
     except Exception as e:
-        logger.error(f"Groq translation failed for lang={target_lang}: {e}")
+        logger.error(f"Sarvam translation failed for lang={target_lang}: {e}")
         return text  # Graceful degradation — never crash on translation failure
 
 

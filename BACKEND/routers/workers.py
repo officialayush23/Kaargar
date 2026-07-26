@@ -8,7 +8,7 @@ MUST be declared before the dynamic /{worker_id} route, otherwise FastAPI matche
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from typing import Optional
 from decimal import Decimal
@@ -19,7 +19,7 @@ from models import (
     User, WorkerProfile, WorkerCategory, WorkerAnalytics, Service, ServiceMedia,
     Package, PackageService as PackageServiceModel, Offer, PackageOrder,
     WorkerAvailability, WorkerTimeOff, WorkerScheduleBlock,
-    ServiceSlotConfig, ServiceSlot, Tag, ServiceTag,
+    ServiceSlotConfig, ServiceSlot, Tag, ServiceTag, ServiceCatalog,
 )
 from schemas import (
     WorkerProfileCreate, WorkerProfileUpdate, WorkerProfileResponse,
@@ -33,6 +33,7 @@ from schemas import (
     WorkerTimeOffCreate, WorkerTimeOffResponse, WorkerScheduleBlockResponse,
     SlotConfigCreate, SlotConfigResponse, SlotResponse, SlotGenerateRequest,
     TagResponse, TagCreate, ServiceTagsSet,
+    ServiceCatalogResponse,
 )
 from dependencies import get_current_user
 from services.storage import get_public_url, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
@@ -40,6 +41,16 @@ from services.translation import translate_and_store
 from services.config import get_config
 
 router = APIRouter()
+
+
+@router.get("/support-contact")
+async def get_worker_support_contact():
+    """Public: dedicated worker-registration support phone number, shown as
+    a persistent call button on the onboarding wizard. Sourced from
+    WORKER_SUPPORT_PHONE (config.py) instead of being hardcoded in the
+    frontend."""
+    from config import get_settings
+    return {"phone": get_settings().worker_support_phone}
 
 
 # ═══════════════════════════════════════════════════════════
@@ -344,6 +355,69 @@ async def get_my_media(
     ]
 
 
+@router.get("/service-catalog", response_model=list[ServiceCatalogResponse])
+async def worker_list_service_catalog(
+    category_id: uuid.UUID = Query(...),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Worker-facing catalog browse for onboarding/Services page: the
+    admin-curated, Instant-eligible services under a category. Purely
+    read-only — a worker can never add to this list themselves (that's what
+    plain free-text POST /workers/me/services is for; those surface in
+    Discover immediately, no review needed). No worker profile required —
+    usable during onboarding before POST /workers/profile has run.
+    """
+    q = (
+        select(ServiceCatalog)
+        .where(ServiceCatalog.category_id == category_id, ServiceCatalog.is_active == True)
+        .order_by(ServiceCatalog.total_bookings.desc(), ServiceCatalog.sort_order, ServiceCatalog.name)
+    )
+    result = await db.execute(q)
+    return result.scalars().all()
+
+
+@router.get("/me/available-catalog-services", response_model=list[ServiceCatalogResponse])
+async def worker_available_catalog_services(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Instant-mode catalog services the current worker is eligible for (i.e.
+    under a profession they're registered for via WorkerCategory) but hasn't
+    opted into yet (no active Service row linking to them). Powers the
+    Services page's "New Instant services available" opt-in section for
+    already-onboarded workers — this is the ongoing counterpart to the
+    onboarding-time ServicesStep, since a worker who joined before a new
+    catalog service existed would otherwise never see it again.
+    """
+    wp = await _get_worker_profile(user, db)
+
+    cat_ids = (await db.execute(
+        select(WorkerCategory.category_id).where(WorkerCategory.worker_id == wp.id)
+    )).scalars().all()
+    if not cat_ids:
+        return []
+
+    linked_ids = (await db.execute(
+        select(Service.catalog_service_id)
+        .where(Service.worker_id == wp.id, Service.catalog_service_id.isnot(None))
+    )).scalars().all()
+
+    q = (
+        select(ServiceCatalog)
+        .where(
+            ServiceCatalog.category_id.in_(cat_ids),
+            ServiceCatalog.is_active == True,
+        )
+        .order_by(ServiceCatalog.total_bookings.desc(), ServiceCatalog.sort_order, ServiceCatalog.name)
+    )
+    if linked_ids:
+        q = q.where(ServiceCatalog.id.notin_(linked_ids))
+    result = await db.execute(q)
+    return result.scalars().all()
+
+
 @router.get("/me/services", response_model=list[ServiceResponse])
 async def get_my_services(
     user: User = Depends(get_current_user),
@@ -401,21 +475,60 @@ async def create_service(
             raise HTTPException(400, "Worker has no categories assigned. Update profile first.")
         dump["category_id"] = cat_id
 
-    # ── Price floor enforcement ───────────────────────────────────────────────
+    # ── A worker can only list a service under a category they've actually
+    # registered for ── without this, category_id was previously trusted
+    # from the client entirely, so a worker could list (and get dispatched
+    # for, via the category-fallback matching path) a category they were
+    # never verified/onboarded for.
     from models import Category as CatModel
     from decimal import Decimal as _Dec
     _cat_id = dump.get("category_id")
     if _cat_id:
+        from models import WorkerCategory as WC
+        has_cat = await db.scalar(
+            select(WC.worker_id).where(WC.worker_id == wp.id, WC.category_id == _cat_id).limit(1)
+        )
+        if not has_cat:
+            raise HTTPException(400, "You can only add services under a profession you've registered for.")
+
+    # ── Catalog link integrity ─────────────────────────────────────────────────
+    # catalog_service_id is what makes a listing Instant-eligible — it must
+    # point at an active catalog entry under the SAME category as the
+    # service itself. Without this check, a client could link any service to
+    # any catalog entry regardless of category (e.g. a plumber's listing
+    # linked to an "AC repair" Instant entry), which services/matching.py's
+    # catalog-driven dispatch path would otherwise trust.
+    _catalog_id = dump.get("catalog_service_id")
+    cat_svc = None
+    if _catalog_id:
+        from models import ServiceCatalog as SC
+        cat_svc = await db.scalar(select(SC).where(SC.id == _catalog_id))
+        if not cat_svc or not cat_svc.is_active:
+            raise HTTPException(404, "Catalog service not found or inactive")
+        if str(cat_svc.category_id) != str(_cat_id):
+            raise HTTPException(400, "That service belongs to a different profession than this listing.")
+
+    # ── Price floor enforcement ───────────────────────────────────────────────
+    # A specific catalog service's own base_price (migration 014) is a more
+    # precise floor than the whole profession's — e.g. Electrician's blanket
+    # min_price shouldn't gate "full home rewiring" the same as "bulb change".
+    # Falls back to the category's min_price when the catalog entry has none
+    # set, or when this is a plain free-text (non-catalog) listing.
+    _floor = cat_svc.base_price if (cat_svc and cat_svc.base_price is not None) else None
+    _floor_label = cat_svc.name if _floor is not None else None
+    if _floor is None and _cat_id:
         cat_row = await db.execute(select(CatModel).where(CatModel.id == _cat_id))
         cat_obj = cat_row.scalar_one_or_none()
         if cat_obj and cat_obj.min_price is not None:
-            _price = _Dec(str(dump.get("price", 0)))
-            if _price < cat_obj.min_price:
-                raise HTTPException(
-                    400,
-                    f"Minimum price for {cat_obj.name} is ₹{cat_obj.min_price}. "
-                    f"You entered ₹{_price}."
-                )
+            _floor = cat_obj.min_price
+            _floor_label = cat_obj.name
+    if _floor is not None:
+        _price = _Dec(str(dump.get("price", 0)))
+        if _price < _floor:
+            raise HTTPException(
+                400,
+                f"Minimum price for {_floor_label} is ₹{_floor}. You entered ₹{_price}."
+            )
 
     # ── Booking mode: slot-based and multi-day are mutually exclusive ─────────
     # requires_slot=True → strict per-slot booking (salon-style).
@@ -470,22 +583,43 @@ async def update_service(
         raise HTTPException(404, "Service not found")
     updates = body.model_dump(exclude_none=True)
 
+    # ── Catalog link integrity on update (same invariant as create_service) ───
+    # Resolve the FINAL catalog link — either the one being set in this
+    # update, or the service's existing one if this update doesn't touch it —
+    # so the price-floor check below can use its base_price either way.
+    from models import ServiceCatalog as SC
+    final_catalog_id = updates.get("catalog_service_id", svc.catalog_service_id)
+    final_cat_id = updates.get("category_id", svc.category_id)
+    cat_svc = None
+    if final_catalog_id:
+        cat_svc = await db.scalar(select(SC).where(SC.id == final_catalog_id))
+        if "catalog_service_id" in updates:
+            if not cat_svc or not cat_svc.is_active:
+                raise HTTPException(404, "Catalog service not found or inactive")
+            if str(cat_svc.category_id) != str(final_cat_id):
+                raise HTTPException(400, "That service belongs to a different profession than this listing.")
+
     # ── Price floor enforcement on update ─────────────────────────────────────
+    # Same precedence as create_service: the linked catalog service's own
+    # base_price first, falling back to the profession's min_price.
     if "price" in updates:
         from models import Category as CatModel
         from decimal import Decimal as _Dec
-        _cat_id = updates.get("category_id") or svc.category_id
-        if _cat_id:
-            cat_row = await db.execute(select(CatModel).where(CatModel.id == _cat_id))
+        _floor = cat_svc.base_price if (cat_svc and cat_svc.base_price is not None) else None
+        _floor_label = cat_svc.name if _floor is not None else None
+        if _floor is None and final_cat_id:
+            cat_row = await db.execute(select(CatModel).where(CatModel.id == final_cat_id))
             cat_obj = cat_row.scalar_one_or_none()
             if cat_obj and cat_obj.min_price is not None:
-                _price = _Dec(str(updates["price"]))
-                if _price < cat_obj.min_price:
-                    raise HTTPException(
-                        400,
-                        f"Minimum price for {cat_obj.name} is ₹{cat_obj.min_price}. "
-                        f"You entered ₹{_price}."
-                    )
+                _floor = cat_obj.min_price
+                _floor_label = cat_obj.name
+        if _floor is not None:
+            _price = _Dec(str(updates["price"]))
+            if _price < _floor:
+                raise HTTPException(
+                    400,
+                    f"Minimum price for {_floor_label} is ₹{_floor}. You entered ₹{_price}."
+                )
 
     # ── Booking mode: slot-based and multi-day are mutually exclusive ─────────
     # Validate against the FINAL state (existing value unless overridden here).
@@ -764,6 +898,53 @@ async def get_analytics(
         acceptance_rate=acceptance_rate,
         jobs_offered=jobs_offered,
     )
+
+
+@router.get("/me/instant-quota")
+async def get_instant_quota(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Soft, no-penalty progress toward a daily/weekly/monthly count of
+    completed Instant-mode jobs — a motivational showcase on the worker
+    dashboard, never a gate on availability or earnings. Targets are
+    DB-config-driven (platform_config) with hardcoded fallbacks, same
+    pattern as services/matching.calc_commission.
+    """
+    from datetime import datetime, timezone, timedelta
+    from models import Job as JobModel
+    from services.config import get_config
+
+    wp = await _get_worker_profile(user, db)
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = today_start - timedelta(days=today_start.weekday())
+    month_start = today_start.replace(day=1)
+
+    counts_row = (await db.execute(
+        select(
+            func.count(JobModel.id).filter(JobModel.completed_at >= today_start).label("today"),
+            func.count(JobModel.id).filter(JobModel.completed_at >= week_start).label("week"),
+            func.count(JobModel.id).filter(JobModel.completed_at >= month_start).label("month"),
+        )
+        .where(
+            JobModel.worker_id == wp.id,
+            JobModel.job_type == "instant",
+            JobModel.status == "completed",
+        )
+    )).one()
+
+    today_target = await get_config(db, "instant_quota_daily", 3)
+    week_target = await get_config(db, "instant_quota_weekly", 15)
+    month_target = await get_config(db, "instant_quota_monthly", 50)
+
+    return {
+        "today": {"completed": int(counts_row.today or 0), "target": today_target},
+        "week": {"completed": int(counts_row.week or 0), "target": week_target},
+        "month": {"completed": int(counts_row.month or 0), "target": month_target},
+    }
 
 
 # ═══════════════════════════════════════════════════════════

@@ -24,14 +24,19 @@ import { toast } from 'sonner'
 import { AddressBook } from '@/components/kaargar/AddressBook'
 import { cn } from '@/lib/utils'
 
-const STEPS = ['service', 'location', 'estimate', 'confirm']
-const STEP_LABELS = { service: 'Service', location: 'Location', estimate: 'Estimate', confirm: 'Confirm' }
+// Instant mode gets an extra "pick the exact service" step between category
+// and location — Discovery keeps the original flow (it pins a specific
+// worker via BookDiscoveryPage; this page's discovery path predates that
+// and is left untouched here).
+const STEPS_BASE = ['service', 'location', 'estimate', 'confirm']
+const STEPS_INSTANT = ['service', 'pick', 'location', 'estimate', 'confirm']
+const STEP_LABELS = { service: 'Category', pick: 'Service', location: 'Location', estimate: 'Estimate', confirm: 'Confirm' }
 
-function StepIndicator({ current }) {
+function StepIndicator({ current, steps }) {
   return (
     <div className="flex items-center gap-1">
-      {STEPS.map((s, i) => {
-        const done   = STEPS.indexOf(current) > i
+      {steps.map((s, i) => {
+        const done   = steps.indexOf(current) > i
         const active = current === s
         return (
           <div key={s} className="flex items-center gap-1">
@@ -65,7 +70,7 @@ function StepIndicator({ current }) {
             >
               {done ? <Check style={{ width: '11px', height: '11px' }} /> : <span>{i + 1}</span>}
             </div>
-            {i < STEPS.length - 1 && (
+            {i < steps.length - 1 && (
               <div
                 style={{
                   height: '1.5px',
@@ -108,6 +113,120 @@ function CategoryStep({ mode, onSelect }) {
         onSelect={onSelect}
         showAll
       />
+    </motion.div>
+  )
+}
+
+// ── Step 1.5 (Instant only): pick the exact service ────────────
+// Profession is just a browsing category now — the actual bookable/
+// dispatchable unit is the curated catalog service (see
+// SYSTEM_OVERVIEW.md §11). Ranked by how often it's been availed
+// platform-wide; each tile shows a real photo from an offering worker
+// when one exists, never a generic icon.
+
+function ServiceTile({ svc, onSelect }) {
+  return (
+    <motion.button
+      whileTap={{ scale: 0.97 }}
+      onClick={() => onSelect(svc)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+        padding: 10, borderRadius: 16, textAlign: 'left', cursor: 'pointer',
+        background: 'var(--card)', border: '1px solid var(--card-border)',
+      }}
+    >
+      <div style={{
+        width: 56, height: 56, borderRadius: 14, flexShrink: 0, overflow: 'hidden',
+        background: 'var(--g-bg-mid)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        {svc.photo_url ? (
+          <img src={svc.photo_url} alt={svc.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        ) : (
+          <Zap size={20} style={{ color: 'var(--accent)' }} />
+        )}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>{svc.name}</p>
+        <div className="flex items-center gap-2 mt-0.5">
+          {svc.min_price != null && (
+            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>From {formatCurrency(svc.min_price)}</span>
+          )}
+          {svc.total_bookings > 0 && (
+            <span style={{ fontSize: 11, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 2 }}>
+              <TrendingUp size={10} /> {svc.total_bookings} booked
+            </span>
+          )}
+        </div>
+        {(!svc.worker_count || svc.worker_count === 0) && (
+          <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>No one nearby offers this yet</p>
+        )}
+      </div>
+      <ChevronRight size={16} style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+    </motion.button>
+  )
+}
+
+function ServicePickStep({ category, onSelect, onTryDiscover }) {
+  const [services, setServices] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!category?.id) return
+    setLoading(true)
+    api.get(`/categories/${category.id}/services`)
+      .then(({ data }) => { if (!cancelled) setServices(Array.isArray(data) ? data : []) })
+      .catch(() => { if (!cancelled) setServices([]) })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [category?.id])
+
+  return (
+    <motion.div
+      key="step-pick"
+      initial={{ opacity: 0, x: 40 }}
+      animate={{ opacity: 1, x: 0 }}
+      exit={{ opacity: 0, x: -40 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 28 }}
+      className="space-y-4"
+    >
+      <div>
+        <h2 className="text-xl font-bold font-syne" style={{ color: 'var(--text-primary)' }}>What exactly do you need?</h2>
+        <p className="text-sm mt-0.5" style={{ color: 'var(--text-muted)' }}>Pick the specific {category?.name?.toLowerCase()} service</p>
+      </div>
+
+      {loading ? (
+        <div className="space-y-2">
+          {[1, 2, 3].map(i => (
+            <div key={i} style={{ height: 76, borderRadius: 16, background: 'var(--g-bg-mid)' }} className="animate-pulse" />
+          ))}
+        </div>
+      ) : services.length === 0 ? (
+        <GlassCard className="p-5 text-center">
+          <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+            No specific services listed for {category?.name} yet.
+          </p>
+        </GlassCard>
+      ) : (
+        <div className="space-y-2">
+          {services.map(svc => (
+            <ServiceTile key={svc.id} svc={svc} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
+
+      <button
+        onClick={onTryDiscover}
+        style={{
+          width: '100%', padding: '12px 14px', borderRadius: 14,
+          background: 'transparent', border: '1px dashed var(--g-border)',
+          color: 'var(--text-secondary)', fontSize: 13, fontWeight: 600, cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+        }}
+      >
+        <Compass size={14} />
+        Can't find what you're looking for? Try Discover
+      </button>
     </motion.div>
   )
 }
@@ -309,8 +428,8 @@ function LocationStep({ location, onLocationSelect, category }) {
 
 // ── Step 3: Estimate ─────────────────────────────────────────
 
-function EstimateStep({ category, mode }) {
-  const basePrice = Number(category?.min_price || 99)
+function EstimateStep({ category, service, mode }) {
+  const basePrice = Number(service?.min_price ?? category?.min_price ?? 99)
 
   // Real, configured platform-fee/GST rates — replaces a hardcoded 15%
   // "surge" that used to render on every single instant booking regardless
@@ -421,7 +540,7 @@ function EstimateStep({ category, mode }) {
 
 // ── Step 4: Confirm ───────────────────────────────────────────
 
-function ConfirmStep({ category, location, mode, description }) {
+function ConfirmStep({ category, location, mode, description, service }) {
   return (
     <motion.div
       key="step-confirm"
@@ -442,7 +561,8 @@ function ConfirmStep({ category, location, mode, description }) {
             <CategoryPhoto category={category || {}} iconSize={26} />
           </div>
           <div>
-            <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{category?.name}</p>
+            <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{service?.name || category?.name}</p>
+            {service && <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{category?.name}</p>}
             <div className="flex items-center gap-2 mt-0.5">
               {mode === 'instant' ? (
                 <div className="flex items-center gap-1 px-2 py-0.5 rounded-full" style={{ background: 'var(--accent)' }}>
@@ -541,11 +661,14 @@ function SummaryRow({ label, value, icon: Icon }) {
 export default function NewJobPage() {
   const navigate = useNavigate()
   const routeState = useLocation().state || {}
-  const { mode } = useAppStore()
+  const { mode, setMode } = useAppStore()
   const { currentLocation } = useAppStore()
+
+  const STEPS = mode === 'instant' ? STEPS_INSTANT : STEPS_BASE
 
   const [step, setStep] = useState(routeState.category ? 'location' : 'service')
   const [category, setCategory] = useState(routeState.category || null)
+  const [service, setService] = useState(null)
   const [location, setLocation] = useState(currentLocation || null)
   const [description, setDescription] = useState('')
   const [loading, setLoading] = useState(false)
@@ -554,12 +677,17 @@ export default function NewJobPage() {
     const idx = STEPS.indexOf(step)
     if (idx > 0) setStep(STEPS[idx - 1])
     else navigate(-1)
-  }, [step, navigate])
+  }, [step, navigate, STEPS])
 
   const nextStep = useCallback(() => {
     const idx = STEPS.indexOf(step)
     if (idx < STEPS.length - 1) setStep(STEPS[idx + 1])
-  }, [step])
+  }, [step, STEPS])
+
+  function tryDiscover() {
+    setMode('discovery')
+    navigate('/discover')
+  }
 
   async function handleSubmit() {
     if (!category || !location) return
@@ -567,6 +695,7 @@ export default function NewJobPage() {
     try {
       const { data: job } = await api.post('/jobs', {
         category_id: category.id,
+        catalog_service_id: service?.id || undefined,
         job_type: mode,
         location_lat: location.lat || 18.5204,
         location_lon: location.lon || 73.8567,
@@ -586,6 +715,7 @@ export default function NewJobPage() {
 
   const canAdvance = {
     service:  !!category,
+    pick:     !!service,
     location: !!location?.address,
     estimate: true,
     confirm:  !!category && !!location,
@@ -643,7 +773,7 @@ export default function NewJobPage() {
             </p>
           </div>
 
-          <StepIndicator current={step} />
+          <StepIndicator current={step} steps={STEPS} />
         </div>
       </div>
 
@@ -654,7 +784,18 @@ export default function NewJobPage() {
           {step === 'service' && (
             <CategoryStep
               mode={mode}
-              onSelect={(cat) => { setCategory(cat); setStep('location') }}
+              onSelect={(cat) => {
+                setCategory(cat)
+                setService(null)
+                setStep(mode === 'instant' ? 'pick' : 'location')
+              }}
+            />
+          )}
+          {step === 'pick' && (
+            <ServicePickStep
+              category={category}
+              onSelect={(svc) => { setService(svc); setStep('location') }}
+              onTryDiscover={tryDiscover}
             />
           )}
           {step === 'location' && (
@@ -672,11 +813,12 @@ export default function NewJobPage() {
             />
           )}
           {step === 'estimate' && (
-            <EstimateStep category={category} mode={mode} />
+            <EstimateStep category={category} service={service} mode={mode} />
           )}
           {step === 'confirm' && (
             <ConfirmStep
               category={category}
+              service={service}
               location={location}
               mode={mode}
               description={description}

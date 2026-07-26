@@ -68,12 +68,19 @@ class Settings(BaseSettings):
     google_maps_api_key: str = Field("", alias="GOOGLE_MAPS_API_KEY")
 
     # Groq (translation)
-    groq_api_key: str = Field("", alias="GROQ_API_KEY")
+    groq_api_key: str = Field("", alias="GROQ_API_KEY")  # no longer used — services/translation.py migrated to Sarvam
+    sarvam_api_key: str = Field("", alias="SARVAM_API_KEY")
 
     # Phone-call masking — AES-256-GCM key (base64, 32 bytes) shared with the
     # frontend's VITE_PHONE_CALL_KEY. Used only to encrypt the other party's
     # phone number in the /jobs/{id}/contact response.
     phone_call_cipher_key: str = Field("", alias="PHONE_CALL_CIPHER_KEY")
+
+    # Dedicated worker-registration support line — shown as a persistent call
+    # button on the onboarding wizard. Not hardcoded in the frontend; served
+    # via GET /categories/pricing-info-style public config endpoint
+    # (GET /workers/support-contact).
+    worker_support_phone: str = Field("+919529419952", alias="WORKER_SUPPORT_PHONE")
 
     model_config = {
         "env_file": ".env",

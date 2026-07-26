@@ -83,14 +83,30 @@ export default function ChatPage() {
     enabled: !!jobId,
   })
 
+  // GET /jobs/{id} never carries a chat_id (JobResponse doesn't expose one) —
+  // fetch the chat itself via /chat/{jobId} instead, which already
+  // lazily creates it if needed (see chat.py's _get_chat_for_user). Without
+  // this, chatId was always undefined, so the Realtime subscription below
+  // never actually opened and incoming messages never appeared live.
+  const { data: chat } = useQuery({
+    queryKey: ['chat', jobId],
+    queryFn: () => jobId ? api.get(`/chat/${jobId}`).then(r => r.data) : null,
+    enabled: !!jobId,
+  })
+
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ['chat-messages', jobId],
     queryFn: () => api.get(`/chat/${jobId}/messages`).then(r => r.data),
     enabled: !!jobId,
   })
 
-  const chatId = job?.chat_id
-  const otherParty = user?.role === 'worker' ? job?.client : job?.worker
+  const chatId = chat?.id
+  // job.client/job.worker were never actually returned by the backend —
+  // JobResponse only ever carries flat worker_name/client_name/*_avatar_url
+  // fields. Build the "other party" display object from those instead.
+  const otherParty = user?.role === 'worker'
+    ? { full_name: job?.client_name, avatar_url: job?.client_avatar_url }
+    : { full_name: job?.worker_name, avatar_url: job?.worker_avatar_url }
 
   useEffect(() => {
     if (!chatId) return

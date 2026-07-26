@@ -132,9 +132,32 @@ async def create_job(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # ── Reconcile category_id / catalog_service_id ────────────────────────────
+    # Both are independently client-supplied. Without this check a client
+    # could send category_id=Electrician with catalog_service_id pointing at
+    # an "AC repair" entry under Cooling — dispatch (services/matching.py)
+    # trusts catalog_service_id for worker matching but the job's own
+    # category_id drives GST treatment, admin filters, and analytics
+    # elsewhere, so a mismatch would silently misclassify the job everywhere
+    # except dispatch. The catalog service is the authority here — a
+    # customer picked it from the category's own service list — so derive
+    # category_id from it rather than trusting two independent client values.
+    category_id = body.category_id
+    if body.catalog_service_id:
+        from models import ServiceCatalog
+        cat_svc = await db.scalar(
+            select(ServiceCatalog).where(
+                ServiceCatalog.id == body.catalog_service_id,
+                ServiceCatalog.is_active == True,
+            )
+        )
+        if not cat_svc:
+            raise HTTPException(404, "Selected service not found or no longer available")
+        category_id = cat_svc.category_id
+
     job = Job(
         user_id=user.id,
-        category_id=body.category_id,
+        category_id=category_id,
         job_type=body.job_type,
         status="requested",
         title=body.title,
@@ -148,6 +171,7 @@ async def create_job(
         scheduled_at=body.scheduled_at,
         quoted_price=body.quoted_price,
         service_id=body.service_id,
+        catalog_service_id=body.catalog_service_id,
         package_id=body.package_id,
         job_photos=body.photos or [],
     )
@@ -351,6 +375,7 @@ async def get_job(
     # Enrich with category name
     cat = await db.execute(select(CatModel.name).where(CatModel.id == job.category_id))
     resp.category_name = cat.scalar_one_or_none()
+    resp.arrival_geofence_m = int(await get_config(db, "arrival_geofence_meters", Decimal("150")))
     # Enrich with worker name + avatar
     if job.worker_id:
         wrow = await db.execute(
@@ -485,7 +510,12 @@ async def get_job_worker_location(
     # Same real-status gap as contactable_statuses above — "confirmed" is the
     # actual status Discovery/scheduled bookings sit in with a worker already
     # pinned, so it needs to be trackable too, not just instant's "assigned".
-    trackable_statuses = {"assigned", "confirmed", "arrived", "started"}
+    # "en_route" was missing too — JobTrackingMap.jsx's own TRACKABLE_STATUSES
+    # already included it client-side, so a job in en_route would render the
+    # tracking map (isTrackable=true) but this endpoint would 400 on the very
+    # first fetch. Keeping both sets in sync now: assigned/confirmed/en_route/
+    # arrived/started.
+    trackable_statuses = {"assigned", "confirmed", "en_route", "arrived", "started"}
     if job.status not in trackable_statuses:
         raise HTTPException(400, "Live tracking is only available while the job is in progress")
     if not job.worker_id:
@@ -504,6 +534,53 @@ async def get_job_worker_location(
         lon=float(loc.lon),
         heading=float(loc.heading) if loc.heading is not None else None,
         updated_at=loc.updated_at,
+    )
+
+
+@router.get("/{job_id}/eta")
+async def get_job_eta(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Real driving ETA (Mapbox Directions), replacing the old client-side
+    straight-line/20kmh estimate. Same auth/visibility window as
+    /worker-location — polled on its own slower interval by the frontend
+    rather than recomputed on every GPS Realtime tick, to avoid burning
+    through the Mapbox free tier for one active job.
+    """
+    result = await db.execute(select(Job).where(Job.id == job_id))
+    job = result.scalar_one_or_none()
+    if not job:
+        raise HTTPException(404)
+
+    is_customer = job.user_id == user.id
+    if not is_customer:
+        wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
+        wp = wp_result.scalar_one_or_none()
+        if not wp or job.worker_id != wp.id:
+            raise HTTPException(403)
+
+    trackable_statuses = {"assigned", "confirmed", "en_route", "arrived", "started"}
+    if job.status not in trackable_statuses:
+        raise HTTPException(400, "ETA is only available while the job is in progress")
+    if not job.worker_id:
+        raise HTTPException(404, "No worker assigned yet")
+
+    from models import WorkerLocation
+    from services.eta import get_driving_eta
+
+    loc_result = await db.execute(
+        select(WorkerLocation).where(WorkerLocation.worker_id == job.worker_id)
+    )
+    loc = loc_result.scalar_one_or_none()
+    if not loc:
+        raise HTTPException(404, "Worker location not available yet")
+
+    return await get_driving_eta(
+        float(loc.lat), float(loc.lon),
+        float(job.location_lat), float(job.location_lon),
     )
 
 
@@ -866,6 +943,38 @@ async def mark_arrived(
     wp, job = await _get_worker_for_job(job_id, user, db)
     if job.worker_id != wp.id:
         raise HTTPException(403)
+
+    # ── Geofencing ──────────────────────────────────────────────────────────
+    # Previously mark_arrived did zero GPS validation — it just trusted the
+    # worker's tap. Per explicit decision: the Arrived action should be
+    # blocked server-side (not just disabled client-side, which a worker
+    # could bypass by calling the API directly) unless their last known
+    # WorkerLocation is within a configurable radius of the job's location.
+    # Default 150m accounts for GPS drift in dense urban Pune + being
+    # somewhere inside a building rather than exactly on the pin.
+    from models import WorkerLocation as _WorkerLocation
+    geofence_m = await get_config(db, "arrival_geofence_meters", Decimal("150"))
+    loc_result = await db.execute(
+        select(_WorkerLocation).where(_WorkerLocation.worker_id == wp.id)
+    )
+    worker_loc = loc_result.scalar_one_or_none()
+    if not worker_loc:
+        raise HTTPException(
+            400,
+            "Can't confirm arrival — your location hasn't been shared yet. "
+            "Make sure location access is on and try again in a few seconds.",
+        )
+    distance_km = haversine_km(
+        float(worker_loc.lat), float(worker_loc.lon),
+        float(job.location_lat), float(job.location_lon),
+    )
+    if distance_km * 1000 > float(geofence_m):
+        raise HTTPException(
+            400,
+            f"You're too far from the job location ({distance_km:.2f} km away) "
+            f"to mark yourself arrived. Get within {int(geofence_m)}m and try again.",
+        )
+
     job.arrived_at = datetime.now(timezone.utc)
     job.status = "arrived"
 
@@ -946,6 +1055,27 @@ async def _finalize_job_completion(db, job, wp, user_id):
     score_recover = await get_config(db, "cancellation_score_recover", Decimal("0.02"))
     new_score = min(Decimal("1.00"), (wp.cancellation_score or Decimal("1.00")) + score_recover)
     wp.cancellation_score = new_score
+
+    # ── Bump popularity counters ──────────────────────────────────────────
+    # Service.total_bookings (per-worker) and ServiceCatalog.total_bookings
+    # (aggregate across all workers) were both dead columns — never
+    # incremented anywhere — which meant /search/trending-services and the
+    # new Instant-mode "ranked by times availed" service list silently
+    # degraded to a rating-only tiebreak. This is the one place a job
+    # actually finishes, so it's the right hook for both.
+    if job.service_id:
+        from models import Service as _Service, ServiceCatalog as _ServiceCatalog
+        svc_result = await db.execute(select(_Service).where(_Service.id == job.service_id))
+        svc = svc_result.scalar_one_or_none()
+        if svc is not None:
+            svc.total_bookings = (svc.total_bookings or 0) + 1
+            if svc.catalog_service_id:
+                cat_svc_result = await db.execute(
+                    select(_ServiceCatalog).where(_ServiceCatalog.id == svc.catalog_service_id)
+                )
+                cat_svc = cat_svc_result.scalar_one_or_none()
+                if cat_svc is not None:
+                    cat_svc.total_bookings = (cat_svc.total_bookings or 0) + 1
 
     await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
 

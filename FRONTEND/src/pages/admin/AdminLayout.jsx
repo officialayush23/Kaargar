@@ -7,7 +7,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard, Users, Briefcase, MessageSquare,
   Settings, LogOut, Menu, X, Layers,
-  Wallet, UserCog, ChevronRight, Bell,
+  Wallet, UserCog, ChevronRight, Bell, Wrench, TrendingUp,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/auth'
 import { supabase } from '@/lib/supabase'
@@ -22,6 +22,8 @@ const NAV = [
   { to: '/admin/payouts',    label: 'Payouts',     icon: Wallet },
   { to: '/admin/support',    label: 'Support',     icon: MessageSquare, badgeKey: 'open_tickets' },
   { to: '/admin/categories', label: 'Professions', icon: Layers },
+  { to: '/admin/services',   label: 'Instant Services', icon: Wrench },
+  { to: '/admin/service-rankings', label: 'Service Rankings', icon: TrendingUp },
   { to: '/admin/config',     label: 'Config',      icon: Settings },
 ]
 

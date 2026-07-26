@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, User, Tag, FileText,
   MapPin, Rocket, Upload, X, Check, Loader2,
   Clock, AlertCircle, Search, Calendar,
-  Video, Play,
+  Video, Play, Wrench, Phone, Info, Plus,
 } from 'lucide-react'
 import { useQuery } from '@tanstack/react-query'
 import { Background } from '@/components/glass/Background'
@@ -34,16 +34,30 @@ const DOC_TYPES = [
   { value: 'passport', label: 'Passport' },
 ]
 
-const STEPS = ['bio', 'categories', 'documents', 'video', 'area', 'schedule', 'publish']
+const STEPS = ['bio', 'categories', 'services', 'documents', 'video', 'area', 'schedule', 'publish']
 const STEP_META = [
   { icon: User,     label: 'Bio',       desc: 'Your story' },
   { icon: Tag,      label: 'Skills',    desc: 'Categories' },
+  { icon: Wrench,   label: 'Services',  desc: 'What you offer' },
   { icon: FileText, label: 'Docs',      desc: 'Identity' },
   { icon: Video,    label: 'Video',     desc: 'Intro' },
   { icon: MapPin,   label: 'Area',      desc: 'Zone' },
   { icon: Calendar, label: 'Hours',     desc: 'Schedule' },
   { icon: Rocket,   label: 'Publish',   desc: 'Go live' },
 ]
+
+// One-line "what this step does" guide, shown as a banner at the top of
+// every step — per-page onboarding guidance the worker asked for.
+const STEP_GUIDES = {
+  bio:        'Tell customers a bit about yourself — this shows on your public profile.',
+  categories: 'Pick every profession you work in. You can add more later from your dashboard.',
+  services:   'Choose the exact services you offer from our list — this is what customers see and book in Instant mode. Don\'t see yours? Add it as a custom service — it goes live right away in Discover, no review needed.',
+  documents:  'Upload a valid ID so we can verify you. Required before you can go live.',
+  video:      'A short intro video builds trust — customers are far more likely to book verified, personable workers.',
+  area:       'Set your home base and how far you\'re willing to travel for jobs.',
+  schedule:   'Set your regular working hours — you can still toggle online/offline any time for instant jobs.',
+  publish:    'Review everything, then go live. Your profile is submitted for verification once you launch.',
+}
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const TIME_OPTS = []
@@ -224,6 +238,220 @@ function AreaPicker({ value, onChange, error }) {
   )
 }
 
+// ── Services step: pick from the admin-curated catalog per chosen category,
+// with an "add extra" fallback that proposes a new one for admin review.
+function ServicesStep({ selectedCats, selectedServices, setSelectedServices, errors }) {
+  const [catalogByCategory, setCatalogByCategory] = useState({})
+  const [loadingCats, setLoadingCats] = useState({})
+  const [addingFor, setAddingFor] = useState(null) // category_id currently showing the "add extra" form
+  const [extraName, setExtraName] = useState('')
+  const [extraDesc, setExtraDesc] = useState('')
+  const [extraPrice, setExtraPrice] = useState('')
+
+  useEffect(() => {
+    selectedCats.forEach(cat => {
+      if (catalogByCategory[cat.id] || loadingCats[cat.id]) return
+      setLoadingCats(prev => ({ ...prev, [cat.id]: true }))
+      api.get('/workers/service-catalog', { params: { category_id: cat.id } })
+        .then(({ data }) => {
+          setCatalogByCategory(prev => ({ ...prev, [cat.id]: Array.isArray(data) ? data : [] }))
+        })
+        .catch(() => setCatalogByCategory(prev => ({ ...prev, [cat.id]: [] })))
+        .finally(() => setLoadingCats(prev => ({ ...prev, [cat.id]: false })))
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedCats])
+
+  function isPicked(catalogServiceId) {
+    return selectedServices.some(s => s.catalog_service_id === catalogServiceId)
+  }
+
+  function toggleEntry(cat, entry) {
+    setSelectedServices(prev => {
+      const exists = prev.some(s => s.catalog_service_id === entry.id)
+      if (exists) return prev.filter(s => s.catalog_service_id !== entry.id)
+      const floor = entry.min_price ?? entry.base_price
+      return [...prev, {
+        category_id: cat.id,
+        catalog_service_id: entry.id,
+        name: entry.name,
+        price: floor != null ? String(floor) : '',
+      }]
+    })
+  }
+
+  function setEntryPrice(catalogServiceId, price) {
+    setSelectedServices(prev => prev.map(s =>
+      s.catalog_service_id === catalogServiceId ? { ...s, price } : s
+    ))
+  }
+
+  function submitExtra(cat) {
+    if (!extraName.trim()) return
+    setSelectedServices(prev => [...prev, {
+      category_id: cat.id,
+      isCustom: true,
+      name: extraName.trim(),
+      description: extraDesc.trim() || undefined,
+      price: extraPrice || '',
+      _tempId: `custom-${Date.now()}`,
+    }])
+    setExtraName(''); setExtraDesc(''); setExtraPrice(''); setAddingFor(null)
+  }
+
+  function removeCustom(tempId) {
+    setSelectedServices(prev => prev.filter(s => s._tempId !== tempId))
+  }
+
+  return (
+    <div className="space-y-4">
+      {errors.services && (
+        <div className="flex items-center gap-2 p-3 rounded-xl"
+          style={{ background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.2)' }}>
+          <AlertCircle size={14} style={{ color: '#f87171', flexShrink: 0 }} />
+          <p className="text-xs" style={{ color: '#f87171' }}>{errors.services}</p>
+        </div>
+      )}
+
+      {selectedCats.map(cat => {
+        const entries = catalogByCategory[cat.id] || []
+        const custom = selectedServices.filter(s => s.isCustom && s.category_id === cat.id)
+        return (
+          <GlassCard key={cat.id} className="p-4">
+            <h3 className="text-sm font-bold mb-3" style={{ color: 'var(--text-primary)' }}>{cat.name}</h3>
+
+            {loadingCats[cat.id] ? (
+              <div className="flex justify-center py-4">
+                <Loader2 size={18} className="animate-spin" style={{ color: 'var(--text-muted)' }} />
+              </div>
+            ) : entries.length === 0 && custom.length === 0 ? (
+              <p className="text-xs" style={{ color: 'var(--text-muted)' }}>No curated services listed yet for {cat.name}.</p>
+            ) : null}
+
+            <div className="space-y-2">
+              {entries.map(entry => {
+                const picked = isPicked(entry.id)
+                const svc = selectedServices.find(s => s.catalog_service_id === entry.id)
+                return (
+                  <div key={entry.id} style={{
+                    borderRadius: 12, border: `1px solid ${picked ? 'var(--accent)' : 'var(--card-border)'}`,
+                    background: picked ? 'var(--accent-bg-sm, rgba(245,158,11,0.06))' : 'var(--card-bg)', padding: 10,
+                  }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleEntry(cat, entry)}
+                      style={{ display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'left', padding: 0 }}
+                    >
+                      <div style={{
+                        width: 18, height: 18, borderRadius: 5, flexShrink: 0,
+                        border: `1.5px solid ${picked ? 'var(--accent)' : 'var(--card-border)'}`,
+                        background: picked ? 'var(--accent)' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}>
+                        {picked && <Check size={11} style={{ color: '#000' }} />}
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)', flex: 1 }}>{entry.name}</span>
+                      {entry.total_bookings > 0 && (
+                        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{entry.total_bookings} booked</span>
+                      )}
+                    </button>
+                    {(entry.min_price != null || entry.base_price != null) && (
+                      <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 4, marginLeft: 26 }}>
+                        Minimum you can charge: ₹{entry.min_price ?? entry.base_price}
+                      </p>
+                    )}
+                    {picked && (
+                      <div className="mt-2 flex items-center gap-2">
+                        <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>₹</span>
+                        <input
+                          type="number"
+                          value={svc?.price || ''}
+                          onChange={e => setEntryPrice(entry.id, e.target.value)}
+                          placeholder="Your price"
+                          style={{
+                            flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 13,
+                            border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-primary)',
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+
+              {custom.map(s => (
+                <div key={s._tempId} style={{
+                  borderRadius: 12, border: '1px dashed var(--accent)', padding: 10,
+                  background: 'var(--accent-bg-sm, rgba(245,158,11,0.06))',
+                }}>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--text-primary)' }}>{s.name}</span>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)', marginLeft: 6 }}>Custom — visible in Discover</span>
+                    </div>
+                    <button type="button" onClick={() => removeCustom(s._tempId)} style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}>
+                      <X size={14} style={{ color: 'var(--text-muted)' }} />
+                    </button>
+                  </div>
+                  <div className="mt-2 flex items-center gap-2">
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>₹</span>
+                    <input
+                      type="number"
+                      value={s.price || ''}
+                      onChange={e => setSelectedServices(prev => prev.map(x => x._tempId === s._tempId ? { ...x, price: e.target.value } : x))}
+                      placeholder="Your price"
+                      style={{
+                        flex: 1, padding: '6px 8px', borderRadius: 8, fontSize: 13,
+                        border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-primary)',
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {addingFor === cat.id ? (
+              <div className="mt-3 space-y-2" style={{ padding: 10, borderRadius: 12, border: '1px solid var(--card-border)' }}>
+                <input
+                  type="text" value={extraName} onChange={e => setExtraName(e.target.value)}
+                  placeholder="Service name (e.g. Geyser repair)"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, fontSize: 13, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-primary)' }}
+                />
+                <input
+                  type="text" value={extraDesc} onChange={e => setExtraDesc(e.target.value)}
+                  placeholder="Short description (optional)"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, fontSize: 13, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-primary)' }}
+                />
+                <input
+                  type="number" value={extraPrice} onChange={e => setExtraPrice(e.target.value)}
+                  placeholder="Your price (₹)"
+                  style={{ width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: 8, fontSize: 13, border: '1px solid var(--card-border)', background: 'var(--card-bg)', color: 'var(--text-primary)' }}
+                />
+                <div className="flex gap-2">
+                  <GlassButton size="sm" variant="ghost" onClick={() => setAddingFor(null)}>Cancel</GlassButton>
+                  <GlassButton size="sm" variant="brand" onClick={() => submitExtra(cat)}>Add service</GlassButton>
+                </div>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAddingFor(cat.id)}
+                className="mt-3"
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 600,
+                  color: 'var(--accent)', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0,
+                }}
+              >
+                <Plus size={13} /> Add extra — don't see your service?
+              </button>
+            )}
+          </GlassCard>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function WorkerOnboardPage() {
   const navigate = useNavigate()
   const { updateUser } = useAuthStore()
@@ -238,6 +466,20 @@ export default function WorkerOnboardPage() {
 
   // Step 2: Categories
   const [selectedCats, setSelectedCats] = useState([])
+
+  // Step 2.5: Services (catalog picks + custom "add extra" proposals)
+  // Each entry: { category_id, catalog_service_id?, name, description?, price, isCustom }
+  const [selectedServices, setSelectedServices] = useState([])
+
+  // Dedicated worker-registration support number — fetched, never hardcoded.
+  const [supportPhone, setSupportPhone] = useState('')
+  useEffect(() => {
+    let cancelled = false
+    api.get('/workers/support-contact')
+      .then(({ data }) => { if (!cancelled) setSupportPhone(data?.phone || '') })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
 
   // Step 3: Documents
   const [uploadedDocs, setUploadedDocs] = useState([])
@@ -342,6 +584,9 @@ export default function WorkerOnboardPage() {
     if (step === 'categories') {
       if (selectedCats.length === 0) errs.cats = 'Select at least one category'
     }
+    if (step === 'services') {
+      if (selectedServices.length === 0) errs.services = 'Pick at least one service you offer'
+    }
     if (step === 'area') {
       if (!selectedArea) errs.area = 'Please select your area'
     }
@@ -375,6 +620,28 @@ export default function WorkerOnboardPage() {
         category_ids: selectedCats.map(c => c.id),
         allow_multi_day_booking: allowMultiDay,
       })
+
+      // ── Register the services the worker picked from the admin catalog,
+      // plus any custom "add extra" listings — must happen AFTER the profile
+      // POST above since it needs a worker_profiles row to exist. Catalog
+      // picks get catalog_service_id set (Instant-eligible). Custom listings
+      // are plain free-text services — no catalog link, no review — they're
+      // immediately searchable in Discover, same as any other worker's
+      // free-text listing.
+      for (const svc of selectedServices) {
+        try {
+          await api.post('/workers/me/services', {
+            category_id: svc.category_id,
+            catalog_service_id: svc.catalog_service_id || undefined,
+            title: svc.name,
+            hourly_rate: svc.price,
+          })
+        } catch (_) {
+          // Best-effort — a single failed service shouldn't block the rest
+          // of publishing. Worker can always add/fix services later from
+          // their Services page.
+        }
+      }
 
       for (const doc of uploadedDocs) {
         try {
@@ -475,7 +742,39 @@ export default function WorkerOnboardPage() {
               Step {stepIdx + 1} of {STEPS.length} — {STEP_META[stepIdx].label}
             </p>
           </div>
+
+          {/* Dedicated registration support line — always visible, never hardcoded */}
+          {supportPhone && (
+            <a
+              href={`tel:${supportPhone}`}
+              style={{
+                width: '38px', height: '38px', borderRadius: '10px',
+                background: 'var(--accent)', display: 'flex', alignItems: 'center',
+                justifyContent: 'center', cursor: 'pointer', flexShrink: 0, textDecoration: 'none',
+              }}
+              title="Call registration support"
+            >
+              <Phone size={16} style={{ color: '#000' }} />
+            </a>
+          )}
         </div>
+
+        {/* Per-step guide — what this step is for, in plain language */}
+        {STEP_GUIDES[step] && (
+          <div
+            className="flex items-start gap-2 mb-4 shrink-0"
+            style={{
+              padding: '10px 12px', borderRadius: '12px',
+              background: 'var(--accent-bg-sm, rgba(245,158,11,0.08))',
+              border: '1px solid var(--accent-border, rgba(245,158,11,0.25))',
+            }}
+          >
+            <Info size={14} style={{ color: 'var(--accent)', flexShrink: 0, marginTop: 1 }} />
+            <p style={{ fontSize: 12, color: 'var(--text-secondary)', lineHeight: 1.5, margin: 0 }}>
+              {STEP_GUIDES[step]}
+            </p>
+          </div>
+        )}
 
         {/* Step progress bars */}
         <div className="flex items-center gap-1 mb-6 shrink-0">
@@ -715,6 +1014,24 @@ export default function WorkerOnboardPage() {
                   </p>
                 )}
               </GlassCard>
+            </motion.div>
+          )}
+
+          {/* ── STEP 2.5: Services ── */}
+          {step === 'services' && (
+            <motion.div
+              key="services"
+              custom={direction}
+              variants={slideVariants}
+              initial="enter" animate="center" exit="exit"
+              transition={{ type: 'spring', stiffness: 320, damping: 30 }}
+            >
+              <ServicesStep
+                selectedCats={selectedCats}
+                selectedServices={selectedServices}
+                setSelectedServices={setSelectedServices}
+                errors={errors}
+              />
             </motion.div>
           )}
 

@@ -152,6 +152,10 @@ async def _run_dispatch(db: AsyncSession, job_id: str):
 
 
 async def _log_no_match_diagnostics(db: AsyncSession, job: Job, radius_km: int) -> None:
+    catalog_service_id = getattr(job, "catalog_service_id", None)
+    if catalog_service_id:
+        await _log_no_match_diagnostics_catalog(db, job, radius_km, catalog_service_id)
+        return
     try:
         sql = text("""
             SELECT
@@ -239,71 +243,264 @@ async def _log_no_match_diagnostics(db: AsyncSession, job: Job, radius_km: int) 
         logger.warning("Dispatch diagnostics query itself failed for job %s: %s", job.id, e)
 
 
+async def _log_no_match_diagnostics_catalog(db: AsyncSession, job: Job, radius_km: int, catalog_service_id) -> None:
+    """Same funnel breakdown as _log_no_match_diagnostics, but the category
+    stage is replaced with "offers_service" — whether a worker has an active
+    Service row linked to this exact catalog service, not just the category."""
+    try:
+        sql = text("""
+            SELECT
+                count(*) FILTER (WHERE true)                                        AS total_workers,
+                count(*) FILTER (WHERE wp.status = 'online')                        AS online,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved')                        AS approved,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true)                             AS instant_available,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM services s
+                        WHERE s.worker_id = wp.id AND s.catalog_service_id = :catalog_service_id
+                          AND s.is_active = true
+                    ))                                                              AS offers_service,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM services s
+                        WHERE s.worker_id = wp.id AND s.catalog_service_id = :catalog_service_id
+                          AND s.is_active = true
+                    )
+                    AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())) AS not_auto_offline,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM services s
+                        WHERE s.worker_id = wp.id AND s.catalog_service_id = :catalog_service_id
+                          AND s.is_active = true
+                    )
+                    AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
+                    AND wl.updated_at > NOW() - INTERVAL '2 minutes')                AS fresh_location,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM services s
+                        WHERE s.worker_id = wp.id AND s.catalog_service_id = :catalog_service_id
+                          AND s.is_active = true
+                    )
+                    AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
+                    AND wl.updated_at > NOW() - INTERVAL '2 minutes'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM worker_time_off wto
+                        WHERE wto.worker_id = wp.id
+                          AND NOW() BETWEEN wto.start_datetime AND wto.end_datetime
+                    ))                                                              AS not_on_leave,
+                count(*) FILTER (WHERE wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    AND EXISTS (
+                        SELECT 1 FROM services s
+                        WHERE s.worker_id = wp.id AND s.catalog_service_id = :catalog_service_id
+                          AND s.is_active = true
+                    )
+                    AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
+                    AND wl.updated_at > NOW() - INTERVAL '2 minutes'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM worker_time_off wto
+                        WHERE wto.worker_id = wp.id
+                          AND NOW() BETWEEN wto.start_datetime AND wto.end_datetime
+                    )
+                    AND ST_DWithin(
+                        wl.geom::geography,
+                        ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                        :radius_m
+                    ))                                                              AS in_radius
+            FROM worker_profiles wp
+            LEFT JOIN worker_locations wl ON wl.worker_id = wp.id
+        """)
+        row = (await db.execute(sql, {
+            "lat": float(job.location_lat),
+            "lon": float(job.location_lon),
+            "radius_m": radius_km * 1000,
+            "catalog_service_id": catalog_service_id,
+        })).one()
+        logger.warning(
+            "Dispatch failed for job %s (no worker matched at %skm radius, catalog_service_id=%s). "
+            "Funnel — total:%s online:%s approved:%s instant_available:%s "
+            "offers_service:%s not_auto_offline:%s fresh_location(<=2min):%s "
+            "not_on_leave:%s in_radius:%s.",
+            job.id, radius_km, catalog_service_id, *row,
+        )
+    except Exception as e:
+        logger.warning("Dispatch diagnostics query itself failed for job %s: %s", job.id, e)
+
+
 async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
-    sql = text("""
-        SELECT
-            wp.id,
-            ST_Distance(
-                wl.geom::geography,
-                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
-            ) / 1000.0 AS distance_km,
-            (
-                (1.0 - ST_Distance(
+    # Instant mode is now driven by the curated service catalog, not raw
+    # category (see SYSTEM_OVERVIEW.md §11) — a customer picks a specific
+    # service (e.g. "Fan installation"), and dispatch should only reach
+    # workers who've actually added THAT service, not just the broader
+    # profession. jobs.catalog_service_id is set for every job created via
+    # the new service-selection step; it's NULL for legacy jobs (created
+    # before this feature, or any path that only ever collected a category),
+    # which fall back to the old category-only filter so nothing breaks.
+    catalog_service_id = getattr(job, "catalog_service_id", None)
+
+    if catalog_service_id:
+        # ── Catalog-service-aware matching — adds a price factor ("cheapest,
+        # best, nearest") on top of the existing distance/rating/acceptance/
+        # completion/response-time blend. Price is normalized against the
+        # min/max price among candidate workers actually offering this exact
+        # service within the radius, via a CTE, so it's a relative "how good
+        # a deal is this worker vs the others available right now", not an
+        # absolute threshold.
+        sql = text("""
+            WITH candidates AS (
+                SELECT
+                    wp.id AS worker_id,
+                    s.price AS price,
+                    ST_Distance(
+                        wl.geom::geography,
+                        ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
+                    ) / 1000.0 AS distance_km
+                FROM worker_profiles wp
+                JOIN worker_locations wl ON wl.worker_id = wp.id
+                JOIN services s ON s.worker_id = wp.id
+                    AND s.catalog_service_id = :catalog_service_id
+                    AND s.is_active = true
+                WHERE
+                    wp.status = 'online'
+                    AND wp.verification_status = 'approved'
+                    AND wp.is_instant_available = true
+                    -- Defense in depth: a Service row's catalog_service_id is
+                    -- supposed to only ever be set when its category_id
+                    -- matches the catalog entry's category (enforced at
+                    -- write time in routers/workers.py and routers/admin.py),
+                    -- but dispatch is the actual security boundary that
+                    -- decides who gets notified about a job — re-check here
+                    -- too rather than trusting that invariant held everywhere
+                    -- it could theoretically be violated (bad data, future
+                    -- code path that forgets the check).
+                    AND EXISTS (
+                        SELECT 1 FROM worker_categories wc
+                        WHERE wc.worker_id = wp.id AND wc.category_id = :category_id
+                    )
+                    AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
+                    AND wl.updated_at > NOW() - INTERVAL '2 minutes'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM worker_time_off wto
+                        WHERE wto.worker_id = wp.id
+                          AND NOW() BETWEEN wto.start_datetime AND wto.end_datetime
+                    )
+                    AND ST_DWithin(
+                        wl.geom::geography,
+                        ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                        :radius_m
+                    )
+            ),
+            bounds AS (
+                SELECT MIN(price) AS min_price, MAX(price) AS max_price FROM candidates
+            )
+            SELECT
+                c.worker_id AS id,
+                c.distance_km,
+                (
+                    (1.0 - c.distance_km / :radius_km) * 0.30
+                    + (wp.avg_rating / 5.0) * 0.20
+                    + wp.acceptance_rate * 0.15
+                    + wp.completion_rate * 0.15
+                    + (1.0 - LEAST(wp.avg_response_time_sec::float / 60.0, 1.0)) * 0.10
+                    + CASE
+                        WHEN b.max_price IS NULL OR b.max_price = b.min_price THEN 1.0
+                        ELSE 1.0 - (c.price - b.min_price) / (b.max_price - b.min_price)
+                      END * 0.10
+                ) * wp.cancellation_score AS score
+            FROM candidates c
+            JOIN worker_profiles wp ON wp.id = c.worker_id
+            CROSS JOIN bounds b
+            ORDER BY score DESC
+            LIMIT 10
+        """)
+        params = {
+            "lat": float(job.location_lat),
+            "lon": float(job.location_lon),
+            "radius_km": radius_km,
+            "radius_m": radius_km * 1000,
+            "catalog_service_id": catalog_service_id,
+            "category_id": job.category_id,
+        }
+    else:
+        sql = text("""
+            SELECT
+                wp.id,
+                ST_Distance(
                     wl.geom::geography,
                     ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
-                ) / 1000.0 / :radius_km) * 0.30
-                + (wp.avg_rating / 5.0) * 0.20
-                + wp.acceptance_rate * 0.15
-                + wp.completion_rate * 0.15
-                + (1.0 - LEAST(wp.avg_response_time_sec::float / 60.0, 1.0)) * 0.10
-                + 0.10
-            ) * wp.cancellation_score AS score
-        FROM worker_profiles wp
-        JOIN worker_locations wl ON wl.worker_id = wp.id
-        WHERE
-            wp.status = 'online'
-            AND wp.verification_status = 'approved'
-            AND wp.is_instant_available = true
-            -- Matching used to be category-blind — any online/approved/
-            -- instant-available worker within radius was eligible for
-            -- dispatch regardless of what services they actually registered
-            -- for (an electrician job could reach a plumber). Restrict to
-            -- workers who've actually added this job's category.
-            AND EXISTS (
-                SELECT 1 FROM worker_categories wc
-                WHERE wc.worker_id = wp.id AND wc.category_id = :category_id
-            )
-            AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
-            AND wl.updated_at > NOW() - INTERVAL '2 minutes'
-            -- Explicit "I'm on leave" windows (worker_time_off) still exclude
-            -- a worker even if they're toggled online — this is a deliberate,
-            -- worker-set signal, unlike the weekly working-hours schedule
-            -- (worker_availability), which instant dispatch intentionally
-            -- ignores: online/offline is the real-time control for on-demand
-            -- work, and a pre-set weekly schedule doesn't map cleanly onto
-            -- "can dispatch to them right now." An active time-off block is
-            -- different — it's an explicit "not this specific date" override.
-            AND NOT EXISTS (
-                SELECT 1 FROM worker_time_off wto
-                WHERE wto.worker_id = wp.id
-                  AND NOW() BETWEEN wto.start_datetime AND wto.end_datetime
-            )
-            AND ST_DWithin(
-                wl.geom::geography,
-                ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
-                :radius_m
-            )
-        ORDER BY score DESC
-        LIMIT 10
-    """)
+                ) / 1000.0 AS distance_km,
+                (
+                    (1.0 - ST_Distance(
+                        wl.geom::geography,
+                        ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
+                    ) / 1000.0 / :radius_km) * 0.30
+                    + (wp.avg_rating / 5.0) * 0.20
+                    + wp.acceptance_rate * 0.15
+                    + wp.completion_rate * 0.15
+                    + (1.0 - LEAST(wp.avg_response_time_sec::float / 60.0, 1.0)) * 0.10
+                    + 0.10
+                ) * wp.cancellation_score AS score
+            FROM worker_profiles wp
+            JOIN worker_locations wl ON wl.worker_id = wp.id
+            WHERE
+                wp.status = 'online'
+                AND wp.verification_status = 'approved'
+                AND wp.is_instant_available = true
+                -- Matching used to be category-blind — any online/approved/
+                -- instant-available worker within radius was eligible for
+                -- dispatch regardless of what services they actually registered
+                -- for (an electrician job could reach a plumber). Restrict to
+                -- workers who've actually added this job's category. This is
+                -- now the FALLBACK path (catalog_service_id not set) — the
+                -- primary path above filters by the exact catalog service.
+                AND EXISTS (
+                    SELECT 1 FROM worker_categories wc
+                    WHERE wc.worker_id = wp.id AND wc.category_id = :category_id
+                )
+                AND (wp.auto_offline_until IS NULL OR wp.auto_offline_until < NOW())
+                AND wl.updated_at > NOW() - INTERVAL '2 minutes'
+                -- Explicit "I'm on leave" windows (worker_time_off) still exclude
+                -- a worker even if they're toggled online — this is a deliberate,
+                -- worker-set signal, unlike the weekly working-hours schedule
+                -- (worker_availability), which instant dispatch intentionally
+                -- ignores: online/offline is the real-time control for on-demand
+                -- work, and a pre-set weekly schedule doesn't map cleanly onto
+                -- "can dispatch to them right now." An active time-off block is
+                -- different — it's an explicit "not this specific date" override.
+                AND NOT EXISTS (
+                    SELECT 1 FROM worker_time_off wto
+                    WHERE wto.worker_id = wp.id
+                      AND NOW() BETWEEN wto.start_datetime AND wto.end_datetime
+                )
+                AND ST_DWithin(
+                    wl.geom::geography,
+                    ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
+                    :radius_m
+                )
+            ORDER BY score DESC
+            LIMIT 10
+        """)
+        params = {
+            "lat": float(job.location_lat),
+            "lon": float(job.location_lon),
+            "radius_km": radius_km,
+            "radius_m": radius_km * 1000,
+            "category_id": job.category_id,
+        }
 
-    result = await db.execute(sql, {
-        "lat": float(job.location_lat),
-        "lon": float(job.location_lon),
-        "radius_km": radius_km,
-        "radius_m": radius_km * 1000,
-        "category_id": job.category_id,
-    })
+    result = await db.execute(sql, params)
     rows = result.fetchall()
 
     workers = []
@@ -338,6 +535,28 @@ async def _assign_job(db: AsyncSession, job: Job, req: JobWorkerRequest):
     job.worker_id = req.worker_id
     job.status = "assigned"
     job.assigned_at = now
+
+    # ── Resolve job.service_id from the catalog service for catalog-driven
+    # Instant jobs ──────────────────────────────────────────────────────────
+    # A catalog-driven job (job.catalog_service_id set) doesn't know WHICH
+    # worker's Service row it'll end up with until dispatch actually assigns
+    # someone — the customer picked an abstract catalog entry, not a specific
+    # worker's listing. Now that we know the winning worker, resolve their
+    # own Service row for this catalog service and backfill job.service_id
+    # so everything downstream (quoted_price fallback below, total_bookings
+    # increments on completion) can keep working off job.service_id uniformly.
+    if job.service_id is None and job.catalog_service_id:
+        from models import Service
+        winner_svc_result = await db.execute(
+            select(Service).where(
+                Service.worker_id == req.worker_id,
+                Service.catalog_service_id == job.catalog_service_id,
+                Service.is_active == True,
+            )
+        )
+        winner_svc = winner_svc_result.scalar_one_or_none()
+        if winner_svc is not None:
+            job.service_id = winner_svc.id
 
     # ── Set quoted_price from the service if it was never populated ──────────
     # create_job only sets quoted_price from whatever the client sent (often

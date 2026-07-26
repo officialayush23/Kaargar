@@ -42,6 +42,8 @@ import AdminJobs from '@/pages/admin/AdminJobs'
 import AdminSupport from '@/pages/admin/AdminSupport'
 import AdminConfig from '@/pages/admin/AdminConfig'
 import AdminCategories from '@/pages/admin/AdminCategories'
+import AdminServiceCatalog from '@/pages/admin/AdminServiceCatalog'
+import AdminServiceRankings from '@/pages/admin/AdminServiceRankings'
 import AdminPayouts from '@/pages/admin/AdminPayouts'
 import AdminUsers from '@/pages/admin/AdminUsers'
 
@@ -245,6 +247,8 @@ export default function App() {
           <Route path="support" element={<AdminSupport />} />
           <Route path="config" element={<AdminConfig />} />
           <Route path="categories" element={<AdminCategories />} />
+          <Route path="services" element={<AdminServiceCatalog />} />
+          <Route path="service-rankings" element={<AdminServiceRankings />} />
           <Route path="payouts" element={<AdminPayouts />} />
           <Route path="users" element={<AdminUsers />} />
         </Route>

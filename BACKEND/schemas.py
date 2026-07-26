@@ -239,6 +239,10 @@ class ServiceCreate(BaseModel):
     slot_duration_min: Optional[int] = Field(default=None, ge=15, le=480)
     max_slots_per_day: Optional[int] = Field(default=None, ge=1, le=50)
     allow_multi_day_booking: bool = False
+    # Links this listing to an admin-curated catalog entry (migration 013).
+    # Set this to make the service selectable in Instant-mode browsing —
+    # omit it for a plain free-text Discover-only listing.
+    catalog_service_id: Optional[UUID] = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -256,6 +260,7 @@ class ServiceUpdate(BaseModel):
     slot_duration_min: Optional[int] = Field(default=None, ge=15, le=480)
     max_slots_per_day: Optional[int] = Field(default=None, ge=1, le=50)
     allow_multi_day_booking: Optional[bool] = None
+    catalog_service_id: Optional[UUID] = None
 
     model_config = ConfigDict(populate_by_name=True)
 
@@ -296,18 +301,57 @@ class ServiceResponse(KaargarBase):
     slot_duration_min: Optional[int] = None
     max_slots_per_day: Optional[int] = None
     allow_multi_day_booking: bool = False
+    catalog_service_id: Optional[UUID] = None
     tags: list[TagResponse] = []
+
+
+# ── SERVICE CATALOG (admin-curated, migration 013) ─────────────
+class ServiceCatalogResponse(KaargarBase):
+    id: UUID
+    category_id: UUID
+    name: str
+    description: Optional[str] = None
+    icon_url: Optional[str] = None
+    # Admin-set price floor/reference for this specific service (migration
+    # 014) — always the raw DB value, shown to workers picking this service
+    # so they know the minimum they can charge.
+    base_price: Optional[Decimal] = None
+    status: str
+    submitted_by_worker_id: Optional[UUID] = None
+    rejection_reason: Optional[str] = None
+    sort_order: int
+    is_active: bool
+    total_bookings: int
     created_at: datetime
+    # Populated only where useful (browse endpoints) — a representative
+    # photo pulled from offering workers' ServiceMedia, and the count of
+    # workers currently offering it. Not part of the DB row itself.
+    photo_url: Optional[str] = None
+    worker_count: Optional[int] = None
+    # Customer-facing "From ₹X" — the cheapest current worker's price when
+    # workers exist, falling back to base_price when nobody offers it yet
+    # (see routers/categories.py). Distinct from base_price: this is a live
+    # market number, base_price is the admin-set floor.
+    min_price: Optional[Decimal] = None
 
-    @computed_field
-    @property
-    def hourly_rate(self) -> Decimal:
-        return self.price
 
-    @computed_field
-    @property
-    def base_price(self) -> Decimal:
-        return self.price
+class ServiceCatalogCreate(BaseModel):
+    category_id: UUID
+    name: str = Field(..., max_length=150)
+    description: Optional[str] = None
+    icon_url: Optional[str] = None
+    base_price: Optional[Decimal] = None
+    sort_order: int = 0
+
+
+class ServiceCatalogUpdate(BaseModel):
+    name: Optional[str] = None
+    base_price: Optional[Decimal] = None
+    description: Optional[str] = None
+    icon_url: Optional[str] = None
+    sort_order: Optional[int] = None
+    is_active: Optional[bool] = None
+    category_id: Optional[UUID] = None
 
 
 # ── PACKAGES ──────────────────────────────────────────────────
@@ -456,6 +500,9 @@ class JobCreate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     service_id: Optional[UUID] = None
+    # Instant-mode: the curated catalog service the customer picked (profession
+    # -> service step). Drives dispatch filtering in services/matching.py.
+    catalog_service_id: Optional[UUID] = None
     package_id: Optional[UUID] = None
     scheduled_at: Optional[datetime] = None
     quoted_price: Optional[Decimal] = None
@@ -468,6 +515,7 @@ class JobResponse(KaargarBase):
     user_id: UUID
     worker_id: Optional[UUID] = None
     service_id: Optional[UUID] = None
+    catalog_service_id: Optional[UUID] = None
     category_id: UUID
     job_type: str
     source: str = "instant"
@@ -519,6 +567,15 @@ class JobResponse(KaargarBase):
     # Populated only on parent (top-level) jobs with total_days > 1 by
     # GET /jobs/me — e.g. "2/5 days done". Not stored on the model.
     bundle_status: Optional[str] = None
+    # Geofencing radius (meters) the worker must be within to mark this job
+    # arrived — sourced from platform_config (arrival_geofence_meters) with
+    # a hardcoded fallback, same pattern as other tunables. Populated only
+    # by GET /jobs/{id} so the worker's ActiveJobPage can proactively
+    # disable the Arrived button before even attempting the call, instead
+    # of only finding out via a 400 after tapping it. The server-side check
+    # in POST /jobs/{id}/arrived is authoritative regardless — this is UX,
+    # not the actual enforcement.
+    arrival_geofence_m: Optional[int] = None
 
     # Coerce datetime.time → 'HH:MM' string for window fields
     @field_validator('window_start', 'window_end', mode='before')

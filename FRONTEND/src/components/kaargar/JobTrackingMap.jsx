@@ -18,6 +18,7 @@ import Map, { Marker } from 'react-map-gl/mapbox'
 import 'mapbox-gl/dist/mapbox-gl.css'
 import { MapPin, Navigation2, Maximize2, Minimize2 } from 'lucide-react'
 import { motion } from 'framer-motion'
+import { useQuery } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 
@@ -25,20 +26,14 @@ const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_TOKEN
 const VALID_TOKEN  = MAPBOX_TOKEN && MAPBOX_TOKEN.startsWith('pk.')
 const MAP_STYLE    = 'mapbox://styles/mapbox/streets-v12'
 
-// Straight-line-distance ETA estimate — NOT a real routing/directions call.
-// This is the cheap v1 approach: haversine distance between the worker's
-// last GPS ping and the job's destination, divided by an assumed average
-// city travel speed (accounts for stop-start traffic + not being able to
-// fly in a straight line, roughly). It recomputes every time a new worker
-// location ping arrives (via the Realtime subscription below) rather than
-// on a fixed timer, so it's only ever as stale as the last real GPS fix —
-// no artificial countdown is faked between pings, since a worker who's
-// actually stopped (traffic, a prior job running long) should show a
-// steady number, not a countdown ticking toward zero on its own. If this
-// approximation proves too rough in practice, the natural upgrade is a
-// real routing call (e.g. Mapbox Directions) computed server-side and
-// throttled, rather than switching this to per-pixel client-side guessing.
+// Straight-line-distance/20kmh estimate — kept only as an INSTANT fallback
+// while the real ETA (GET /jobs/{id}/eta, backed by Mapbox Directions,
+// server-side) hasn't resolved yet, or if that call fails. The real ETA is
+// polled on its own timer below rather than recomputed on every GPS
+// Realtime tick — calling Directions on every ~3.5s ping would burn
+// through Mapbox's free tier in minutes for a single active job.
 const AVG_CITY_SPEED_KMH = 20
+const ETA_POLL_MS = 25_000
 
 function haversineKm(lat1, lon1, lat2, lon2) {
   const R = 6371
@@ -51,8 +46,8 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.asin(Math.sqrt(a))
 }
 
-function etaLabel(distanceKm) {
-  const minutes = Math.max(1, Math.round((distanceKm / AVG_CITY_SPEED_KMH) * 60))
+function minutesToLabel(rawMinutes) {
+  const minutes = Math.max(1, Math.round(rawMinutes))
   if (minutes >= 60) {
     const h = Math.floor(minutes / 60)
     const m = minutes % 60
@@ -61,8 +56,17 @@ function etaLabel(distanceKm) {
   return `~${minutes} min away`
 }
 
+function etaLabel(distanceKm) {
+  return minutesToLabel((distanceKm / AVG_CITY_SPEED_KMH) * 60)
+}
+
 // Job statuses where a worker location realistically exists and is worth polling/subscribing for.
-const TRACKABLE_STATUSES = new Set(['worker_assigned', 'assigned', 'en_route', 'arrived', 'started'])
+// Kept in sync with backend's GET /jobs/{id}/worker-location trackable_statuses
+// (routers/jobs.py) — 'worker_assigned' isn't a real job.status value the
+// backend ever sets (only 'assigned' is), and 'confirmed' (Discovery/
+// scheduled bookings with a pre-pinned worker) was missing here, which
+// would desync from what the backend actually allows.
+const TRACKABLE_STATUSES = new Set(['assigned', 'confirmed', 'en_route', 'arrived', 'started'])
 
 export function JobTrackingMap({ job, height = '220px' }) {
   const mapRef = useRef(null)
@@ -74,11 +78,26 @@ export function JobTrackingMap({ job, height = '220px' }) {
   const isTrackable = TRACKABLE_STATUSES.has(job?.status) && !!job?.worker_id
   const hasDest = destLat != null && destLon != null
 
-  const eta = useMemo(() => {
+  // Instant fallback shown the moment a worker position exists, before the
+  // real ETA below has resolved (or if it errors).
+  const fallbackEta = useMemo(() => {
     if (!workerLoc || !hasDest) return null
     const km = haversineKm(workerLoc.lat, workerLoc.lon, destLat, destLon)
     return etaLabel(km)
   }, [workerLoc?.lat, workerLoc?.lon, hasDest, destLat, destLon])
+
+  // Real driving ETA, polled on a slow timer (not per Realtime GPS tick).
+  const { data: etaData } = useQuery({
+    queryKey: ['job-eta', job?.id],
+    queryFn: () => api.get(`/jobs/${job.id}/eta`).then(r => r.data),
+    enabled: isTrackable && !!job?.id && !!workerLoc,
+    refetchInterval: ETA_POLL_MS,
+    retry: false,
+  })
+
+  const eta = etaData?.duration_min != null
+    ? minutesToLabel(etaData.duration_min)
+    : fallbackEta
 
   // Initial fetch of the worker's last known position.
   useEffect(() => {

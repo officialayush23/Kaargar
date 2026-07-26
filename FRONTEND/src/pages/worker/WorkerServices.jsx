@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { Link } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Trash2, Edit3, Loader2, Check, MapPin, Store, Tag, X, ChevronRight, CalendarClock, CalendarRange, Image as ImageIcon } from 'lucide-react'
+import { Plus, Trash2, Edit3, Loader2, Check, MapPin, Store, Tag, X, ChevronRight, CalendarClock, CalendarRange, Image as ImageIcon, Sparkles } from 'lucide-react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { api } from '@/lib/api'
 import { formatCurrency } from '@/lib/utils'
@@ -610,6 +610,104 @@ function ServiceCard({ svc, onEdit, onDelete, deleting, disabled }) {
   )
 }
 
+// ── New Instant services available to opt into ──────────────────────────────
+// Ongoing counterpart to onboarding's ServicesStep: a worker who joined
+// before a catalog service existed (or under a category added later) would
+// otherwise never see it. Adding one here creates a plain linked Service row
+// (POST /workers/me/services with catalog_service_id) — no approval needed,
+// same as any other service add.
+function AvailableCatalogSection() {
+  const queryClient = useQueryClient()
+  const [addingId, setAddingId] = useState(null)
+  const [price, setPrice] = useState('')
+
+  const { data: available = [], isLoading } = useQuery({
+    queryKey: ['worker-available-catalog-services'],
+    queryFn: () => api.get('/workers/me/available-catalog-services').then(r => r.data).catch(() => []),
+  })
+
+  const addMut = useMutation({
+    mutationFn: (entry) => api.post('/workers/me/services', {
+      title: entry.name,
+      category_id: entry.category_id,
+      catalog_service_id: entry.id,
+      hourly_rate: Number(price),
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries(['worker-available-catalog-services'])
+      queryClient.invalidateQueries(['my-services'])
+      setAddingId(null); setPrice('')
+      toast.success('Instant service added')
+    },
+    onError: (err) => toast.error(err.response?.data?.detail || 'Failed to add'),
+  })
+
+  if (isLoading || available.length === 0) return null
+
+  return (
+    <div className="rounded-2xl p-4 space-y-3" style={{ background: 'var(--accent-deep)', border: '1px solid var(--accent-mid)' }}>
+      <div className="flex items-center gap-2">
+        <Sparkles size={14} style={{ color: 'var(--accent)' }} />
+        <p className="text-sm font-semibold" style={{ color: 'var(--accent)' }}>
+          New Instant services available ({available.length})
+        </p>
+      </div>
+      <div className="space-y-2">
+        {available.map(entry => (
+          <div key={entry.id} className="rounded-xl p-3" style={{ background: 'var(--g-bg-mid)', border: '1px solid var(--g-border)' }}>
+            <div className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate" style={{ color: 'var(--text-primary)' }}>{entry.name}</p>
+                {(entry.min_price != null || entry.base_price != null) && (
+                  <p className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+                    Minimum ₹{entry.min_price ?? entry.base_price}
+                  </p>
+                )}
+              </div>
+              {addingId !== entry.id && (
+                <button
+                  onClick={() => { setAddingId(entry.id); setPrice(entry.min_price ?? entry.base_price ?? '') }}
+                  className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium btn-brand"
+                >
+                  Add
+                </button>
+              )}
+            </div>
+            {addingId === entry.id && (
+              <div className="mt-2 flex items-center gap-2">
+                <span className="text-xs" style={{ color: 'var(--text-muted)' }}>₹</span>
+                <input
+                  type="number"
+                  autoFocus
+                  value={price}
+                  onChange={e => setPrice(e.target.value)}
+                  placeholder="Your price"
+                  className="flex-1 rounded-lg px-2.5 py-1.5 text-sm"
+                  style={{ background: 'var(--g-bg)', border: '1px solid var(--g-border)', color: 'var(--text-primary)' }}
+                />
+                <button
+                  onClick={() => addMut.mutate(entry)}
+                  disabled={addMut.isPending || !price}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium btn-brand disabled:opacity-50"
+                >
+                  {addMut.isPending ? <Loader2 size={12} className="animate-spin" /> : 'Confirm'}
+                </button>
+                <button
+                  onClick={() => { setAddingId(null); setPrice('') }}
+                  className="px-2 py-1.5 rounded-lg text-xs"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  <X size={13} />
+                </button>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 // ── Save tags helper ──────────────────────────────────────────────────────────
 async function saveTags(serviceId, tags) {
   const tag_ids       = (tags || []).filter(t => !t.isNew).map(t => t.id)
@@ -703,6 +801,8 @@ export default function WorkerServices() {
           <Plus size={15} /> Add
         </button>
       </div>
+
+      <AvailableCatalogSection />
 
       {/* Bundle several services into a package — surfaced here since it's a
           natural next step after adding services, not just buried in the menu. */}
