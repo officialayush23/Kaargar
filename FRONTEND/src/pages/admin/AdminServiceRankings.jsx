@@ -50,7 +50,7 @@ function SystemRankingTable({ services, isLoading }) {
       <table className="w-full text-sm">
         <thead>
           <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-            {['#', 'Service', 'Profession', 'Workers Offering', 'Total Bookings', 'Status'].map(h => (
+            {['#', '', 'Service', 'Profession', 'Workers Offering', 'Total Bookings', 'Status'].map(h => (
               <th key={h} className="px-4 py-3 text-left font-medium"
                 style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {h}
@@ -60,12 +60,19 @@ function SystemRankingTable({ services, isLoading }) {
         </thead>
         <tbody>
           {isLoading ? (
-            <tr><td colSpan={6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Loading…</td></tr>
+            <tr><td colSpan={7} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Loading…</td></tr>
           ) : services.length === 0 ? (
-            <tr><td colSpan={6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No Instant services yet</td></tr>
+            <tr><td colSpan={7} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No Instant services yet</td></tr>
           ) : services.map((svc, idx) => (
             <tr key={svc.id} style={{ borderBottom: idx < services.length - 1 ? '1px solid var(--border)' : 'none' }}>
               <td className="px-4 py-3"><RankBadge rank={idx + 1} /></td>
+              <td className="px-4 py-3">
+                {svc.icon_url ? (
+                  <img src={svc.icon_url} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 8 }} />
+                ) : (
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-elevated)', border: '1px dashed var(--border)' }} />
+                )}
+              </td>
               <td className="px-4 py-3 font-medium" style={{ color: 'var(--text-primary)' }}>{svc.name}</td>
               <td className="px-4 py-3" style={{ color: 'var(--text-secondary)' }}>{svc.category_name || '—'}</td>
               <td className="px-4 py-3 font-mono" style={{ color: svc.worker_count > 0 ? 'var(--text-secondary)' : '#f87171' }}>
@@ -95,7 +102,7 @@ function WorkerRankingTable({ services, isLoading, onPromote }) {
       <table className="w-full text-sm">
         <thead>
           <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-            {['#', 'Service (as listed)', 'Worker', 'Profession', 'Price', 'Bookings', 'Rating', ''].map(h => (
+            {['#', '', 'Service (as listed)', 'Worker', 'Profession', 'Price', 'Bookings', 'Rating', ''].map(h => (
               <th key={h} className="px-4 py-3 text-left font-medium"
                 style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                 {h}
@@ -105,12 +112,19 @@ function WorkerRankingTable({ services, isLoading, onPromote }) {
         </thead>
         <tbody>
           {isLoading ? (
-            <tr><td colSpan={8} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Loading…</td></tr>
+            <tr><td colSpan={9} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Loading…</td></tr>
           ) : services.length === 0 ? (
-            <tr><td colSpan={8} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No worker-added services with bookings yet</td></tr>
+            <tr><td colSpan={9} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No worker-added services with bookings yet</td></tr>
           ) : services.map((svc, idx) => (
             <tr key={svc.id} style={{ borderBottom: idx < services.length - 1 ? '1px solid var(--border)' : 'none' }}>
               <td className="px-4 py-3"><RankBadge rank={idx + 1} /></td>
+              <td className="px-4 py-3">
+                {svc.photo_url ? (
+                  <img src={svc.photo_url} alt="" style={{ width: 32, height: 32, objectFit: 'cover', borderRadius: 8 }} />
+                ) : (
+                  <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--bg-elevated)', border: '1px dashed var(--border)' }} />
+                )}
+              </td>
               <td className="px-4 py-3">
                 <div className="font-medium" style={{ color: 'var(--text-primary)' }}>{svc.title}</div>
                 {svc.description && (

@@ -166,6 +166,17 @@ class WorkerProfileResponse(KaargarBase):
     max_rate: Optional[Decimal] = None
     allow_multi_day_booking: bool = False
     created_at: datetime
+    # Structured, multi-valued list of named Pune areas this worker serves
+    # (migration 017) — Instant dispatch is filtered strictly to these.
+    # Distinct from pune_area above (a single free-text display field).
+    area_ids: list[UUID] = []
+
+
+class WorkerAreaSet(BaseModel):
+    """Full-replacement set of named Pune areas a worker serves — used for
+    Instant-mode dispatch filtering (services/matching.py). An empty list is
+    valid and means the worker gets zero Instant jobs until they pick some."""
+    area_ids: list[UUID] = []
 
 
 class WorkerPublicResponse(KaargarBase):
@@ -1236,6 +1247,9 @@ class SlotGenerateRequest(KaargarBase):
 class UserAddressCreate(KaargarBase):
     label: str = Field(..., min_length=1, max_length=50)
     address_line: str = Field(..., min_length=3)
+    # Flat/plot/house no., floor, landmark — free text, kept separate from
+    # address_line since it's never re-derived from a geocoder.
+    details: Optional[str] = None
     area: Optional[str] = None
     city: str = "Pune"
     lat: Optional[float] = None
@@ -1247,6 +1261,7 @@ class UserAddressCreate(KaargarBase):
 class UserAddressUpdate(KaargarBase):
     label: Optional[str] = Field(None, min_length=1, max_length=50)
     address_line: Optional[str] = None
+    details: Optional[str] = None
     area: Optional[str] = None
     city: Optional[str] = None
     lat: Optional[float] = None
@@ -1260,6 +1275,7 @@ class UserAddressResponse(KaargarBase):
     user_id: UUID
     label: str
     address_line: str
+    details: Optional[str] = None
     area: Optional[str] = None
     city: str = "Pune"
     lat: Optional[float] = None

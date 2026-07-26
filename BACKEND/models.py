@@ -821,6 +821,24 @@ class PuneArea(Base):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
 
+# ── 31b. WORKER SERVICE AREAS (migration 017) ──────────────────
+# A worker's chosen set of named Pune areas — Instant dispatch is filtered
+# strictly to this list (see services/matching.py::_resolve_area_id). A
+# worker with no rows here gets no Instant jobs until they pick at least one.
+# Distinct from WorkerProfile.pune_area (a single free-text display field);
+# this is the structured, multi-valued list actually used for matching.
+class WorkerArea(Base):
+    __tablename__ = "worker_areas"
+
+    worker_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("worker_profiles.id", ondelete="CASCADE"), primary_key=True
+    )
+    area_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("pune_areas.id", ondelete="CASCADE"), primary_key=True
+    )
+    created_at: Mapped[datetime] = now()
+
+
 # ── 32. REFRESH TOKENS ─────────────────────────────────────────
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
@@ -1027,6 +1045,10 @@ class UserAddress(Base):
     )
     label: Mapped[str] = mapped_column(String(50), nullable=False)       # "Home", "Work"
     address_line: Mapped[str] = mapped_column(Text, nullable=False)
+    # Free-text unit-level detail (flat/plot/house no., floor, landmark) the
+    # geocoder can't know — kept separate from address_line so re-geocoding
+    # or re-picking the pin never clobbers it (migration 016).
+    details: Mapped[str | None] = mapped_column(Text)
     area: Mapped[str | None] = mapped_column(String(100))
     city: Mapped[str] = mapped_column(String(100), default="Pune")
     lat: Mapped[float | None] = mapped_column(Numeric(9, 6))

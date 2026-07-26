@@ -294,7 +294,7 @@ export default function AdminServiceCatalog() {
         <table className="w-full text-sm">
           <thead>
             <tr style={{ background: 'var(--bg-elevated)', borderBottom: '1px solid var(--border)' }}>
-              {['Service', 'Profession', 'Base Price', 'Booked', 'Status', 'Actions'].map(h => (
+              {['', 'Service', 'Profession', 'Base Price', 'Booked', 'Status', 'Actions'].map(h => (
                 <th key={h} className="px-4 py-3 text-left font-medium"
                   style={{ color: 'var(--text-muted)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
                   {h}
@@ -304,14 +304,21 @@ export default function AdminServiceCatalog() {
           </thead>
           <tbody>
             {isLoading ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Loading…</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>Loading…</td></tr>
             ) : filtered.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No services found</td></tr>
+              <tr><td colSpan={7} className="px-4 py-8 text-center" style={{ color: 'var(--text-muted)' }}>No services found</td></tr>
             ) : filtered.map((svc, idx) => (
               <tr key={svc.id} style={{
                 borderBottom: idx < filtered.length - 1 ? '1px solid var(--border)' : 'none',
                 opacity: svc.is_active ? 1 : 0.5,
               }}>
+                <td className="px-4 py-3">
+                  {svc.icon_url ? (
+                    <img src={svc.icon_url} alt="" style={{ width: 36, height: 36, objectFit: 'cover', borderRadius: 8 }} />
+                  ) : (
+                    <div style={{ width: 36, height: 36, borderRadius: 8, background: 'var(--bg-elevated)', border: '1px dashed var(--border)' }} />
+                  )}
+                </td>
                 <td className="px-4 py-3">
                   <div className="font-medium" style={{ color: 'var(--text-primary)' }}>{svc.name}</div>
                   {svc.description && (

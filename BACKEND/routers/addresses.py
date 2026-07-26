@@ -51,6 +51,7 @@ async def create_address(
         user_id=user.id,
         label=body.label,
         address_line=body.address_line,
+        details=body.details,
         area=body.area,
         city=body.city,
         lat=body.lat,

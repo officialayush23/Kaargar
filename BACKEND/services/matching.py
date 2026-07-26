@@ -339,6 +339,29 @@ async def _log_no_match_diagnostics_catalog(db: AsyncSession, job: Job, radius_k
         logger.warning("Dispatch diagnostics query itself failed for job %s: %s", job.id, e)
 
 
+async def _resolve_area_id(db: AsyncSession, lat: float, lon: float):
+    """
+    Nearest-centroid area resolution: pune_areas only stores a name + a
+    single center point (no polygon boundaries), so "which named area is
+    this job in" is approximated as whichever area's center is closest to
+    the job's coordinates. Good enough for the strict worker_areas filter
+    below — areas are neighbourhood-sized, so nearest-centroid rarely
+    disagrees with what a human would call the area.
+    Returns None if there are no active areas at all (filter becomes a
+    no-op in that case rather than blocking every job).
+    """
+    row = (await db.execute(text("""
+        SELECT id FROM pune_areas
+        WHERE is_active = true
+        ORDER BY ST_Distance(
+            ST_SetSRID(ST_MakePoint(lon, lat), 4326)::geography,
+            ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography
+        ) ASC
+        LIMIT 1
+    """), {"lat": lat, "lon": lon})).first()
+    return row[0] if row else None
+
+
 async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
     # Instant mode is now driven by the curated service catalog, not raw
     # category (see SYSTEM_OVERVIEW.md §11) — a customer picks a specific
@@ -349,6 +372,14 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
     # before this feature, or any path that only ever collected a category),
     # which fall back to the old category-only filter so nothing breaks.
     catalog_service_id = getattr(job, "catalog_service_id", None)
+
+    # Strict worker-area filter (migration 017): a worker only receives
+    # Instant jobs whose location resolves to one of their chosen Pune
+    # areas. area_id is None only if there are literally no active areas
+    # seeded (shouldn't happen in practice) — the SQL below treats that as
+    # a no-op via the `:area_id IS NULL OR ...` guard rather than blocking
+    # every job when the lookup table is empty.
+    area_id = await _resolve_area_id(db, float(job.location_lat), float(job.location_lon))
 
     if catalog_service_id:
         # ── Catalog-service-aware matching — adds a price factor ("cheapest,
@@ -401,6 +432,14 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
                         ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
                         :radius_m
                     )
+                    -- Strict area filter: worker must have explicitly claimed
+                    -- the named area this job resolves to (migration 017).
+                    AND (
+                        :area_id IS NULL OR EXISTS (
+                            SELECT 1 FROM worker_areas wa
+                            WHERE wa.worker_id = wp.id AND wa.area_id = :area_id
+                        )
+                    )
             ),
             bounds AS (
                 SELECT MIN(price) AS min_price, MAX(price) AS max_price FROM candidates
@@ -432,6 +471,7 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
             "radius_m": radius_km * 1000,
             "catalog_service_id": catalog_service_id,
             "category_id": job.category_id,
+            "area_id": area_id,
         }
     else:
         sql = text("""
@@ -489,6 +529,14 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
                     ST_SetSRID(ST_MakePoint(:lon, :lat), 4326)::geography,
                     :radius_m
                 )
+                -- Strict area filter: worker must have explicitly claimed
+                -- the named area this job resolves to (migration 017).
+                AND (
+                    :area_id IS NULL OR EXISTS (
+                        SELECT 1 FROM worker_areas wa
+                        WHERE wa.worker_id = wp.id AND wa.area_id = :area_id
+                    )
+                )
             ORDER BY score DESC
             LIMIT 10
         """)
@@ -498,6 +546,7 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
             "radius_km": radius_km,
             "radius_m": radius_km * 1000,
             "category_id": job.category_id,
+            "area_id": area_id,
         }
 
     result = await db.execute(sql, params)

@@ -67,6 +67,17 @@ async def list_category_services(
     (never a generic icon when a real photo exists), a worker_count so the
     UI can show "no one nearby offers this yet" states, and a min_price
     across current offering workers.
+
+    Deliberately does NOT hide zero-worker entries: during the worker-
+    onboarding growth phase, showing the full intended catalog (even before
+    any worker has opted into a given service) is the point — it signals to
+    customers "this app does this" and gives them a reason to check back,
+    rather than making Instant mode look sparse/empty for services that are
+    genuinely coming soon. The "no one nearby offers this yet" state on the
+    frontend is what communicates the gap honestly instead of silently
+    hiding it. (Reverted an earlier change that filtered these out — kept
+    here as a note since the "hide it" version is an easy regression to
+    reintroduce by accident.)
     """
     cat = await db.scalar(select(Category).where(Category.id == category_id))
     if not cat:

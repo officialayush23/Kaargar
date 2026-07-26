@@ -15,12 +15,13 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { MapPin, Plus, Star, Trash2, Pencil, Check, X, Home, Briefcase } from 'lucide-react'
+import { MapPin, Plus, Star, Trash2, Pencil, Check, X, Home, Briefcase, Navigation, Loader2 } from 'lucide-react'
 import {
   useAddresses, useCreateAddress, useUpdateAddress,
   useDeleteAddress, useSetDefaultAddress,
 } from '@/hooks/useAddresses'
 import { useAddressAutocomplete } from '@/hooks/useGeocoding'
+import { useGeoLocation } from '@/hooks/useGeoLocation'
 
 // ── Icon helper ──────────────────────────────────────────────
 function LabelIcon({ label }) {
@@ -34,10 +35,12 @@ function LabelIcon({ label }) {
 function AddressForm({ initial, onSave, onCancel }) {
   const [label, setLabel] = useState(initial?.label || '')
   const [addressLine, setAddressLine] = useState(initial?.address_line || '')
+  const [details, setDetails] = useState(initial?.details || '')
   const [isDefault, setIsDefault] = useState(initial?.is_default || false)
   const [query, setQuery] = useState(initial?.address_line || '')
   const [showSuggestions, setShowSuggestions] = useState(false)
   const { suggestions, search: fetchSuggestions, resolvePlace, loading: geoLoading } = useAddressAutocomplete()
+  const { getLocation, loading: locating, error: locError } = useGeoLocation()
 
   const [coords, setCoords] = useState(
     initial?.lat ? { lat: initial.lat, lon: initial.lon, place_id: initial.place_id } : null
@@ -53,12 +56,25 @@ function AddressForm({ initial, onSave, onCancel }) {
     if (place) setCoords({ lat: place.lat, lon: place.lon, place_id: s.place_id })
   }
 
+  // "Use current location" — GPS fix + reverse geocode into the address
+  // field, so the user only has to type the unit-level details (plot/flat
+  // no., floor, landmark) that no geocoder can know.
+  async function handleUseCurrentLocation() {
+    const loc = await getLocation()
+    if (!loc) return
+    setQuery(loc.address)
+    setAddressLine(loc.address)
+    setCoords({ lat: loc.lat, lon: loc.lon, place_id: null })
+    setShowSuggestions(false)
+  }
+
   function handleSubmit(e) {
     e.preventDefault()
     if (!label.trim() || !addressLine.trim()) return
     onSave({
       label: label.trim(),
       address_line: addressLine.trim(),
+      details: details.trim() || null,
       lat: coords?.lat ?? null,
       lon: coords?.lon ?? null,
       place_id: coords?.place_id ?? null,
@@ -98,6 +114,26 @@ function AddressForm({ initial, onSave, onCancel }) {
           />
         </div>
       </div>
+
+      {/* Use current location */}
+      <button
+        type="button"
+        onClick={handleUseCurrentLocation}
+        disabled={locating}
+        style={{
+          display: 'flex', alignItems: 'center', gap: 8, padding: '9px 14px',
+          borderRadius: 12, border: '1px dashed var(--accent-border)',
+          background: 'var(--accent-bg-sm)', color: 'var(--brand)',
+          fontSize: 13, fontWeight: 600, cursor: locating ? 'default' : 'pointer',
+          width: '100%', justifyContent: 'center',
+        }}
+      >
+        {locating ? <Loader2 size={14} className="animate-spin" /> : <Navigation size={14} />}
+        {locating ? 'Getting your location…' : 'Use my current location'}
+      </button>
+      {locError && (
+        <p style={{ fontSize: 12, color: '#f87171', margin: '-6px 0 0' }}>{locError}</p>
+      )}
 
       {/* Address autocomplete */}
       <div style={{ position: 'relative' }}>
@@ -143,6 +179,23 @@ function AddressForm({ initial, onSave, onCancel }) {
             </motion.div>
           )}
         </AnimatePresence>
+      </div>
+
+      {/* Unit-level detail — the geocoder/GPS pin can't know this */}
+      <div>
+        <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Plot / flat / house no., landmark
+        </p>
+        <input
+          value={details}
+          onChange={e => setDetails(e.target.value)}
+          placeholder="e.g. Flat 302, Sunrise Apartments, near Axis Bank"
+          style={{
+            width: '100%', padding: '10px 14px', borderRadius: 12, fontSize: 14,
+            border: '1px solid var(--card-border)', background: 'var(--card-bg)',
+            color: 'var(--text-primary)', outline: 'none', boxSizing: 'border-box',
+          }}
+        />
       </div>
 
       {/* Set as default toggle */}
@@ -267,6 +320,11 @@ export function AddressBook({ picker = false, onSelect, selected }) {
                 <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0, lineHeight: 1.4 }}>
                   {addr.address_line}
                 </p>
+                {addr.details && (
+                  <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: '2px 0 0', lineHeight: 1.4, opacity: 0.85 }}>
+                    {addr.details}
+                  </p>
+                )}
               </div>
 
               {/* Actions (management mode only) */}

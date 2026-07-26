@@ -2,9 +2,11 @@
 Admin router — dashboard, worker approvals, config, payouts, users.
 """
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.orm import aliased
 from decimal import Decimal
 from datetime import datetime, timezone
@@ -21,6 +23,7 @@ from services.storage import get_public_url, delete_worker_verification_files, u
 from services.config import get_config
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/dashboard/live", response_model=AdminDashboard)
@@ -1099,6 +1102,23 @@ async def admin_top_worker_services(
         .limit(limit)
     )).all()
 
+    # One representative photo per worker service, same "prefer featured,
+    # then any image" rule used on the customer-facing catalog endpoint —
+    # so admin can see what customers actually see instead of a blank cell.
+    service_ids = [svc.id for svc, _, _, _ in rows]
+    photo_map = {}
+    if service_ids:
+        photo_rows = (await db.execute(text("""
+            SELECT DISTINCT ON (sm.service_id)
+                sm.service_id,
+                COALESCE(sm.thumbnail_url, sm.cloudinary_url) AS photo_url
+            FROM service_media sm
+            WHERE sm.service_id = ANY(:service_ids)
+              AND sm.type = 'image'
+            ORDER BY sm.service_id, sm.is_featured DESC, sm.sort_order, sm.created_at DESC
+        """), {"service_ids": service_ids})).all()
+        photo_map = {row.service_id: row.photo_url for row in photo_rows}
+
     return [
         {
             "id": str(svc.id),
@@ -1111,6 +1131,7 @@ async def admin_top_worker_services(
             "category_name": cat.name,
             "worker_id": str(wp.id),
             "worker_name": u.full_name,
+            "photo_url": photo_map.get(svc.id),
         }
         for svc, wp, u, cat in rows
     ]
@@ -1174,8 +1195,29 @@ async def admin_upload_service_catalog_icon(
     url = upload_file(BUCKET_INSTANT_SERVICES, path, data, file.content_type)
 
     entry.icon_url = url
-    await db.commit()
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        logger.exception(
+            "Failed to persist icon_url for service_catalog %s after storage upload succeeded (url=%s)",
+            entry_id, url,
+        )
+        raise HTTPException(
+            500,
+            "Icon uploaded to storage but the database update failed — check server logs. "
+            "The file is not orphaned; retrying the upload will overwrite the same storage path.",
+        )
     await db.refresh(entry)
+    if entry.icon_url != url:
+        # Should be unreachable given expire_on_commit=False + the commit
+        # above succeeded, but verify explicitly rather than silently
+        # returning a response that doesn't match what's actually in the DB.
+        logger.error(
+            "service_catalog %s: commit succeeded but icon_url reads back as %r, expected %r",
+            entry_id, entry.icon_url, url,
+        )
+        raise HTTPException(500, "Upload succeeded but the saved icon_url doesn't match — please retry.")
     return entry
 
 

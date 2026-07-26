@@ -495,6 +495,14 @@ export default function WorkerOnboardPage() {
   // Step 5: Area
   const [selectedArea, setSelectedArea] = useState('')
   const [radius, setRadius] = useState(5)
+  // Instant-mode service areas — separate from selectedArea above (that's a
+  // single free-text display field); this is the structured, multi-select
+  // list actually used to filter Instant dispatch (see services/matching.py).
+  const [selectedInstantAreas, setSelectedInstantAreas] = useState([])
+  const { data: instantAreaOptions = [] } = useQuery({
+    queryKey: ['pune-areas'],
+    queryFn: () => api.get('/categories/areas').then(r => r.data),
+  })
 
   // Step 6: Schedule
   const [schedule, setSchedule] = useState(DEFAULT_SCHEDULE)
@@ -620,6 +628,12 @@ export default function WorkerOnboardPage() {
         category_ids: selectedCats.map(c => c.id),
         allow_multi_day_booking: allowMultiDay,
       })
+
+      // Best-effort — a failure here shouldn't block publishing; worker can
+      // always set/change their Instant coverage areas later from Services.
+      try {
+        await api.put('/workers/me/areas', { area_ids: selectedInstantAreas })
+      } catch (_) {}
 
       // ── Register the services the worker picked from the admin catalog,
       // plus any custom "add extra" listings — must happen AFTER the profile
@@ -1352,6 +1366,44 @@ export default function WorkerOnboardPage() {
                     {errors.area && (
                       <p className="text-xs mt-1.5" style={{ color: '#f87171' }}>{errors.area}</p>
                     )}
+                  </div>
+                </GlassCard>
+              </div>
+
+              <div>
+                <GlassCard className="p-5 space-y-3">
+                  <div>
+                    <h3 className="text-sm font-semibold font-syne" style={{ color: 'var(--text-primary)' }}>
+                      Instant-mode coverage areas
+                    </h3>
+                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                      Pick every area you're willing to take Instant jobs in — you'll only be offered
+                      Instant jobs booked inside one of these. Discover bookings aren't affected; pick
+                      as many as you like, or none if you only want Discover jobs for now.
+                    </p>
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                    {instantAreaOptions.map(a => {
+                      const active = selectedInstantAreas.includes(a.id)
+                      return (
+                        <button
+                          key={a.id}
+                          type="button"
+                          onClick={() => setSelectedInstantAreas(prev =>
+                            active ? prev.filter(id => id !== a.id) : [...prev, a.id]
+                          )}
+                          style={{
+                            padding: '7px 14px', borderRadius: 20, fontSize: 13, fontWeight: active ? 600 : 500,
+                            cursor: 'pointer',
+                            border: active ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
+                            background: active ? 'var(--accent-deep)' : 'var(--card-bg)',
+                            color: active ? 'var(--amber)' : 'var(--text-secondary)',
+                          }}
+                        >
+                          {a.name}
+                        </button>
+                      )
+                    })}
                   </div>
                 </GlassCard>
               </div>

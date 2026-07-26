@@ -21,6 +21,88 @@ const MODE_COLORS = {
   both:   { bg: 'rgba(52,211,153,0.12)', color: '#34d399', border: 'rgba(52,211,153,0.25)' },
 }
 
+// ── Instant-mode coverage areas ─────────────────────────────────────────────
+// Strict filter: a worker only receives Instant jobs whose location resolves
+// to one of these named Pune areas (see BACKEND/services/matching.py). Does
+// not affect Discover — customers there always pick a specific worker.
+function InstantAreasSection() {
+  const qc = useQueryClient()
+  const [selected, setSelected] = useState(null) // null = not yet loaded from server
+  const [dirty, setDirty] = useState(false)
+
+  const { data: allAreas = [] } = useQuery({
+    queryKey: ['pune-areas'],
+    queryFn: () => api.get('/categories/areas').then(r => r.data),
+  })
+  const { data: myAreas } = useQuery({
+    queryKey: ['worker-my-areas'],
+    queryFn: () => api.get('/workers/me/areas').then(r => r.data),
+  })
+
+  useEffect(() => {
+    if (myAreas && selected === null) setSelected(myAreas.map(a => a.id))
+  }, [myAreas, selected])
+
+  const saveMut = useMutation({
+    mutationFn: (area_ids) => api.put('/workers/me/areas', { area_ids }),
+    onSuccess: () => {
+      qc.invalidateQueries(['worker-my-areas'])
+      setDirty(false)
+      toast.success('Coverage areas updated')
+    },
+    onError: () => toast.error('Failed to save areas'),
+  })
+
+  function toggle(id) {
+    setSelected(prev => {
+      const cur = prev || []
+      return cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id]
+    })
+    setDirty(true)
+  }
+
+  return (
+    <div className="p-4 rounded-2xl space-y-3" style={{ background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+      <div>
+        <p className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>Instant coverage areas</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+          You'll only be offered Instant jobs booked inside a selected area. Discover isn't affected.
+        </p>
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {allAreas.map(a => {
+          const active = (selected || []).includes(a.id)
+          return (
+            <button
+              key={a.id}
+              type="button"
+              onClick={() => toggle(a.id)}
+              style={{
+                padding: '6px 12px', borderRadius: 18, fontSize: 12.5, fontWeight: active ? 600 : 500,
+                cursor: 'pointer',
+                border: active ? '1.5px solid var(--amber)' : '1px solid var(--card-border)',
+                background: active ? 'var(--accent-deep)' : 'var(--g-bg)',
+                color: active ? 'var(--amber)' : 'var(--text-secondary)',
+              }}
+            >
+              {a.name}
+            </button>
+          )
+        })}
+      </div>
+      {dirty && (
+        <button
+          onClick={() => saveMut.mutate(selected || [])}
+          disabled={saveMut.isPending}
+          className="px-3 py-1.5 rounded-lg text-xs font-semibold btn-brand disabled:opacity-50"
+        >
+          {saveMut.isPending ? 'Saving…' : 'Save areas'}
+        </button>
+      )}
+    </div>
+  )
+}
+
 function ServiceModeToggle({ value, onChange }) {
   return (
     <div>
@@ -801,6 +883,8 @@ export default function WorkerServices() {
           <Plus size={15} /> Add
         </button>
       </div>
+
+      <InstantAreasSection />
 
       <AvailableCatalogSection />
 

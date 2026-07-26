@@ -8,7 +8,7 @@ MUST be declared before the dynamic /{worker_id} route, otherwise FastAPI matche
 
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, delete
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from typing import Optional
 from decimal import Decimal
@@ -20,6 +20,7 @@ from models import (
     Package, PackageService as PackageServiceModel, Offer, PackageOrder,
     WorkerAvailability, WorkerTimeOff, WorkerScheduleBlock,
     ServiceSlotConfig, ServiceSlot, Tag, ServiceTag, ServiceCatalog,
+    PuneArea, WorkerArea,
 )
 from schemas import (
     WorkerProfileCreate, WorkerProfileUpdate, WorkerProfileResponse,
@@ -33,7 +34,7 @@ from schemas import (
     WorkerTimeOffCreate, WorkerTimeOffResponse, WorkerScheduleBlockResponse,
     SlotConfigCreate, SlotConfigResponse, SlotResponse, SlotGenerateRequest,
     TagResponse, TagCreate, ServiceTagsSet,
-    ServiceCatalogResponse,
+    ServiceCatalogResponse, WorkerAreaSet,
 )
 from dependencies import get_current_user
 from services.storage import get_public_url, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
@@ -302,7 +303,66 @@ async def get_my_profile_alias(
     wp = result.scalar_one_or_none()
     if not wp:
         raise HTTPException(404, "Worker profile not found")
-    return wp
+    resp = WorkerProfileResponse.model_validate(wp)
+    area_rows = (await db.execute(
+        select(WorkerArea.area_id).where(WorkerArea.worker_id == wp.id)
+    )).scalars().all()
+    resp.area_ids = list(area_rows)
+    return resp
+
+
+@router.get("/me/areas")
+async def get_my_areas(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """The named Pune areas this worker currently serves for Instant dispatch
+    (migration 017) — full PuneArea objects, not just ids, so the frontend
+    can render names without a second lookup."""
+    wp = (await db.execute(
+        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
+    )).scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+
+    areas = (await db.execute(
+        select(PuneArea)
+        .join(WorkerArea, WorkerArea.area_id == PuneArea.id)
+        .where(WorkerArea.worker_id == wp.id)
+        .order_by(PuneArea.name)
+    )).scalars().all()
+    return areas
+
+
+@router.put("/me/areas", response_model=WorkerAreaSet)
+async def set_my_areas(
+    body: WorkerAreaSet,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full-replacement set of areas a worker serves. Strictly enforced at
+    Instant dispatch time (services/matching.py::_resolve_area_id) — a job
+    whose location resolves to an area not in this list is never offered to
+    this worker, regardless of physical distance. An empty list is valid and
+    means zero Instant jobs until the worker picks at least one area."""
+    wp = (await db.execute(
+        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
+    )).scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+
+    if body.area_ids:
+        valid_ids = set((await db.execute(
+            select(PuneArea.id).where(PuneArea.id.in_(body.area_ids), PuneArea.is_active == True)
+        )).scalars().all())
+        if len(valid_ids) != len(set(body.area_ids)):
+            raise HTTPException(400, "One or more area ids are invalid or inactive")
+
+    await db.execute(delete(WorkerArea).where(WorkerArea.worker_id == wp.id))
+    for area_id in set(body.area_ids):
+        db.add(WorkerArea(worker_id=wp.id, area_id=area_id))
+    await db.commit()
+    return WorkerAreaSet(area_ids=list(set(body.area_ids)))
 
 
 @router.get("/me/status")
