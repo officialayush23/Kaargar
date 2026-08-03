@@ -1736,6 +1736,26 @@ async def create_multi_day_booking(
 
     now_utc = datetime.now(timezone.utc)
     start_date = date.fromisoformat(body.start_date)
+
+    # ── Admin-configurable maximum booking length ────────────────────────────
+    # Previously the only ceiling was MultiDayBookingCreate's `le=90`, which is
+    # a hardcoded Pydantic bound — an admin could not change the real product
+    # limit without a code change and redeploy. It now lives in
+    # platform_config alongside every other tunable (dispatch radii, escrow
+    # hours, slot buffer, commission rates), editable from the admin config
+    # page. Default 10.
+    #
+    # Enforced HERE rather than in the schema so the limit is applied
+    # per-request against live config; the schema bound stays as a generous
+    # sanity ceiling so raising the config key needs no deploy.
+    max_days = int(await get_config(db, "max_multi_day_booking_days", 10))
+    if body.num_days > max_days:
+        raise HTTPException(
+            400,
+            f"A multi-day booking can span at most {max_days} day"
+            f"{'' if max_days == 1 else 's'}.",
+        )
+
     all_dates = [start_date + timedelta(days=i) for i in range(body.num_days)]
 
     # Server-side "no past days" guard, independent of client-side validation.

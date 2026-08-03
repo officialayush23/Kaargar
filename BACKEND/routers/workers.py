@@ -1984,13 +1984,43 @@ async def _generate_slots_core(
 
     Do not duplicate this loop elsewhere — reuse this function.
     """
-    from datetime import timedelta, time as _time
+    # NOTE: workers.py has no module-level datetime import — every function
+    # imports what it needs locally. `timezone` is required here for the
+    # time-off comparison below and is NOT in scope otherwise.
+    from datetime import timedelta, time as _time, datetime as _datetime, timezone as _timezone
 
     # Worker's recurring weekly working hours
     avail_result = await db.execute(
         select(WorkerAvailability).where(WorkerAvailability.worker_id == wp_id, WorkerAvailability.is_open == True)
     )
     availability = {row.day_of_week: row for row in avail_result.scalars().all()}
+
+    # ── Time off ─────────────────────────────────────────────────────────────
+    # BUG FIX: this loop previously consulted only worker_availability (the
+    # recurring weekly pattern) and ignored worker_time_off entirely. A worker
+    # who booked leave still had bookable slots generated and SOLD on those
+    # days — the customer could reserve a slot the worker had explicitly made
+    # themselves unavailable for.
+    #
+    # services/scheduling.py already honours WorkerTimeOff when assigning
+    # scheduled jobs, so slot generation was the odd one out. Fetch the ranges
+    # overlapping this window once, then skip any day they cover.
+    range_start_dt = _datetime.combine(from_date, _time.min).replace(tzinfo=_timezone.utc)
+    range_end_dt   = _datetime.combine(to_date,   _time.max).replace(tzinfo=_timezone.utc)
+    timeoff_result = await db.execute(
+        select(WorkerTimeOff).where(
+            WorkerTimeOff.worker_id == wp_id,
+            WorkerTimeOff.start_datetime <= range_end_dt,
+            WorkerTimeOff.end_datetime   >= range_start_dt,
+        )
+    )
+    time_off = timeoff_result.scalars().all()
+
+    def _is_day_off(day) -> bool:
+        """True if any time-off range covers any part of this calendar day."""
+        day_start = _datetime.combine(day, _time.min).replace(tzinfo=_timezone.utc)
+        day_end   = _datetime.combine(day, _time.max).replace(tzinfo=_timezone.utc)
+        return any(t.start_datetime <= day_end and t.end_datetime >= day_start for t in time_off)
 
     created: list = []
     current = from_date
@@ -2000,7 +2030,7 @@ async def _generate_slots_core(
 
     while current <= to_date:
         dow = current.weekday()  # 0=Mon
-        if dow in availability:
+        if dow in availability and not _is_day_off(current):
             av = availability[dow]
             cursor_min = av.start_time.hour * 60 + av.start_time.minute
             end_min    = av.end_time.hour   * 60 + av.end_time.minute

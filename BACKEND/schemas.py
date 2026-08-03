@@ -1137,6 +1137,11 @@ class MultiDayBookingCreate(BaseModel):
     location_note: Optional[str] = None
     # Scheduling
     start_date: str = Field(..., pattern=r"^\d{4}-\d{2}-\d{2}$", description="First day of the booking, YYYY-MM-DD")
+    # Pydantic bound is only a sanity ceiling. The REAL business limit is
+    # admin-configurable via platform_config's `max_multi_day_booking_days`
+    # (default 10) and is enforced in routers/jobs.py:create_multi_day_booking.
+    # Keep this generous so raising the config key doesn't require a code
+    # deploy — lowering it is what the config is for.
     num_days: int = Field(..., ge=1, le=90)
     window_start: str = Field(..., pattern=r"^\d{2}:\d{2}$")
     window_end: str   = Field(..., pattern=r"^\d{2}:\d{2}$")

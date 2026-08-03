@@ -27,9 +27,15 @@ async def get_pricing_info(db: AsyncSession = Depends(get_db)):
     """
     commission_instant_rate = await get_config(db, "commission_instant_rate", Decimal("0.12"))
     gst_rate = await get_config(db, "gst_rate", Decimal("0.18"))
+    # Booking-length limit lives here too so clients don't have to hardcode a
+    # number that an admin can change. Same key the multi-day endpoint
+    # enforces (routers/jobs.py) — one source of truth, so the stepper can
+    # never offer a length the server will reject.
+    max_multi_day_booking_days = await get_config(db, "max_multi_day_booking_days", 10)
     return {
         "commission_instant_rate": float(commission_instant_rate),
         "gst_rate": float(gst_rate),
+        "max_multi_day_booking_days": int(max_multi_day_booking_days),
     }
 
 
