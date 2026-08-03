@@ -7,6 +7,7 @@ Endpoints:
   GET  /search/workers          — discovery browse
 """
 
+import logging
 from datetime import datetime, timezone, timedelta
 from typing import Optional
 from uuid import UUID
@@ -17,6 +18,9 @@ from sqlalchemy import select, func, update, or_, case
 from geoalchemy2.functions import ST_Distance, ST_MakePoint, ST_SetSRID
 
 from database import get_db
+
+logger = logging.getLogger(__name__)
+
 from models import (
     Service, WorkerProfile, User, SearchHistory, UserPreference,
     Category, Tag, ServiceTag, WorkerLocation, ServiceMedia,
@@ -87,7 +91,7 @@ async def _update_user_preferences(db: AsyncSession, user_id: UUID) -> None:
             ))
         await db.commit()
     except Exception as exc:
-        print(f"[SEARCH] _update_user_preferences failed for {user_id}: {exc}")
+        logger.error(f"[SEARCH] _update_user_preferences failed for {user_id}: {exc}", exc_info=True)
 
 
 @router.get("", response_model=SearchResponseWrapper)

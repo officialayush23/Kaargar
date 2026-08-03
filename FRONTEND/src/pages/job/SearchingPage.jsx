@@ -343,7 +343,16 @@ export default function SearchingPage() {
 
     api.get(`/jobs/${jobId}`).then(({ data }) => {
       setJobStatus(data.status)
-      if (data.assigned_worker) setWorker(data.assigned_worker)
+      // JobResponse has no nested "assigned_worker" object — worker info
+      // comes back as flat worker_id/worker_name/worker_avatar_url/
+      // worker_avg_rating/worker_total_jobs_completed fields instead.
+      if (data.worker_id) setWorker({
+        id: data.worker_id,
+        full_name: data.worker_name,
+        avatar_url: data.worker_avatar_url,
+        avg_rating: data.worker_avg_rating,
+        total_jobs_completed: data.worker_total_jobs_completed,
+      })
       if (['assigned', 'en_route', 'arrived', 'started'].includes(data.status)) {
         navigate(`/job/${jobId}/active`, { replace: true })
       }
@@ -358,7 +367,13 @@ export default function SearchingPage() {
         setJobStatus(updated.status)
         if (updated.status === 'assigned') {
           api.get(`/jobs/${jobId}`).then(({ data }) => {
-            if (data.assigned_worker) setWorker(data.assigned_worker)
+            if (data.worker_id) setWorker({
+              id: data.worker_id,
+              full_name: data.worker_name,
+              avatar_url: data.worker_avatar_url,
+              avg_rating: data.worker_avg_rating,
+              total_jobs_completed: data.worker_total_jobs_completed,
+            })
           }).catch(() => {})
         }
         if (['en_route', 'arrived', 'started'].includes(updated.status)) {

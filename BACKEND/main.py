@@ -2,19 +2,56 @@
 Kaargar — FastAPI application entry point.
 """
 
+from config import get_settings
+from services.logging_config import setup_logging, RequestIDMiddleware
+
+settings = get_settings()
+
+# JSON structured logging — set up before anything else logs (including
+# Sentry's own init below), so every log line from this point on is JSON
+# with a request_id field once a request is in flight. See
+# services/logging_config.py's module docstring.
+setup_logging(level="DEBUG" if settings.app_env != "production" else "INFO")
+
+# Sentry — initialized before anything else imports, so it can also catch
+# errors raised while the routers/services below are being imported, not
+# just runtime request errors. No-op (nothing imported, nothing sent) if
+# SENTRY_DSN isn't set — safe for local dev with an empty .env value.
+if settings.sentry_dsn:
+    import sentry_sdk
+    from sentry_sdk.integrations.fastapi import FastApiIntegration
+    from sentry_sdk.integrations.starlette import StarletteIntegration
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.app_env,
+        integrations=[StarletteIntegration(), FastApiIntegration()],
+        # Lower sample rate in production to control event volume/cost;
+        # capture everything in development where volume is naturally low.
+        traces_sample_rate=0.2 if settings.app_env == "production" else 1.0,
+        # This app handles phone numbers, emails, and payment data — don't
+        # let the SDK auto-attach request bodies/user PII to events.
+        send_default_pii=False,
+    )
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from config import get_settings
 from routers import auth, categories, workers, jobs, upload, search, chat, payments, reviews, notifications, admin, support, users, geocode, addresses
-
-settings = get_settings()
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Start APScheduler background tasks
+    # Start APScheduler background tasks.
+    #
+    # NOTE: celery_app.py now also defines Celery Beat schedules for these
+    # same three jobs, meant to replace this once Render has dedicated
+    # worker + beat processes deployed and confirmed running — see that
+    # file's module docstring for the exact cutover steps. Until then, both
+    # run in parallel (harmless — the underlying task functions are
+    # idempotent), so don't remove this block without confirming Celery
+    # beat/worker are actually live first.
     from tasks.escrow_release import start_escrow_scheduler
     from tasks.decay_scores import start_decay_scheduler
     from tasks.slot_rollover import start_slot_rollover_scheduler
@@ -52,6 +89,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Assigns/propagates X-Request-ID and tags every log line + Sentry event
+# emitted during a request with it — see services/logging_config.py.
+app.add_middleware(RequestIDMiddleware)
 
 # All routers under /v1
 app.include_router(auth.router,          prefix="/v1/auth",          tags=["auth"])

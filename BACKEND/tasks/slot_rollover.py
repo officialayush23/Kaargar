@@ -12,9 +12,12 @@ days/slots already seeded).
 """
 
 import asyncio
+import logging
 from datetime import date, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
+logger = logging.getLogger(__name__)
 
 # How many days ahead the generated-slots window should always reach.
 ROLLING_WINDOW_DAYS = 14
@@ -72,14 +75,25 @@ async def roll_forward_slot_windows():
                 except asyncio.CancelledError:
                     raise
                 except Exception as exc:
-                    print(f"[SLOT_ROLLOVER] Failed for service {svc.id}: {exc}")
+                    logger.error(f"[SLOT_ROLLOVER] Failed for service {svc.id}: {exc}", exc_info=True)
 
             if rows:
-                print(
+                logger.info(
                     f"[SLOT_ROLLOVER] Rolled {len(rows)} slot-mode service(s) forward "
                     f"to {until.isoformat()} ({total_created} new slot(s))"
                 )
     except asyncio.CancelledError:
         pass
     except Exception as exc:
-        print(f"[SLOT_ROLLOVER] Skipped run due to DB error: {exc}")
+        logger.error(f"[SLOT_ROLLOVER] Skipped run due to DB error: {exc}", exc_info=True)
+
+
+# ── Celery task wrapper ─────────────────────────────────────────────────────
+# See tasks/escrow_release.py's wrapper comment re: why asyncio.run() per
+# call is safe here (database.py's NullPool engine).
+from celery_app import celery_app
+
+
+@celery_app.task(name="tasks.slot_rollover.roll_forward_slot_windows_task")
+def roll_forward_slot_windows_task():
+    asyncio.run(roll_forward_slot_windows())

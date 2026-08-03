@@ -379,7 +379,7 @@ async def get_job(
     # Enrich with worker name + avatar
     if job.worker_id:
         wrow = await db.execute(
-            select(UserModel.full_name, UserModel.avatar_url)
+            select(UserModel.full_name, UserModel.avatar_url, WP.avg_rating, WP.total_jobs_completed)
             .join(WP, WP.user_id == UserModel.id)
             .where(WP.id == job.worker_id)
         )
@@ -387,6 +387,8 @@ async def get_job(
         if w:
             resp.worker_name = w.full_name
             resp.worker_avatar_url = w.avatar_url
+            resp.worker_avg_rating = w.avg_rating
+            resp.worker_total_jobs_completed = w.total_jobs_completed
     # Enrich with client (customer) name + avatar
     crow = await db.execute(select(UserModel.full_name, UserModel.avatar_url).where(UserModel.id == job.user_id))
     c = crow.first()

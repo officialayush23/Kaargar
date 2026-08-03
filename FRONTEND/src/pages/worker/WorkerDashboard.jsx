@@ -181,14 +181,18 @@ export default function WorkerDashboard() {
   }, [profileLoading, workerProfile, navigate])
 
   useEffect(() => {
-    if (!user?.id) return
+    // job_worker_requests.worker_id is a FK to worker_profiles.id, not
+    // users.id (the Supabase auth id) — subscribing with user.id meant this
+    // filter could only ever match by coincidence, so the incoming-job
+    // popup effectively never fired. workerProfile.id is the right id.
+    if (!workerProfile?.id) return
     const channel = supabase
-      .channel(`worker-requests:${user.id}`)
+      .channel(`worker-requests:${workerProfile.id}`)
       .on('postgres_changes', {
         event: 'INSERT',
         schema: 'public',
         table: 'job_worker_requests',
-        filter: `worker_id=eq.${user.id}`,
+        filter: `worker_id=eq.${workerProfile.id}`,
       }, async (payload) => {
         try {
           const { data } = await api.get(`/jobs/${payload.new.job_id}`)
@@ -197,7 +201,7 @@ export default function WorkerDashboard() {
       })
       .subscribe()
     return () => supabase.removeChannel(channel)
-  }, [user?.id])
+  }, [workerProfile?.id])
 
   async function toggleStatus() {
     setStatusLoading(true)

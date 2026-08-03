@@ -67,6 +67,11 @@ class OTPSession(Base):
     is_used: Mapped[bool] = mapped_column(Boolean, default=False)
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     created_at: Mapped[datetime] = now()
+    # Which channel this OTP was/would be sent over ('email' | 'sms'). Added
+    # by the otp_channel_and_sms_flag migration alongside
+    # platform_config.sms_otp_enabled, ahead of the OTP send/verify routes
+    # that will actually populate it — nullable until those routes exist.
+    channel: Mapped[str | None] = mapped_column(String(10))
 
 
 # ── 3. CATEGORIES ─────────────────────────────────────────────
@@ -679,6 +684,13 @@ class Notification(Base):
     email_sent: Mapped[bool] = mapped_column(Boolean, default=False)
     email_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = now()
+    # FCM push delivery tracking — added by fcm_device_tokens_and_notification_columns.
+    # Populated once services/notifications.py actually sends pushes (see
+    # DeviceToken below); until then these just sit at their defaults.
+    push_sent: Mapped[bool] = mapped_column(Boolean, default=False)
+    push_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    push_error: Mapped[str | None] = mapped_column(Text)
+    fcm_message_id: Mapped[str | None] = mapped_column(Text)
 
 
 # ── 24. SUPPORT TICKETS ──────────────────────────────────────
@@ -1059,3 +1071,102 @@ class UserAddress(Base):
     updated_at: Mapped[datetime] = now()
 
     user = relationship("User", back_populates="addresses")
+
+
+# ── 40. DEVICE TOKENS — FCM push registration ─────────────────
+# Added by fcm_device_tokens_and_notification_columns (live DB migration,
+# applied directly via SQL — this model was missing until now). One row per
+# device a user has logged in on; is_active flips false on an FCM
+# "unregistered" error instead of deleting the row so
+# promo_campaign_deliveries.device_token_id stays valid for history.
+class DeviceToken(Base):
+    __tablename__ = "device_tokens"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    fcm_token: Mapped[str] = mapped_column(Text, unique=True, nullable=False)
+    platform: Mapped[str] = mapped_column(String(10), nullable=False)  # 'ios' | 'android'
+    device_id: Mapped[str | None] = mapped_column(String(255))
+    app_version: Mapped[str | None] = mapped_column(String(20))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_seen_at: Mapped[datetime] = now()
+    created_at: Mapped[datetime] = now()
+    updated_at: Mapped[datetime] = now()
+
+    user = relationship("User")
+
+
+# ── 41. PROMO CAMPAIGNS — admin-authored push broadcasts ──────
+# Added by promo_campaigns_and_deliveries (live DB migration, applied
+# directly via SQL — this model was missing until now).
+class PromoCampaign(Base):
+    __tablename__ = "promo_campaigns"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    title: Mapped[str] = mapped_column(String(255), nullable=False)          # internal/admin-facing name
+    message_title: Mapped[str] = mapped_column(String(255), nullable=False)  # push notification title
+    message_body: Mapped[str] = mapped_column(Text, nullable=False)
+    deep_link: Mapped[str | None] = mapped_column(Text)
+    discount_type: Mapped[str | None] = mapped_column(String(20))
+    discount_value: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    promo_code: Mapped[str | None] = mapped_column(String(50))
+    target_city: Mapped[str | None] = mapped_column(String(100))
+    target_category_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("categories.id"))
+    # Additional audience targeting rules not covered by the two columns
+    # above (e.g. role, last-active window) — shape owned by the delivery
+    # logic that builds the recipient list, not enforced at the DB layer.
+    audience_filter: Mapped[dict] = mapped_column(JSONB, default={})
+    status: Mapped[str] = mapped_column(String(20), default="draft")  # draft | scheduled | sending | sent | failed
+    scheduled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    audience_count: Mapped[int | None] = mapped_column(Integer)
+    success_count: Mapped[int] = mapped_column(Integer, default=0)
+    failure_count: Mapped[int] = mapped_column(Integer, default=0)
+    created_by: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id"), nullable=False)
+    created_at: Mapped[datetime] = now()
+    updated_at: Mapped[datetime] = now()
+
+    target_category = relationship("Category")
+    deliveries = relationship("PromoCampaignDelivery", back_populates="campaign", cascade="all, delete-orphan")
+
+
+# ── 42. PROMO CAMPAIGN DELIVERIES — per-recipient send record ─
+class PromoCampaignDelivery(Base):
+    __tablename__ = "promo_campaign_deliveries"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    campaign_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("promo_campaigns.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    device_token_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("device_tokens.id"))
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending | sent | failed
+    fcm_message_id: Mapped[str | None] = mapped_column(Text)
+    error: Mapped[str | None] = mapped_column(Text)
+    sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = now()
+
+    campaign = relationship("PromoCampaign", back_populates="deliveries")
+    user = relationship("User")
+    device_token = relationship("DeviceToken")
+
+
+# ── 43. CONTENT TRANSLATIONS — Sarvam translation cache ───────
+# Backs services/translation.py, which already reads/writes this table
+# directly via sqlalchemy.text() (raw SQL) since no model existed for it.
+# Added here per CLAUDE.md rule #2 ("all SQLAlchemy models live in
+# models.py — no exceptions") — translation.py itself doesn't need to
+# change; this just gives the table a proper model for anything else that
+# wants to query it through the ORM.
+class ContentTranslation(Base):
+    __tablename__ = "content_translations"
+    __table_args__ = (
+        UniqueConstraint("entity_type", "entity_id", "language", "field", name="content_translations_entity_type_entity_id_language_field_key"),
+    )
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    entity_type: Mapped[str] = mapped_column(String(30), nullable=False)  # 'service' | 'package' | 'offer' | 'review'
+    entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    language: Mapped[str] = mapped_column(String(5), nullable=False)     # 'en' | 'hi' | 'mr'
+    field: Mapped[str] = mapped_column(String(50), nullable=False)       # e.g. 'title', 'description'
+    text: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = now()
+    updated_at: Mapped[datetime] = now()

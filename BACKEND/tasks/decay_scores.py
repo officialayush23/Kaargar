@@ -5,9 +5,12 @@ APScheduler tasks:
 """
 
 import asyncio
+import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timezone, timedelta
 from decimal import Decimal
+
+logger = logging.getLogger(__name__)
 
 
 def start_decay_scheduler() -> AsyncIOScheduler:
@@ -38,11 +41,11 @@ async def restore_auto_offline_workers():
                 wp.auto_offline_until = None
             if workers:
                 await db.commit()
-                print(f"[DECAY] Restored {len(workers)} workers from auto-offline")
+                logger.info(f"[DECAY] Restored {len(workers)} workers from auto-offline")
     except asyncio.CancelledError:
         pass
     except Exception as exc:
-        print(f"[DECAY] Skipped run due to DB error: {exc}")
+        logger.error(f"[DECAY] Skipped run due to DB error: {exc}", exc_info=True)
 
 
 async def refresh_all_worker_analytics():
@@ -53,7 +56,7 @@ async def refresh_all_worker_analytics():
     except asyncio.CancelledError:
         pass
     except Exception as exc:
-        print(f"[ANALYTICS] Skipped run due to DB error: {exc}")
+        logger.error(f"[ANALYTICS] Skipped run due to DB error: {exc}", exc_info=True)
 
 
 async def refresh_worker_analytics_for(worker_id):
@@ -62,7 +65,7 @@ async def refresh_worker_analytics_for(worker_id):
         async with __import__('database').async_session() as db:
             await _recompute_analytics(db, worker_id=worker_id)
     except Exception as exc:
-        print(f"[ANALYTICS] Failed for worker {worker_id}: {exc}")
+        logger.error(f"[ANALYTICS] Failed for worker {worker_id}: {exc}", exc_info=True)
 
 
 async def _recompute_analytics(db, worker_id=None):
@@ -192,4 +195,20 @@ async def _recompute_analytics(db, worker_id=None):
 
     await db.commit()
     if worker_id is None:
-        print(f"[ANALYTICS] Refreshed {len(workers)} workers")
+        logger.info(f"[ANALYTICS] Refreshed {len(workers)} workers")
+
+
+# ── Celery task wrappers ────────────────────────────────────────────────────
+# See tasks/escrow_release.py's wrapper comment re: why asyncio.run() per
+# call is safe here (database.py's NullPool engine).
+from celery_app import celery_app
+
+
+@celery_app.task(name="tasks.decay_scores.restore_auto_offline_workers_task")
+def restore_auto_offline_workers_task():
+    asyncio.run(restore_auto_offline_workers())
+
+
+@celery_app.task(name="tasks.decay_scores.refresh_all_worker_analytics_task")
+def refresh_all_worker_analytics_task():
+    asyncio.run(refresh_all_worker_analytics())

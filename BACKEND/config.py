@@ -23,6 +23,22 @@ class Settings(BaseSettings):
             return v.replace("postgres://", "postgresql+asyncpg://", 1)
         return v
 
+    # Direct (unpooled) connection — used by Alembic only (alembic/env.py).
+    # Migrations run session-level DDL/advisory-lock operations that don't
+    # play well with Supavisor's transaction-mode pooler on database_url
+    # above. Falls back to database_url if unset (e.g. a fresh local
+    # Postgres with no pooler in front of it).
+    database_url_direct: str = Field("", alias="DATABASE_URL_DIRECT")
+
+    @field_validator("database_url_direct", mode="before")
+    @classmethod
+    def fix_database_url_direct(cls, v: str) -> str:
+        if v.startswith("postgresql://"):
+            return v.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if v.startswith("postgres://"):
+            return v.replace("postgres://", "postgresql+asyncpg://", 1)
+        return v
+
     @field_validator("frontend_url", mode="before")
     @classmethod
     def normalize_frontend_url(cls, v: str) -> str:
@@ -61,15 +77,23 @@ class Settings(BaseSettings):
     smtp_from_email: str = Field("noreply@kaargar.in", alias="SMTP_FROM_EMAIL")
     smtp_from_name: str = "Kaargar"
 
-    # Mapbox
+    # Mapbox — the active geocoding vendor (routers/geocode.py). Migrated off
+    # Google Maps/Places after it stopped working; google_maps_api_key was
+    # removed from here since nothing in the backend read it anymore
+    # (verified by repo-wide grep) — set GOOGLE_MAPS_API_KEY in .env to
+    # nothing, it's unused now.
     mapbox_access_token: str = Field("", alias="MAP_BOX_API_KEY")
-
-    # Google Maps
-    google_maps_api_key: str = Field("", alias="GOOGLE_MAPS_API_KEY")
 
     # Groq (translation)
     groq_api_key: str = Field("", alias="GROQ_API_KEY")  # no longer used — services/translation.py migrated to Sarvam
     sarvam_api_key: str = Field("", alias="SARVAM_API_KEY")
+
+    # Sentry (error tracking) — optional, sentry_sdk.init() is skipped entirely
+    # if unset (see main.py). Currently reuses the mobile app's Sentry
+    # project DSN as a stopgap — there's no dedicated backend/Python Sentry
+    # project yet (create one via Sentry dashboard -> Projects -> Create
+    # Project -> Python/FastAPI when there's time, then swap this value).
+    sentry_dsn: str = Field("", alias="SENTRY_DSN")
 
     # Phone-call masking — AES-256-GCM key (base64, 32 bytes) shared with the
     # frontend's VITE_PHONE_CALL_KEY. Used only to encrypt the other party's

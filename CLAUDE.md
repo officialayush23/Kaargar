@@ -56,15 +56,30 @@ Kaargar/
 │   KAARGAR_BACKEND_UPDATE.md, Kaargar_UI_CrossCheck.md   ← various working/progress notes,
 │                                                            not guaranteed current — verify
 │                                                            against code before relying on them
-├── 001_initial_schema.sql … 012_no_show_and_rating_penalty.sql  ← migrations, applied in order
+├── DEPLOYMENT_TODO.md               ← actively-maintained checklist: Render Celery worker/beat
+│                                        deploy steps, local Docker dev setup, mobile local-vs-prod
+│                                        API URL setup, remaining roadmap (OTP/FCM/promo/restructure)
+├── 001_initial_schema.sql … 017_worker_areas.sql  ← migrations, applied in order (013 has two
+│   files — 013_backfill_instant_availability.sql and 013_service_catalog.sql — check both)
 ├── seed_data.sql
 ├── BACKEND/
 │   ├── main.py                      ← FastAPI app, CORS, router mounting, APScheduler lifespan
 │   ├── config.py                    ← pydantic-settings Settings (see env vars below)
 │   ├── database.py
-│   ├── models.py                    ← ALL 41 SQLAlchemy models
-│   ├── schemas.py                   ← ALL Pydantic schemas (~1193 lines)
+│   ├── models.py                    ← ALL SQLAlchemy models (43+, incl. DeviceToken/PromoCampaign/
+│   │                                   PromoCampaignDelivery/ContentTranslation — added once
+│   │                                   models.py was reconciled against the live DB)
+│   ├── schemas.py                   ← ALL Pydantic schemas (1250+ lines)
 │   ├── dependencies.py              ← get_current_user / require_worker / require_admin
+│   ├── alembic.ini, alembic/{env.py, script.py.mako, versions/baseline_20260803.py}
+│   │                                   ← real Alembic project (was in requirements.txt but never
+│   │                                   wired up before). Live DB needs `alembic stamp
+│   │                                   baseline_20260803` run once — see that file's docstring.
+│   │                                   New schema changes should go through
+│   │                                   `alembic revision --autogenerate` from here on, not hand-run SQL.
+│   ├── Dockerfile, docker-compose.yml, .dockerignore  ← LOCAL DEV ONLY (redis + api + celery
+│   │                                   worker + celery beat in one `docker-compose up`). Render
+│   │                                   deploy is native Python, not Docker — see DEPLOYMENT_TODO.md.
 │   ├── BACKEND_SPEC.md              ← another stale doc living inside BACKEND/ — same caveat
 │   │                                   as the legacy docs, do not treat as current
 │   ├── routers/
@@ -133,7 +148,8 @@ These are read straight from `BACKEND/config.py`'s `Settings` class and `FRONTEN
 | `FRONTEND_URL` | `frontend_url` | `https://kaargar1.vercel.app` | normalized to have a scheme; used for CORS allow-list |
 | `FASTAPI_HOST` | `fastapi_host` | `"0.0.0.0"` | |
 | `FASTAPI_PORT` | `fastapi_port` | `8000` | |
-| `DATABASE_URL` | `database_url` | **required** | `postgresql://`/`postgres://` auto-rewritten to `postgresql+asyncpg://` |
+| `DATABASE_URL` | `database_url` | **required** | `postgresql://`/`postgres://` auto-rewritten to `postgresql+asyncpg://`. Supavisor pooled (transaction mode, port 6543) — what the running app uses. |
+| `DATABASE_URL_DIRECT` | `database_url_direct` | `""`, falls back to `database_url` | Unpooled direct connection (port 5432). Used by `BACKEND/alembic/env.py` only — migrations run session-level DDL/advisory-lock operations that don't reliably work through a transaction-mode pooler. |
 | `SUPABASE_URL` | `supabase_url` | **required** | |
 | `SUPABASE_ANON_KEY` | `supabase_anon_key` | `""` | |
 | `SUPABASE_SERVICE_ROLE_KEY` | `supabase_service_role_key` | **required** | used by `services/storage.py` to write to Storage buckets |
@@ -146,8 +162,8 @@ These are read straight from `BACKEND/config.py`'s `Settings` class and `FRONTEN
 | `RESEND_API_KEY` | `resend_api_key` | `""` | used by `services/notifications.py` to send email; if unset, emails are logged instead of sent |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_USERNAME` / `SMTP_PASSWORD` | `smtp_host` etc. | `smtp.gmail.com` / `587` / `""` / `""` | legacy SMTP fields, still read but Resend is the primary email path |
 | `SMTP_FROM_EMAIL` | `smtp_from_email` | `noreply@kaargar.in` | |
-| `MAP_BOX_API_KEY` | `mapbox_access_token` | `""` | **defined in config.py but not read anywhere else in the backend** — the app uses `GOOGLE_MAPS_API_KEY` for backend geocoding and the frontend's own `VITE_MAPBOX_TOKEN` for map rendering. Effectively vestigial on the backend. |
-| `GOOGLE_MAPS_API_KEY` | `google_maps_api_key` | `""` | served to the frontend via `routers/geocode.py`; 503 if unset |
+| `MAP_BOX_API_KEY` | `mapbox_access_token` | `""` | **the active backend geocoding key.** `routers/geocode.py` wraps Mapbox's Geocoding v6 API (forward/reverse/autocomplete/place) — migrated off Google Places/Geocoding after it stopped working (billing/API-enablement drift on the old Google Cloud project). Raises 503 if unset. Same vendor as the frontend's `VITE_MAPBOX_TOKEN` (map tile rendering), now consolidated onto one account. **Earlier revisions of this table had this backwards — verified against the actual `geocode.py` code, not assumed.** |
+| `GOOGLE_MAPS_API_KEY` | `google_maps_api_key` | `""` | **vestigial.** Defined in `config.py`'s `Settings` but not read anywhere else in the backend (verified by repo-wide grep) — a leftover from before the Mapbox migration above. Safe to remove. |
 | `GROQ_API_KEY` | `groq_api_key` | `""` | used by `services/translation.py` for chat-message translation; skipped if unset |
 | `PHONE_CALL_CIPHER_KEY` | `phone_call_cipher_key` | `""` | AES-256-GCM key, shared with frontend's `VITE_PHONE_CALL_KEY`, used to encrypt the masked phone number returned by `GET /jobs/{id}/contact` |
 

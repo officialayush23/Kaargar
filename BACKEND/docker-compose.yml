@@ -1,0 +1,66 @@
+# Local development stack — NOT used for the Render deployment (see
+# DEPLOYMENT_TODO.md; Render runs the web service and the two Celery
+# Background Workers natively, no Docker involved there).
+#
+# Spins up Redis + the FastAPI app + the Celery worker + Celery beat
+# together, so all three migrated Celery Beat tasks (escrow release, decay
+# scores, slot rollover) can actually be exercised locally before trusting
+# them on Render.
+#
+# Setup (one-time):
+#   1. Copy D:\Kaargar_App\backend.env to BACKEND\.env (gitignored, stays
+#      local — never committed).
+#   2. docker-compose up --build
+#
+# The API is then reachable at http://localhost:8000 on this machine, and at
+# http://<this-machine's-LAN-IP>:8000 from a phone on the same Wi-Fi — see
+# DEPLOYMENT_TODO.md's mobile section for how to point the Expo app at it.
+#
+# Redis below is a local container, NOT Upstash — REDIS_URL is overridden to
+# point at it so local runs never touch the real Upstash instance or share
+# task state with production.
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "8000:8000"
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+
+  celery_worker:
+    build: .
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    command: celery -A celery_app worker --loglevel=info --concurrency 2
+
+  celery_beat:
+    build: .
+    env_file: .env
+    environment:
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - .:/app
+    depends_on:
+      - redis
+    command: celery -A celery_app beat --loglevel=info
+
+# Machine-specific overrides (e.g. different port mappings) go in
+# docker-compose.override.yml — already gitignored, Compose loads it
+# automatically alongside this file if present.

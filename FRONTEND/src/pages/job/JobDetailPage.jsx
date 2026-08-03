@@ -14,7 +14,7 @@ import { useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
-  ChevronLeft, Clock, MapPin, Package, User, Star,
+  ChevronLeft, Clock, MapPin, Package, User, Star, CheckCircle,
   CheckCircle2, XCircle, CalendarClock, Zap, Navigation,
   MessageCircle, Calendar, RotateCcw, AlertTriangle,
   Ban, CheckCheck, CircleDot, IndianRupee, Loader2,
@@ -418,7 +418,14 @@ export default function JobDetailPage() {
     </div>
   )
 
-  const worker = job.worker || {}
+  // JobResponse has no nested "worker" object — flat worker_id/worker_name/
+  // worker_avatar_url/worker_avg_rating fields instead (see also SearchingPage.jsx).
+  const worker = job.worker_id ? {
+    id: job.worker_id,
+    full_name: job.worker_name,
+    avatar_url: job.worker_avatar_url,
+    rating: job.worker_avg_rating,
+  } : {}
   const isActive = ['searching', 'assigned', 'arrived', 'in_progress'].includes(job.status)
   const isDone   = job.status === 'completed'
   const isCancellable = ['searching', 'assigned'].includes(job.status)
@@ -487,13 +494,16 @@ export default function JobDetailPage() {
             <InfoRow icon={Clock} label="Type" value={job.job_type === 'instant' ? 'Instant' : 'Scheduled'} />
             {job.created_at && <InfoRow icon={Calendar} label="Booked" value={fmtDate(job.created_at)} />}
             {job.started_at && <InfoRow icon={Clock} label="Started" value={fmt(job.started_at)} />}
-            {job.completed_at && <InfoRow icon={CheckCircle} label="Completed" value={fmt(job.completed_at)} />}
+            {job.completed_at && <InfoRow icon={CheckCircle2} label="Completed" value={fmt(job.completed_at)} />}
           </div>
         </div>
 
         {/* Actions */}
         <div className="flex gap-3">
-          {isActive && job.chat_id && (
+          {/* JobResponse has no chat_id field — a Chat row is guaranteed to
+              exist (lazily created on open) once a worker is assigned, so
+              worker_id is the correct gating condition instead. */}
+          {isActive && job.worker_id && (
             <GlassButton variant="brand" className="flex-1" onClick={() => navigate(`/chat/${jobId}`)}>
               Open Chat
             </GlassButton>
@@ -522,8 +532,8 @@ export default function JobDetailPage() {
         open={showReschedule}
         onClose={() => setShowReschedule(false)}
         currentDays={job.preferred_days || []}
-        currentStart={job.arrival_window_start || '09:00'}
-        currentEnd={job.arrival_window_end || '12:00'}
+        currentStart={job.window_start || '09:00'}
+        currentEnd={job.window_end || '12:00'}
         loading={rescheduleMut.isPending}
         onConfirm={(vals) => rescheduleMut.mutate(vals)}
       />

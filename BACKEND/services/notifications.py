@@ -122,9 +122,16 @@ async def _send_via_smtp(to_email: str, subject: str, html: str) -> bool:
 async def send_otp_email(email: str, otp: str):
     """Send OTP email. Tries Resend → SMTP → console log."""
 
-    # Always print to server logs (visible in Render dashboard)
-    print(f"[OTP] email={email} otp={otp}", flush=True)
-    logger.info(f"[OTP] Sending to {email}")
+    # The OTP value itself is only ever logged outside production — an OTP
+    # is a short-lived password, and logging it in cleartext in production
+    # (where logs may be aggregated/retained/exported, e.g. to Sentry
+    # breadcrumbs or a log platform) is a real credential-exposure risk for
+    # anyone with log access. In development there's no real inbox to check
+    # against, so this is the only way to see the code while testing.
+    if settings.app_env == "production":
+        logger.info("[OTP] Sending", extra={"email": email})
+    else:
+        logger.info("[OTP] Sending (dev — value included)", extra={"email": email, "otp": otp})
 
     html    = _otp_html(otp)
     subject = f"{otp} is your Kaargar OTP"
@@ -137,9 +144,11 @@ async def send_otp_email(email: str, otp: str):
     if await _send_via_smtp(email, subject, html):
         return
 
-    # 3. Console fallback (always succeeds — OTP visible in logs)
-    print(f"[OTP FALLBACK] No email provider configured. OTP={otp} for {email}", flush=True)
-    logger.warning(f"[OTP FALLBACK] OTP={otp} for {email} — configure RESEND_API_KEY to send emails")
+    # 3. Console fallback — still gated the same way as above.
+    if settings.app_env == "production":
+        logger.error("[OTP FALLBACK] No email provider configured — delivery failed", extra={"email": email})
+    else:
+        logger.warning(f"[OTP FALLBACK] No email provider configured. OTP={otp} for {email}")
 
 
 # ── In-app notifications (Supabase inserts) ───────────────────────────────────

@@ -2,8 +2,11 @@
 APScheduler task — auto-release escrow after 2 hours.
 """
 
+import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 
 def start_escrow_scheduler() -> AsyncIOScheduler:
@@ -53,6 +56,22 @@ async def release_due_escrows():
 
             await db.commit()
             if payments:
-                print(f"[ESCROW] Released {len(payments)} payments")
+                logger.info(f"[ESCROW] Released {len(payments)} payments")
     except Exception as exc:
-        print(f"[ESCROW] Skipped run due to DB error: {exc}")
+        logger.error(f"[ESCROW] Skipped run due to DB error: {exc}", exc_info=True)
+
+
+# ── Celery task wrapper ─────────────────────────────────────────────────────
+# Celery workers call tasks synchronously — asyncio.run() bridges into the
+# async release_due_escrows() above, which is unchanged. database.py's engine
+# uses NullPool (a fresh asyncpg connection per call, released immediately),
+# which is what makes repeated asyncio.run() calls in the same worker process
+# safe here — there's no pooled connection surviving across event-loop
+# boundaries the way there could be with a persistent pool.
+import asyncio
+from celery_app import celery_app
+
+
+@celery_app.task(name="tasks.escrow_release.release_due_escrows_task")
+def release_due_escrows_task():
+    asyncio.run(release_due_escrows())

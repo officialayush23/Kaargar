@@ -566,6 +566,12 @@ class JobResponse(KaargarBase):
     client_name: Optional[str] = None
     client_avatar_url: Optional[str] = None
     worker_avatar_url: Optional[str] = None
+    # Populated alongside worker_name/worker_avatar_url by GET /jobs/{id} —
+    # lets the frontend show a rating/job-count without a second round trip
+    # to GET /workers/{id}. Same flat-field convention already used by
+    # GET /jobs/frequently-booked's worker_avg_rating.
+    worker_avg_rating: Optional[Decimal] = None
+    worker_total_jobs_completed: Optional[int] = None
     # Job-completion-flow fields
     before_photos: Optional[List[str]] = None
     after_photos: Optional[List[str]] = None
@@ -1197,6 +1203,85 @@ class SlotConfigResponse(KaargarBase):
     auto_generate_days_ahead: int
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+# ─── Device tokens (FCM push) ────────────────────────────────────────────────
+# Schemas for the DeviceToken/PromoCampaign/PromoCampaignDelivery models
+# (BACKEND/models.py "40"-"42") — those tables and columns already exist on
+# the live DB (fcm_device_tokens_and_notification_columns /
+# promo_campaigns_and_deliveries migrations) but had neither a model nor a
+# schema until now. No router wires these up yet — see FCM push /
+# promo-campaign work.
+
+class DeviceTokenRegister(KaargarBase):
+    """Request body for POST /users/device-tokens."""
+    fcm_token: str = Field(..., min_length=1)
+    platform: str = Field(..., pattern="^(ios|android)$")
+    device_id: Optional[str] = None
+    app_version: Optional[str] = None
+
+
+class DeviceTokenResponse(KaargarBase):
+    id: UUID
+    user_id: UUID
+    platform: str
+    device_id: Optional[str] = None
+    app_version: Optional[str] = None
+    is_active: bool
+    last_seen_at: datetime
+    created_at: datetime
+
+
+# ─── Promo campaigns ─────────────────────────────────────────────────────────
+
+class PromoCampaignCreate(KaargarBase):
+    """Request body for POST /admin/promo-campaigns."""
+    title: str = Field(..., min_length=1, max_length=255)
+    message_title: str = Field(..., min_length=1, max_length=255)
+    message_body: str = Field(..., min_length=1)
+    deep_link: Optional[str] = None
+    discount_type: Optional[str] = None
+    discount_value: Optional[Decimal] = None
+    promo_code: Optional[str] = None
+    target_city: Optional[str] = None
+    target_category_id: Optional[UUID] = None
+    audience_filter: dict = Field(default_factory=dict)
+    scheduled_at: Optional[datetime] = None
+
+
+class PromoCampaignResponse(KaargarBase):
+    id: UUID
+    title: str
+    message_title: str
+    message_body: str
+    deep_link: Optional[str] = None
+    discount_type: Optional[str] = None
+    discount_value: Optional[Decimal] = None
+    promo_code: Optional[str] = None
+    target_city: Optional[str] = None
+    target_category_id: Optional[UUID] = None
+    audience_filter: dict
+    status: str
+    scheduled_at: Optional[datetime] = None
+    sent_at: Optional[datetime] = None
+    audience_count: Optional[int] = None
+    success_count: int
+    failure_count: int
+    created_by: UUID
+    created_at: datetime
+    updated_at: datetime
+
+
+class PromoCampaignDeliveryResponse(KaargarBase):
+    id: UUID
+    campaign_id: UUID
+    user_id: UUID
+    device_token_id: Optional[UUID] = None
+    status: str
+    fcm_message_id: Optional[str] = None
+    error: Optional[str] = None
+    sent_at: Optional[datetime] = None
+    created_at: datetime
 
 
 class SlotResponse(KaargarBase):

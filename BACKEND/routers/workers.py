@@ -6,6 +6,7 @@ MUST be declared before the dynamic /{worker_id} route, otherwise FastAPI matche
 /{worker_id} first and treats the literal string as a UUID — causing 404/422 errors.
 """
 
+import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, delete
@@ -13,6 +14,8 @@ from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from typing import Optional
 from decimal import Decimal
 import uuid
+
+logger = logging.getLogger(__name__)
 
 from database import get_db
 from models import (
@@ -759,7 +762,7 @@ async def _regenerate_slots_background(service_id_str: str, wp_id_str: str, from
                 db, uuid.UUID(wp_id_str), uuid.UUID(service_id_str), cfg, from_date, to_date
             )
     except Exception as exc:
-        print(f"[SLOTS] Failed to regenerate slots for service {service_id_str}: {exc}")
+        logger.error(f"[SLOTS] Failed to regenerate slots for service {service_id_str}: {exc}", exc_info=True)
 
 
 @router.delete("/me/services/{service_id}", response_model=SuccessResponse)

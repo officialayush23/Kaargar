@@ -58,7 +58,7 @@ async def dispatch_job(job_id: str):
         async with async_session() as db:
             await _run_dispatch(db, job_id)
     except Exception as e:
-        print(f"Dispatch error: {e}")
+        logger.error(f"Dispatch error: {e}", exc_info=True)
     finally:
         if r and lock_acquired:
             try:
