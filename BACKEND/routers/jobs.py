@@ -5,9 +5,12 @@ Jobs router — create, status transitions, lifecycle endpoints.
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, UploadFile, File, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, delete, func as sa_func, text
+# `array` builds a real Postgres ARRAY literal for JSONB `has_any` (the `?|`
+# operator) in the worker double-booking guard below.
+from sqlalchemy.dialects.postgresql import array as pg_array
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from decimal import Decimal
-from datetime import datetime, timezone, timedelta, date
+from datetime import datetime, timezone, timedelta, date, time
 from uuid import UUID
 import uuid
 import secrets
@@ -15,7 +18,7 @@ import secrets
 from database import get_db
 from models import (
     User, Job, JobEvent, SOSEvent, ServiceSlot, Service,
-    WorkerCategory, WorkerProfile, WorkerScheduleBlock,
+    WorkerCategory, WorkerProfile, WorkerScheduleBlock, WorkerTimeOff,
     CancellationPenalty, Payment, Notification, JobItemReceipt,
 )
 from schemas import (
@@ -353,6 +356,83 @@ async def frequently_booked(
             "booking_count": row.cnt,
         })
     return out
+
+
+# ⚠️ MUST stay declared ABOVE `@router.get("/{job_id}")`.
+# FastAPI matches routes in declaration order, so if this literal path is
+# registered after the `{job_id}` catch-all, a request to
+# /jobs/worker-busy-dates is captured by that route, "worker-busy-dates" is
+# parsed as a UUID, and the endpoint 422s and is effectively unreachable.
+# That is exactly what happened when it was first added near the bottom of
+# this file — the client silently received nothing and no busy days rendered.
+# `/me` and `/frequently-booked` above are placed before it for the same
+# reason.
+@router.get("/worker-busy-dates")
+async def get_worker_busy_dates(
+    worker_id: uuid.UUID,
+    date_from: str,
+    date_to: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Dates in [date_from, date_to] on which this worker already has a
+    non-terminal window booking.
+
+    Lets the client grey out unavailable days in the booking calendar instead
+    of letting the customer pick a day and only discover the clash on submit.
+    The 409 in `_assert_worker_free` remains authoritative — this is purely so
+    the UI can be honest up front.
+    """
+    fd = date.fromisoformat(date_from)
+    td = date.fromisoformat(date_to)
+
+    result = await db.execute(
+        select(Job.preferred_days, Job.window_start, Job.window_end).where(
+            Job.worker_id == worker_id,
+            Job.status.notin_(_NON_BLOCKING_STATUSES),
+            Job.preferred_days.isnot(None),
+        )
+    )
+
+    busy: dict[str, list[dict]] = {}
+    for pref_days, w_start, w_end in result.all():
+        for iso in pref_days or []:
+            try:
+                d = date.fromisoformat(iso)
+            except (TypeError, ValueError):
+                continue
+            if fd <= d <= td:
+                busy.setdefault(iso, []).append(
+                    {
+                        "window_start": w_start.strftime("%H:%M") if w_start else None,
+                        "window_end": w_end.strftime("%H:%M") if w_end else None,
+                    }
+                )
+
+    # Days the worker has blocked out themselves. Returned separately from
+    # `busy` so the client can say WHY a day is unselectable — "already
+    # booked" and "worker is away" are different messages to a customer, and
+    # a single merged list would force a wrong or vague one.
+    off_rows = await db.execute(
+        select(WorkerTimeOff).where(
+            WorkerTimeOff.worker_id == worker_id,
+            WorkerTimeOff.start_datetime <= datetime.combine(td, time.max).replace(tzinfo=timezone.utc),
+            WorkerTimeOff.end_datetime >= datetime.combine(fd, time.min).replace(tzinfo=timezone.utc),
+        )
+    )
+    unavailable: list[str] = []
+    for t in off_rows.scalars().all():
+        cur = max(t.start_datetime.date(), fd)
+        last = min(t.end_datetime.date(), td)
+        while cur <= last:
+            unavailable.append(cur.isoformat())
+            cur += timedelta(days=1)
+
+    return {
+        "worker_id": str(worker_id),
+        "busy": busy,
+        "unavailable": sorted(set(unavailable)),
+    }
 
 
 @router.get("/{job_id}", response_model=JobResponse)
@@ -1607,6 +1687,19 @@ async def create_scheduled_job(
     # and really offers this service/category — see _validate_pinned_worker.
     await _validate_pinned_worker(db, body.preferred_worker_id, body.service_id, category_id)
 
+    # Double-booking guard — same rule the multi-day endpoint applies. A
+    # single scheduled booking had exactly the same hole: the worker could
+    # already be committed to another customer for these hours.
+    if body.preferred_days and body.window_start and body.window_end:
+        from datetime import time as _t
+        await _assert_worker_free(
+            db,
+            body.preferred_worker_id,
+            [date.fromisoformat(d) for d in body.preferred_days],
+            _t.fromisoformat(body.window_start),
+            _t.fromisoformat(body.window_end),
+        )
+
     # ── Compute quoted_price from the service ─────────────────────────────────
     # Mirrors book_slot's `price = svc.base_price if svc.base_price is not None
     # else svc.price`. A service with allow_multi_day_booking=true is treated
@@ -1703,6 +1796,115 @@ async def create_scheduled_job(
     return job
 
 
+# ─── Worker double-booking guard ────────────────────────────────────────────
+#
+# THE BUG THIS CLOSES: nothing anywhere prevented the same worker being booked
+# twice for the same day. Two different customers (or the same one twice) could
+# each create a window/multi-day booking pinned to the same worker for
+# overlapping hours, and both would succeed. There was no DB constraint and no
+# API check — verified by grepping the whole backend.
+#
+# Slot-mode bookings are already protected by ServiceSlot.capacity /
+# booked_count, so this covers the *window* bookings (single scheduled +
+# multi-day), which had nothing.
+#
+# Each window job stores its date as a single-element JSONB array
+# (`preferred_days = ["2026-08-14"]`) plus Time columns window_start/window_end
+# — see create_multi_day_booking below. So a conflict is:
+#   same worker
+#   AND not in a terminal state
+#   AND shares a calendar day
+#   AND the [start, end) time ranges overlap.
+#
+# Half-open comparison (`existing.start < new.end AND new.start < existing.end`)
+# so a booking ending exactly at 12:00 does NOT collide with one starting at
+# 12:00 — back-to-back bookings are legitimate.
+
+_NON_BLOCKING_STATUSES = ("completed", "cancelled", "failed")
+
+
+async def _assert_worker_free(
+    db: AsyncSession,
+    worker_id: uuid.UUID,
+    dates: list,
+    window_start,
+    window_end,
+) -> None:
+    """Raise 409 if `worker_id` already has an overlapping window booking.
+
+    Called before creating any pinned-worker window booking. Deliberately a
+    read-then-write check rather than a DB constraint: a plain unique index
+    can't express time-range overlap, and an exclusion constraint would need
+    the date+range materialised into real columns (preferred_days is JSONB).
+    The residual race between check and insert is narrow and both writes land
+    in the same transaction; if it ever matters, the durable fix is a
+    generated `tstzrange` column + `EXCLUDE USING gist`.
+    """
+    if not dates:
+        return
+
+    iso_dates = [d.isoformat() for d in dates]
+
+    result = await db.execute(
+        select(Job).where(
+            Job.worker_id == worker_id,
+            Job.status.notin_(_NON_BLOCKING_STATUSES),
+            Job.window_start.isnot(None),
+            Job.window_end.isnot(None),
+            # JSONB array overlap — any of this booking's days already present
+            # on an existing job for the same worker.
+            #
+            # `.has_any(array(...))` rather than `.op("?|")(...)`: the raw `?|`
+            # operator is risky to hand-write because `?` is a parameter
+            # placeholder in several DBAPIs, and SQLAlchemy has to escape it.
+            # The typed JSONB comparator emits the same operator safely.
+            Job.preferred_days.has_any(pg_array(iso_dates)),
+            # Half-open overlap on the time window.
+            Job.window_start < window_end,
+            Job.window_end > window_start,
+        )
+    )
+    clash = result.scalars().first()
+    if clash:
+        clash_days = clash.preferred_days or []
+        overlap = sorted(set(iso_dates) & set(clash_days)) or clash_days
+        raise HTTPException(
+            409,
+            "This worker is already booked for "
+            f"{', '.join(overlap)} between "
+            f"{clash.window_start.strftime('%H:%M')} and "
+            f"{clash.window_end.strftime('%H:%M')}. "
+            "Pick different days or times, or choose another worker.",
+        )
+
+    # ── Worker's own time off ────────────────────────────────────────────────
+    # A worker can block out days they're not available (WorkerTimeOff). Those
+    # were previously honoured only when ASSIGNING scheduled jobs
+    # (services/scheduling.py) and, since the recent fix, when generating
+    # slots — but a pinned-worker window booking could still be created
+    # straight over the top of them. A customer could book a worker for a day
+    # the worker had explicitly declared themselves unavailable for.
+    off_rows = await db.execute(
+        select(WorkerTimeOff).where(WorkerTimeOff.worker_id == worker_id)
+    )
+    time_off = off_rows.scalars().all()
+    if time_off:
+        blocked = sorted(
+            {
+                d.isoformat()
+                for d in dates
+                for t in time_off
+                if t.start_datetime.date() <= d <= t.end_datetime.date()
+            }
+        )
+        if blocked:
+            raise HTTPException(
+                409,
+                f"This worker is unavailable on {', '.join(blocked)}. "
+                "Pick different days, or choose another worker.",
+            )
+
+
 @router.post("/scheduled/multi-day", response_model=JobBundleResponse, status_code=201)
 async def create_multi_day_booking(
     body: MultiDayBookingCreate,
@@ -1768,6 +1970,11 @@ async def create_multi_day_booking(
 
     window_start = _time.fromisoformat(body.window_start)
     window_end   = _time.fromisoformat(body.window_end)
+
+    # Reject BEFORE creating anything: a multi-day bundle is all-or-nothing,
+    # so discovering a clash halfway through would mean rolling back N rows.
+    # Checks every day in the range, not just the first.
+    await _assert_worker_free(db, body.preferred_worker_id, all_dates, window_start, window_end)
 
     # ── Resolve category + per-day price (mirrors create_scheduled_job) ──────
     category_id = body.category_id
