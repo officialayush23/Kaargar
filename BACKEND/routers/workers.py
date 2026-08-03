@@ -40,7 +40,7 @@ from schemas import (
     ServiceCatalogResponse, WorkerAreaSet,
 )
 from dependencies import get_current_user
-from services.storage import get_public_url, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
+from services.storage import get_signed_url, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
 from services.translation import translate_and_store
 from services.config import get_config
 
@@ -254,19 +254,24 @@ async def upload_document(
     # (Video is uploaded during onboarding, before the WorkerProfile row exists,
     # so /upload/verification-video can't attach it yet — the frontend calls
     # this endpoint afterwards, once the profile is created, to register it.)
+    # Both buckets are private (signed URLs only, see services/storage.py) —
+    # document_path is the real source of truth and is what's actually
+    # persisted; the URL is always re-derived fresh below rather than trusted
+    # from the client, since a signed URL carries a token + expiry that may
+    # already be stale by the time this request lands.
     bucket = BUCKET_VERIFICATION_VIDEO if document_type == "verification_video" else BUCKET_DOCUMENTS
-    bucket_marker = f"/storage/v1/object/public/{bucket}/"
-    if not document_path and bucket_marker in document_url:
-        document_path = document_url.split(f"/{bucket}/", 1)[1]
-    if document_path and bucket_marker not in document_url:
-        document_url = get_public_url(bucket, document_path)
-    if bucket_marker not in document_url:
-        raise HTTPException(400, f"Document URL must point to the {bucket} bucket")
+    if not document_path and document_url:
+        for marker in (f"/object/sign/{bucket}/", f"/object/public/{bucket}/"):
+            if marker in document_url:
+                document_path = document_url.split(f"/{bucket}/", 1)[1].split("?", 1)[0]
+                break
 
     if not document_path:
         raise HTTPException(400, "Invalid document payload")
     if not document_path.startswith(f"{user.id}/"):
         raise HTTPException(403, "Document path does not belong to current user")
+
+    document_url = get_signed_url(bucket, document_path)
 
     # Replace any existing verification video record for this worker
     if document_type == "verification_video":

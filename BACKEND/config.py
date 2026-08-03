@@ -84,8 +84,9 @@ class Settings(BaseSettings):
     # nothing, it's unused now.
     mapbox_access_token: str = Field("", alias="MAP_BOX_API_KEY")
 
-    # Groq (translation)
-    groq_api_key: str = Field("", alias="GROQ_API_KEY")  # no longer used — services/translation.py migrated to Sarvam
+    # GROQ_API_KEY removed (2026-08-03) — translation.py fully migrated to
+    # Sarvam, groq package was never imported anywhere, just an unused field
+    # + an unused requirements.txt line. Same cleanup as google_maps_api_key.
     sarvam_api_key: str = Field("", alias="SARVAM_API_KEY")
 
     # Sentry (error tracking) — optional, sentry_sdk.init() is skipped entirely

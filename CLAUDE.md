@@ -164,7 +164,7 @@ These are read straight from `BACKEND/config.py`'s `Settings` class and `FRONTEN
 | `SMTP_FROM_EMAIL` | `smtp_from_email` | `noreply@kaargar.in` | |
 | `MAP_BOX_API_KEY` | `mapbox_access_token` | `""` | **the active backend geocoding key.** `routers/geocode.py` wraps Mapbox's Geocoding v6 API (forward/reverse/autocomplete/place) — migrated off Google Places/Geocoding after it stopped working (billing/API-enablement drift on the old Google Cloud project). Raises 503 if unset. Same vendor as the frontend's `VITE_MAPBOX_TOKEN` (map tile rendering), now consolidated onto one account. **Earlier revisions of this table had this backwards — verified against the actual `geocode.py` code, not assumed.** |
 | `GOOGLE_MAPS_API_KEY` | `google_maps_api_key` | `""` | **vestigial.** Defined in `config.py`'s `Settings` but not read anywhere else in the backend (verified by repo-wide grep) — a leftover from before the Mapbox migration above. Safe to remove. |
-| `GROQ_API_KEY` | `groq_api_key` | `""` | used by `services/translation.py` for chat-message translation; skipped if unset |
+| `SARVAM_API_KEY` | `sarvam_api_key` | `""` | used by `services/translation.py` for chat-message translation (Sarvam AI); skipped if unset. `GROQ_API_KEY`/`groq_api_key` removed 2026-08-03 — translation.py fully migrated off Groq, the field and requirements.txt line were unused leftovers. |
 | `PHONE_CALL_CIPHER_KEY` | `phone_call_cipher_key` | `""` | AES-256-GCM key, shared with frontend's `VITE_PHONE_CALL_KEY`, used to encrypt the masked phone number returned by `GET /jobs/{id}/contact` |
 
 ### Frontend (`FRONTEND/.env`)

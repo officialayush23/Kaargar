@@ -19,7 +19,7 @@ from schemas import (
     ServiceCatalogCreate, ServiceCatalogUpdate, ServiceCatalogResponse,
 )
 from dependencies import require_admin
-from services.storage import get_public_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
+from services.storage import get_public_url, get_signed_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
 from services.config import get_config
 
 router = APIRouter()
@@ -91,7 +91,7 @@ async def pending_workers(
         )
         for doc in docs_result.scalars().all():
             doc_path = (doc.cloudinary_id or "").lstrip("/")
-            doc_url = get_public_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
+            doc_url = get_signed_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
             docs_by_worker.setdefault(str(doc.worker_id), []).append(
                 {
                     "id": str(doc.id),
@@ -328,7 +328,7 @@ async def get_worker_detail(
     for doc in docs_result.scalars().all():
         doc_path = (doc.cloudinary_id or "").lstrip("/")
         bucket = BUCKET_VERIFICATION_VIDEO if doc.type == "verification_video" else BUCKET_DOCUMENTS
-        doc_url = get_public_url(bucket, doc_path) if doc_path else doc.cloudinary_url
+        doc_url = get_signed_url(bucket, doc_path) if doc_path else doc.cloudinary_url
         documents.append({
             "id": str(doc.id),
             "type": doc.type,
@@ -679,7 +679,7 @@ async def list_workers(
     worker_ids = [wp.id for wp, _ in rows]
     docs_by_worker: dict = {}
     if worker_ids and status == "pending":
-        from services.storage import get_public_url, BUCKET_DOCUMENTS
+        from services.storage import get_signed_url, BUCKET_DOCUMENTS
         docs_result = await db.execute(
             select(WorkerDocument)
             .where(WorkerDocument.worker_id.in_(worker_ids))
@@ -687,7 +687,7 @@ async def list_workers(
         )
         for doc in docs_result.scalars().all():
             doc_path = (doc.cloudinary_id or "").lstrip("/")
-            doc_url = get_public_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
+            doc_url = get_signed_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
             docs_by_worker.setdefault(str(doc.worker_id), []).append({
                 "id": str(doc.id),
                 "type": doc.type,

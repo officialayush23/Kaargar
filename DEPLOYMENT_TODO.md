@@ -13,8 +13,11 @@ Living checklist — update in place as steps complete, same standing rule as `C
   Bookkeeping only — writes one row to `alembic_version`, does not touch schema. All future schema changes go through `alembic revision --autogenerate` after this.
 - [x] Real Upstash Redis TCP URL wired into `backend.env` (`REDIS_URL=rediss://...`)
 - [x] Celery + Celery Beat scaffolding built (`celery_app.py`, task wrappers in `tasks/`) — additive, APScheduler still running in parallel
+- [x] **Security fix (2026-08-03): `documents` and `verification_video_worker` Storage buckets were `public=true`, bypassing their own owner/admin-only RLS policies — anyone with a file path could fetch a worker's KYC documents or identity-verification video with zero auth. Both flipped to `public=false`; `services/storage.py` now issues short-lived signed URLs for them instead (fresh on every read, never persisted). `admin.py` and `routers/workers.py` updated accordingly. The other 5 buckets (profile photos, worker posts, job photos, catalog icons) are intentionally public and were left untouched.**
 
-## 2. Deploy Celery worker + beat to Render
+## 2. Deploy Celery worker + beat to Render — DEFERRED
+
+**Decision (2026-08-03): not doing this now.** APScheduler alone is enough for current volume. Revisit once there's enough cloud budget to justify the extra ~$14/mo for two Background Worker services — Celery/Beat code already exists and is ready to deploy whenever that happens, nothing further to build. Steps kept below for when that time comes.
 
 Two new **Background Worker** services (not Cron Jobs — beat is a persistent process), both pointed at the same GitHub repo as the existing web service.
 
@@ -28,9 +31,9 @@ Two new **Background Worker** services (not Cron Jobs — beat is a persistent p
 
 Reference implementation: [render-examples/celery](https://github.com/render-examples/celery).
 
-## 3. Local development with Docker (new)
+## 3. Local development with Docker — DEFERRED
 
-`BACKEND/Dockerfile` + `BACKEND/docker-compose.yml` now exist — local dev only, Render deploy is unaffected (still native Python, no Docker, per section 2 above).
+**Decision (2026-08-03): not needed right now.** `BACKEND/Dockerfile` + `BACKEND/docker-compose.yml` already exist and work whenever local Docker dev is wanted later — local dev only either way, Render deploy is unaffected (still native Python, no Docker, per section 2 above).
 
 - [ ] Copy `D:\Kaargar_App\backend.env` → `BACKEND\.env` (gitignored, stays local, never committed).
 - [ ] From `BACKEND/`: `docker-compose up --build`
@@ -38,25 +41,11 @@ Reference implementation: [render-examples/celery](https://github.com/render-exa
 - [ ] API reachable at `http://localhost:8000` on this machine — see section 4 for reaching it from a phone.
 - [ ] Machine-specific tweaks (e.g. different port mapping) go in `docker-compose.override.yml` — already gitignored, Compose loads it automatically if present.
 
-## 4. Mobile app: local backend vs. production backend
+## 4. Mobile app: always points at the deployed backend — DECIDED
 
-**Do not copy/duplicate the backend into `Kaargar_App`.** Reasons:
-- `Kaargar_App` (`D:\Kaargar_App`) is its own separate git repo from the `Kaargar` backend/frontend repo — a copy would mean maintaining backend source in two repos forever, drifting apart every time one gets a fix the other doesn't.
-- The backend doesn't need to live next to the mobile app on disk to be reachable — it's an HTTP API. What matters is the URL the app is pointed at, not the folder structure.
+**Decision (2026-08-03): no local/dev URL switching.** The mobile app always talks to the deployed Render backend (`https://kaargar.onrender.com/v1`), in every environment — dev, preview, and the eventual Play Store build. This is already what `D:\Kaargar_App\kaargar\.env`'s `EXPO_PUBLIC_API_BASE_URL` is set to; nothing to change. No local backend run, no LAN IP, no Docker needed for mobile dev as a result.
 
-What actually gets you both things you asked for (local connection during dev, correct URL in the Play Store build) is environment configuration — already partly scaffolded in `D:\Kaargar_App\kaargar\.env`:
-
-```
-EXPO_PUBLIC_APP_ENV=development
-EXPO_PUBLIC_API_BASE_URL=https://kaargar.onrender.com/v1   ← currently always the deployed URL, even in dev
-```
-
-- [ ] **For local dev**: run the backend locally (either `uvicorn main:app --host 0.0.0.0 --port 8000 --reload` directly, or `docker-compose up` per section 3), then in `D:\Kaargar_App\kaargar\.env` temporarily set:
-  ```
-  EXPO_PUBLIC_API_BASE_URL=http://<this-PC's-LAN-IP>:8000/v1
-  ```
-  Find the LAN IP with `ipconfig` (look for "IPv4 Address" under your active Wi-Fi adapter). A phone running Expo Go can't resolve `localhost` as your PC — it needs the actual LAN IP, and phone + PC must be on the same Wi-Fi network. (Android Studio's emulator specifically is the one exception — it can use `10.0.2.2` as an alias for the host machine instead of the real LAN IP.)
-- [ ] **For the Play Store build**: set `EXPO_PUBLIC_API_BASE_URL` back to `https://kaargar.onrender.com/v1` before running `eas build`. Once `eas init`/`eas build:configure` has been run (not done yet — no EAS project ID in `app.json` yet), the more robust long-term fix is per-profile env blocks in `eas.json` (`build.development.env`, `build.production.env`, etc.) so this never has to be toggled by hand and can't accidentally ship a build pointed at localhost. Revisit this when EAS is actually set up.
+(For the record, the reasoning against copying the backend into `Kaargar_App` still stands even though this makes it moot for now: `Kaargar_App` is its own separate git repo, and a backend doesn't need to live next to the mobile app on disk to be reachable — it's just an HTTP API at a URL.)
 
 ## 5. Roadmap — not started
 
