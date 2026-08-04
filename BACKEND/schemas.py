@@ -607,6 +607,23 @@ class JobResponse(KaargarBase):
 
 class JobCancel(BaseModel):
     reason: str
+    # Fixed vocabulary (services.cancellations.CANCEL_REASON_CODES) so
+    # pre-assignment Instant cancellations are groupable instead of a thousand
+    # unique free-text strings. Optional for backwards compatibility with the
+    # web client, which doesn't send it yet — falls back to 'other'.
+    reason_code: Optional[str] = None
+
+
+class JobReject(BaseModel):
+    """Worker declining an INSTANT dispatch.
+
+    Reason is optional and unused, unlike JobCancel. An instant dispatch is a
+    broadcast the worker never agreed to — declining it is 'no thanks', not a
+    breach of anything, and demanding a reason for it is both meaningless and
+    impossible from a notification action button (there's no keyboard there).
+    Discovery/scheduled rejections are a different act with different rules —
+    see docs/cancellation-rules.md."""
+    reason: Optional[str] = None
 
 
 class JobNoShowReport(BaseModel):
@@ -827,6 +844,26 @@ class TicketResponse(KaargarBase):
 
 class TicketMessageCreate(BaseModel):
     content: str
+
+
+class DeviceTokenRegister(BaseModel):
+    """Body for POST /notifications/device-token.
+
+    `token` is an EXPO push token (ExponentPushToken[...]), not a raw FCM
+    token — the app registers through Expo's push service, which fans out to
+    FCM/APNs. Stored in DeviceToken.fcm_token, whose name predates that call.
+    """
+    token: str
+    platform: str  # 'ios' | 'android'
+    device_id: Optional[str] = None
+    app_version: Optional[str] = None
+
+
+class TicketResolveRequest(BaseModel):
+    """Body for PATCH /support/admin/tickets/{id}/resolve — all optional.
+    The admin console resolves with no payload at all, which a required body
+    rejected with a 422."""
+    resolution: Optional[str] = None
 
 
 # ── SEARCH ────────────────────────────────────────────────────

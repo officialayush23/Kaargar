@@ -153,6 +153,19 @@ async def send_otp_email(email: str, otp: str):
 
 # ── In-app notifications (Supabase inserts) ───────────────────────────────────
 async def create_notification(db, user_id, type: str, title: str, body: str, data: dict):
+    """
+    Create the in-app notification row AND push it to the user's devices.
+
+    Hooked here rather than at each call site on purpose: every notification in
+    the app already funnels through this one function (job assigned, worker
+    approved, bill approved, support reply, …), so wiring push here means all
+    of them gain it at once and none can be forgotten later. A new notification
+    type gets push for free by construction.
+
+    Push is fire-and-forget and swallows its own errors — see services/push.py.
+    The row is the source of truth; the notification bell and Realtime already
+    work without any of this.
+    """
     from models import Notification
     n = Notification(
         user_id=user_id,
@@ -163,6 +176,18 @@ async def create_notification(db, user_id, type: str, title: str, body: str, dat
     )
     db.add(n)
     await db.flush()
+
+    from services.push import push_to_user
+    await push_to_user(
+        db,
+        user_id,
+        title,
+        body,
+        # `type` travels in the payload so the app can deep-link on tap
+        # (job -> the job screen, support_reply -> the ticket thread).
+        {**(data or {}), "type": type},
+    )
+
     return n
 
 

@@ -393,6 +393,13 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
                 </div>
               )}
 
+              {/* Moderation. Ayush: admins need to be able to lower a rating,
+                  ban, and — critically — UNDO all of it. Penalties here are
+                  automatic (no-show, cancellations) and automatic systems get
+                  it wrong; without a way back a wrongly-penalised worker is
+                  permanently demoted with no recourse. */}
+              <ModerationPanel detail={detail} workerId={workerId} />
+
               {/* Reviews — this section didn't exist before, which is why
                   "no reviews are being shown" was literally true. Admin sees
                   hidden and flagged reviews too; moderating them is the point. */}
@@ -571,6 +578,107 @@ function RejectDialog({ open, onClose, onConfirm, loading }) {
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
+
+
+function ModerationPanel({ detail, workerId }) {
+  const qc = useQueryClient()
+  const [reason, setReason] = useState('')
+  const [busy, setBusy] = useState(null)
+
+  const penalty = detail.rating_penalty_total || 0
+  const cancelScore = detail.cancellation_score ?? 1
+  const suspended = detail.verification_status === 'suspended'
+
+  async function run(action, amount) {
+    if (!reason.trim()) {
+      toast.error('Enter a reason first — every moderation action is audited')
+      return
+    }
+    setBusy(action)
+    try {
+      await api.post(`/admin/workers/${workerId}/moderate`, {
+        action, reason: reason.trim(), ...(amount != null ? { amount } : {}),
+      })
+      toast.success(`Applied: ${action.replace(/_/g, ' ')}`)
+      setReason('')
+      qc.invalidateQueries(['admin', 'worker-detail', workerId])
+      qc.invalidateQueries(['admin', 'workers'])
+    } catch (e) {
+      toast.error(getErrorMessage(e) || 'Action failed')
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const Btn = ({ action, amount, label, danger }) => (
+    <Button
+      onClick={() => run(action, amount)}
+      disabled={!!busy}
+      style={{
+        height: 32, fontSize: 12,
+        background: danger ? 'var(--danger, #d64545)' : 'var(--card-bg)',
+        color: danger ? '#fff' : 'var(--text-primary)',
+        border: danger ? 'none' : '1px solid var(--card-border)',
+      }}
+    >
+      {busy === action ? '…' : label}
+    </Button>
+  )
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+        Moderation
+      </p>
+
+      <div style={{ padding: 14, borderRadius: 12, background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+        {/* Current standing — shows WHY a rating is low, which avg_rating alone can't. */}
+        <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', marginBottom: 12, fontSize: 12.5 }}>
+          <span style={{ color: 'var(--text-secondary)' }}>
+            Rating penalty: <strong style={{ color: penalty > 0 ? 'var(--danger, #d64545)' : 'var(--text-primary)' }}>−{penalty.toFixed(2)}★</strong>
+          </span>
+          <span style={{ color: 'var(--text-secondary)' }}>
+            Dispatch score: <strong style={{ color: cancelScore < 1 ? 'var(--warning, #e0a800)' : 'var(--text-primary)' }}>{cancelScore.toFixed(2)}</strong>
+          </span>
+          <span style={{ color: 'var(--text-secondary)' }}>
+            Consecutive declines: <strong style={{ color: 'var(--text-primary)' }}>{detail.consecutive_rejects || 0}</strong>
+          </span>
+          {suspended && (
+            <span style={{ color: 'var(--danger, #d64545)', fontWeight: 600 }}>SUSPENDED — hidden from search &amp; dispatch</span>
+          )}
+        </div>
+
+        <textarea
+          value={reason}
+          onChange={e => setReason(e.target.value)}
+          rows={2}
+          placeholder="Reason (required — recorded and sent to the worker)"
+          className="w-full text-sm rounded-lg px-3 py-2 resize-none mb-2"
+          style={{ background: 'var(--bg-surface)', border: '1px solid var(--card-border)', color: 'var(--text-primary)', outline: 'none' }}
+        />
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {(penalty > 0 || cancelScore < 1 || suspended) && (
+            <Btn action="restore_standing" label="↺ Restore standing (full)" />
+          )}
+          {penalty > 0 && <Btn action="restore_rating" label="↺ Restore rating only" />}
+          <Btn action="penalise_rating" amount={0.5} label="−0.5★ rating" />
+          <Btn action="demote" amount={0.1} label="−0.10 dispatch score" />
+          {suspended
+            ? <Btn action="unsuspend" label="Reinstate" />
+            : <Btn action="suspend" label="Suspend / ban" danger />}
+        </div>
+
+        <p style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 10, lineHeight: 1.5 }}>
+          Suspending hides the worker from search, discovery, recommendations and instant dispatch —
+          all of those already filter on an approved status, so it's one switch rather than a
+          separate visibility rule. Rating penalties persist through new reviews rather than being
+          averaged away.
+        </p>
+      </div>
+    </div>
+  )
+}
 
 export default function AdminWorkers() {
   const qc = useQueryClient()

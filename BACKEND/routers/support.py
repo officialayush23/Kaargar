@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from database import get_db
 from models import User, SupportTicket, SupportMessage, Job, WorkerProfile
-from schemas import TicketCreate, TicketResponse, TicketMessageCreate, SuccessResponse
+from schemas import TicketCreate, TicketResponse, TicketMessageCreate, TicketResolveRequest, SuccessResponse
 from dependencies import get_current_user, require_admin
 
 router = APIRouter()
@@ -133,18 +133,42 @@ async def reply_ticket(
 
 # ── ADMIN SUPPORT ENDPOINTS ────────────────────────────────────────
 
-@router.get("/admin/tickets", response_model=list[TicketResponse])
+@router.get("/admin/tickets")
 async def admin_list_tickets(
     status: str = "open",
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
-    """Admin: list all tickets filtered by status."""
-    q = select(SupportTicket).order_by(SupportTicket.created_at.desc())
+    """
+    Admin: list tickets filtered by status, WITH the requester attached.
+
+    Previously returned bare SupportTicket rows via response_model=
+    list[TicketResponse], which carries no user fields at all — so the admin
+    console rendered every single ticket as "Unknown user" and its search box
+    (which filters on `t.user?.email`) could never match anything.
+    """
+    q = (
+        select(SupportTicket, User)
+        .join(User, User.id == SupportTicket.user_id)
+        .order_by(SupportTicket.created_at.desc())
+    )
     if status and status != "all":
         q = q.where(SupportTicket.status == status)
-    result = await db.execute(q)
-    return result.scalars().all()
+
+    rows = (await db.execute(q)).all()
+    return [
+        {
+            **TicketResponse.model_validate(ticket).model_dump(mode="json"),
+            "user": {
+                "id": str(u.id),
+                "full_name": u.full_name,
+                "email": u.email,
+                "phone": u.phone,
+            },
+            "unread_for_admin": ticket.status in ("open", "in_progress"),
+        }
+        for ticket, u in rows
+    ]
 
 
 @router.get("/admin/tickets/{ticket_id}")
@@ -248,7 +272,11 @@ async def admin_reply_ticket(
 @router.patch("/admin/tickets/{ticket_id}/resolve", response_model=SuccessResponse)
 async def admin_resolve_ticket(
     ticket_id: UUID,
-    body: dict,
+    # Optional. A bare `body: dict` made the JSON body REQUIRED, so the admin
+    # console's `api.patch(url)` with no payload got a 422 and the Mark
+    # Resolved button silently failed. Resolving without a note is a
+    # legitimate action — plenty of tickets are just answered in the thread.
+    body: TicketResolveRequest | None = None,
     admin: User = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ):
@@ -259,19 +287,33 @@ async def admin_resolve_ticket(
     if not ticket:
         raise HTTPException(404, "Ticket not found")
 
+    resolution = (body.resolution if body and body.resolution else "").strip()
+
     ticket.status = "resolved"
-    ticket.resolution = body.get("resolution", "")
+    ticket.resolution = resolution
+    ticket.resolved_at = datetime.now(timezone.utc)
     ticket.updated_at = datetime.now(timezone.utc)
 
-    # Save admin reply as a message
-    if body.get("resolution"):
-        msg = SupportMessage(
+    # Save the resolution note as a message so it appears in the thread the
+    # customer actually reads, not just in an admin-only column.
+    if resolution:
+        db.add(SupportMessage(
             ticket_id=ticket.id,
             sender_id=admin.id,
             sender_role="admin",
-            content=body["resolution"],
-        )
-        db.add(msg)
+            content=resolution,
+        ))
 
+    await db.commit()
+
+    from services.notifications import create_notification
+    await create_notification(
+        db=db,
+        user_id=ticket.user_id,
+        type="support_resolved",
+        title="Support ticket resolved",
+        body=resolution[:140] or "Your support ticket has been marked resolved.",
+        data={"ticket_id": str(ticket.id)},
+    )
     await db.commit()
     return SuccessResponse(message="Ticket resolved")

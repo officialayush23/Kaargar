@@ -1170,3 +1170,74 @@ class ContentTranslation(Base):
     text: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = now()
     updated_at: Mapped[datetime] = now()
+
+
+# ── 44. INSTANT CANCELLATIONS (pre-assignment) ────────────────
+class InstantCancellation(Base):
+    """
+    A customer cancelling an Instant job BEFORE a worker was assigned.
+
+    No penalty attaches — nobody has been inconvenienced yet, so charging for
+    it would be indefensible. This exists purely as product signal: right now
+    `cancel_job` takes a free-text reason and buries it on the refund record,
+    where nobody will ever aggregate it.
+
+    `reason_code` is a fixed vocabulary (see CANCEL_REASON_CODES in
+    services/cancellations.py) precisely so it IS aggregatable; free text alone
+    produces a thousand unique strings and answers nothing.
+    """
+    __tablename__ = "instant_cancellations"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    job_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("jobs.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(40), nullable=False)
+    reason_text: Mapped[str | None] = mapped_column(Text)
+
+    # Snapshotted so the signal survives the job changing or being deleted.
+    category_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("categories.id"))
+    service_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("services.id"))
+    quoted_price: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+
+    # The most useful number here: a cluster of cancels at ~30s means dispatch
+    # is too slow, not that the price is wrong.
+    seconds_searching: Mapped[int | None] = mapped_column(Integer)
+    workers_notified: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = now()
+
+
+# ── 45. PENALTY DUES (worker debt ledger) ─────────────────────
+class PenaltyDue(Base):
+    """
+    Money a worker owes for cancelling a job they had already accepted,
+    carried forward and settled out of their next payout.
+
+    KEYED ON PHONE **AND** EMAIL, not just worker_id. A debt attached only to a
+    worker_id evaporates the moment someone deletes their profile and signs up
+    again — which is exactly the behaviour a penalty system must not have.
+    `worker_id`/`user_id` are kept for joins and are ON DELETE SET NULL; the
+    contact columns are the durable identity that survives the account.
+
+    A LEDGER (one row per debt) rather than a balance column on
+    worker_profiles: a balance says what is owed, a ledger says *why*. Disputes
+    about money are guaranteed, and "your balance is ₹250" is not an answer.
+    """
+    __tablename__ = "penalty_dues"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    worker_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("worker_profiles.id", ondelete="SET NULL"))
+    user_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+
+    phone: Mapped[str] = mapped_column(String(20), nullable=False)
+    email: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    amount: Mapped[Decimal] = mapped_column(Numeric(10, 2), nullable=False)
+    reason: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(20), default="pending")  # pending|settled|waived
+
+    settled_against_job_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("jobs.id", ondelete="SET NULL"))
+    settled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    waived_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    waived_reason: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = now()

@@ -440,6 +440,12 @@ async def get_worker_detail(
         "categories": categories,
         "services": services,
         "reviews": reviews,
+        # Moderation state — so the admin can see WHY a rating looks low before
+        # deciding whether to restore it. Without these, avg_rating alone can't
+        # distinguish "bad reviews" from "standing penalty".
+        "rating_penalty_total": float(wp.rating_penalty_total or 0),
+        "cancellation_score": float(wp.cancellation_score or 1),
+        "consecutive_rejects": wp.consecutive_rejects or 0,
         # Mirrors recompute_worker_rating's source of truth so the admin can
         # spot a counter/rows mismatch (we hit exactly that once: rating_count
         # said 1 while the reviews table was empty).
@@ -1517,3 +1523,141 @@ async def unban_user(
     u.ban_reason = None
     await db.commit()
     return SuccessResponse(message="User unbanned")
+
+
+# ── WORKER MODERATION ─────────────────────────────────────────────────────────
+# Manual admin actions on a worker's standing. Deliberately built on the
+# EXISTING penalty machinery rather than a parallel one:
+#
+#   rating_penalty_total  — a standing deduction applied on top of the raw
+#                           review average by services.penalties
+#                           .recompute_worker_rating(). It survives new reviews
+#                           coming in, which a one-off "just lower avg_rating"
+#                           write would not (the next review would silently
+#                           erase it).
+#   cancellation_score    — multiplies into the instant-dispatch ranking in
+#                           services/matching.py, so lowering it demotes a
+#                           worker without hiding them outright.
+#   verification_status   — 'suspended' removes them from search, discovery,
+#                           recommendations, categories and dispatch, because
+#                           every one of those already filters on
+#                           `= 'approved'`. One switch, no new visibility rule
+#                           to drift out of sync.
+#
+# Every action requires a reason and is written to job_events-style audit via
+# an admin_action notification to the worker, so nothing here is silent.
+
+@router.post("/workers/{worker_id}/moderate", response_model=SuccessResponse)
+async def moderate_worker(
+    worker_id: str,
+    body: dict,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin moderation actions on a worker.
+
+    action:
+      restore_rating   — clear ALL standing rating penalties and recompute from
+                         reviews alone. This is the "they were penalised, it was
+                         wrong / they've improved" button.
+      restore_standing — restore_rating PLUS reset cancellation_score to 1.0 and
+                         lift a suspension. Full reinstatement.
+      penalise_rating  — add `amount` stars to rating_penalty_total (default 0.5)
+      demote           — reduce cancellation_score by `amount` (default 0.10),
+                         which lowers dispatch priority without hiding them
+      suspend          — hide from search/discovery/dispatch entirely
+      unsuspend        — back to approved
+
+    Why `restore_*` exists at all: penalties here are automatic (no-show,
+    cancellation) and automatic systems get it wrong. Without a way back, a
+    worker wrongly penalised is permanently demoted with no recourse, which is
+    both unfair and a support burden.
+    """
+    import uuid as _uuid
+    from decimal import Decimal as _D
+    from services.penalties import recompute_worker_rating
+
+    action = (body or {}).get("action")
+    reason = ((body or {}).get("reason") or "").strip()
+    amount = (body or {}).get("amount")
+
+    VALID = {
+        "restore_rating", "restore_standing", "penalise_rating",
+        "demote", "suspend", "unsuspend",
+    }
+    if action not in VALID:
+        raise HTTPException(422, f"action must be one of {sorted(VALID)}")
+
+    # A moderation action with no reason is unauditable — six months later
+    # nobody can tell a justified suspension from a misclick.
+    if not reason:
+        raise HTTPException(422, "A reason is required for every moderation action")
+
+    wp = (await db.execute(
+        select(WorkerProfile).where(WorkerProfile.id == _uuid.UUID(worker_id))
+    )).scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker not found")
+
+    notify_title = "Account update"
+    notify_body = reason
+
+    if action in ("restore_rating", "restore_standing"):
+        wp.rating_penalty_total = _D("0")
+        await recompute_worker_rating(db, wp)
+        notify_title = "Your rating has been restored"
+        notify_body = f"An admin restored your rating. {reason}"
+
+    if action == "restore_standing":
+        wp.cancellation_score = _D("1.00")
+        wp.consecutive_rejects = 0
+        if wp.verification_status == "suspended":
+            wp.verification_status = "approved"
+        notify_title = "Your account standing has been restored"
+        notify_body = f"You're fully reinstated and visible in search again. {reason}"
+
+    elif action == "penalise_rating":
+        step = _D(str(amount)) if amount is not None else _D("0.50")
+        wp.rating_penalty_total = (wp.rating_penalty_total or _D("0")) + step
+        # Recompute rather than writing avg_rating directly, so the penalty
+        # survives the next incoming review.
+        await recompute_worker_rating(db, wp)
+        notify_title = "A rating penalty was applied"
+        notify_body = f"A {step} star penalty was applied to your rating. Reason: {reason}"
+
+    elif action == "demote":
+        step = _D(str(amount)) if amount is not None else _D("0.10")
+        wp.cancellation_score = max(_D("0"), (wp.cancellation_score or _D("1.00")) - step)
+        notify_title = "Your dispatch priority was reduced"
+        notify_body = f"Reason: {reason}"
+
+    elif action == "suspend":
+        wp.verification_status = "suspended"
+        wp.status = "offline"
+        notify_title = "Your worker account has been suspended"
+        notify_body = f"You will not receive jobs. Reason: {reason}"
+
+    elif action == "unsuspend":
+        wp.verification_status = "approved"
+        notify_title = "Your worker account has been reinstated"
+        notify_body = reason
+
+    logger.info(
+        "ADMIN MODERATION worker=%s action=%s by=%s reason=%r",
+        worker_id, action, admin.id, reason,
+    )
+
+    from services.notifications import create_notification
+    await create_notification(
+        db=db,
+        user_id=wp.user_id,
+        type="admin_moderation",
+        title=notify_title,
+        body=notify_body,
+        data={"action": action},
+    )
+    # create_notification only flushes; get_db never commits on teardown.
+    await db.commit()
+
+    return SuccessResponse(message=f"Applied '{action}'")

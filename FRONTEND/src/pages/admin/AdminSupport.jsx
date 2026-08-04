@@ -3,7 +3,7 @@
  */
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { LifeBuoy, Search, AlertTriangle, CheckCircle, Clock, ChevronDown, ChevronUp } from 'lucide-react'
+import { LifeBuoy, Search, AlertTriangle, CheckCircle, Clock, ChevronDown, ChevronUp, Send } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatRelativeTime } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -45,23 +45,130 @@ function TicketCard({ ticket, onResolve, resolving }) {
         </div>
       </button>
 
-      {expanded && (
-        <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--card-border)' }}>
-          <p className="text-sm mt-3 leading-relaxed" style={{ color: 'var(--text-secondary)' }}>{ticket.description}</p>
-          {isOpen && (
-            <div className="flex justify-end mt-4">
-              <Button
-                onClick={() => onResolve(ticket.id)}
-                disabled={resolving}
-                style={{ background: '#22c55e', color: '#fff', height: 36, fontSize: 13 }}
-              >
-                <CheckCircle size={14} />
-                {resolving ? 'Resolving…' : 'Mark Resolved'}
-              </Button>
-            </div>
-          )}
+      {expanded && <TicketThread ticket={ticket} isOpen={isOpen} onResolve={onResolve} resolving={resolving} />}
+    </div>
+  )
+}
+
+
+/**
+ * The conversation itself — the thing that was missing.
+ *
+ * Before this, the ONLY admin action on a ticket was "Mark Resolved". A
+ * customer could open a ticket, write a message, and there was no way for
+ * anyone to answer them: the support "chat" only had one side. Resolving was
+ * the sole write path, so any reply also closed the ticket.
+ *
+ * Loads on expand (not with the list) so opening the queue doesn't fetch a
+ * thread for every ticket.
+ */
+function TicketThread({ ticket, isOpen, onResolve, resolving }) {
+  const qc = useQueryClient()
+  const [draft, setDraft] = useState('')
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['admin', 'support', 'thread', ticket.id],
+    queryFn: () => api.get(`/support/admin/tickets/${ticket.id}`).then(r => r.data),
+    refetchInterval: 15_000,
+  })
+
+  const replyMut = useMutation({
+    mutationFn: (content) => api.post(`/support/admin/tickets/${ticket.id}/messages`, { content }),
+    onSuccess: () => {
+      setDraft('')
+      qc.invalidateQueries(['admin', 'support', 'thread', ticket.id])
+      qc.invalidateQueries(['admin', 'support'])
+      toast.success('Reply sent')
+    },
+    onError: () => toast.error('Could not send reply'),
+  })
+
+  const messages = data?.messages || []
+  const requester = data?.requester
+
+  function send(e) {
+    e?.preventDefault()
+    const content = draft.trim()
+    if (!content || replyMut.isPending) return
+    replyMut.mutate(content)
+  }
+
+  return (
+    <div style={{ padding: '0 16px 16px', borderTop: '1px solid var(--card-border)' }}>
+      {requester && (
+        <p className="text-[11px] mt-3" style={{ color: 'var(--text-muted)' }}>
+          {requester.full_name || '—'} · {requester.email}{requester.phone ? ` · ${requester.phone}` : ''}
+        </p>
+      )}
+
+      {/* The opening message. Rendered as the first bubble rather than as a
+          separate description block — it IS the first thing they said. */}
+      <div className="mt-3 space-y-2" style={{ maxHeight: 320, overflowY: 'auto' }}>
+        <Bubble fromAdmin={false} text={ticket.description} at={ticket.created_at} />
+        {isLoading ? (
+          <Skeleton className="h-10 rounded-xl" style={{ background: 'var(--card-bg)' }} />
+        ) : (
+          messages.map(m => (
+            <Bubble key={m.id} fromAdmin={m.sender_role === 'admin'} text={m.content} at={m.created_at} />
+          ))
+        )}
+      </div>
+
+      <form onSubmit={send} className="flex items-end gap-2 mt-3">
+        <textarea
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) send(e) }}
+          placeholder="Reply to the customer…"
+          rows={2}
+          className="flex-1 text-sm rounded-xl px-3 py-2 resize-none"
+          style={{
+            background: 'var(--bg-surface)',
+            border: '1px solid var(--card-border)',
+            color: 'var(--text-primary)',
+            outline: 'none',
+          }}
+        />
+        <Button type="submit" disabled={!draft.trim() || replyMut.isPending}
+          style={{ height: 38, fontSize: 13 }}>
+          <Send size={14} />
+          {replyMut.isPending ? 'Sending…' : 'Send'}
+        </Button>
+      </form>
+
+      {isOpen && (
+        <div className="flex justify-end mt-3">
+          <Button
+            onClick={() => onResolve(ticket.id)}
+            disabled={resolving}
+            style={{ background: '#22c55e', color: '#fff', height: 34, fontSize: 12.5 }}
+          >
+            <CheckCircle size={14} />
+            {resolving ? 'Resolving…' : 'Mark Resolved'}
+          </Button>
         </div>
       )}
+    </div>
+  )
+}
+
+function Bubble({ fromAdmin, text, at }) {
+  return (
+    <div className={`flex ${fromAdmin ? 'justify-end' : 'justify-start'}`}>
+      <div
+        className="max-w-[80%] rounded-xl px-3 py-2"
+        style={{
+          background: fromAdmin ? 'var(--accent)' : 'var(--bg-surface)',
+          color: fromAdmin ? '#000' : 'var(--text-secondary)',
+          border: fromAdmin ? 'none' : '1px solid var(--card-border)',
+        }}
+      >
+        {fromAdmin && (
+          <p className="text-[9.5px] font-bold uppercase tracking-wide mb-0.5" style={{ opacity: 0.65 }}>Support</p>
+        )}
+        <p className="text-[13px] leading-relaxed whitespace-pre-wrap">{text}</p>
+        <p className="text-[10px] mt-1" style={{ opacity: 0.6 }}>{formatRelativeTime(at)}</p>
+      </div>
     </div>
   )
 }

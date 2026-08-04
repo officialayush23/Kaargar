@@ -27,7 +27,7 @@ from schemas import (
     JobCreate, JobResponse, JobCancel, SuccessResponse, ScheduledJobCreate,
     ScheduledJobReschedule, ScheduledJobResponse, SlotBookingCreate,
     JobItemReceiptCreate, JobItemReceiptResponse, JobApprovalSummary,
-    JobRejectRequest, JobOtpVerifyRequest, JobCompletionCodeResponse,
+    JobRejectRequest, JobReject, JobOtpVerifyRequest, JobCompletionCodeResponse,
     JobContactResponse, JobWorkerLocationResponse,
     JobNoShowReport, NoShowReportResponse, JobCustomerUnavailableFlag,
     MultiDayBookingCreate, JobBundleResponse,
@@ -464,6 +464,71 @@ async def get_worker_busy_dates(
     }
 
 
+# ⚠️ These two MUST stay above `@router.get("/{job_id}")`. FastAPI matches
+# in declaration order, so a literal path declared after the {param}
+# catch-all is never reached — it 422s trying to parse "cancel-reasons"
+# as a UUID. Exactly how /jobs/worker-busy-dates broke before.
+# ── CANCELLATION REASONS & PENALTY DUES ───────────────────────────────────────
+
+@router.get("/cancel-reasons")
+async def list_cancel_reasons():
+    """
+    The fixed reason list for pre-assignment Instant cancellations.
+
+    Served from the API rather than hardcoded in the app so the vocabulary can
+    change without shipping a build — and so web and mobile can't drift into
+    two different lists, which would quietly split the analytics this exists
+    to produce.
+    """
+    from services.cancellations import CANCEL_REASON_CODES
+    return {
+        "reasons": [
+            {"code": code, "label": label, "requires_text": code == "other"}
+            for code, label in CANCEL_REASON_CODES.items()
+        ]
+    }
+
+
+@router.get("/me/penalty-dues")
+async def my_penalty_dues(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    What this worker currently owes, and how many free cancellations remain.
+
+    `free_remaining` is returned even when nothing is owed — the worker should
+    be able to see the grace period BEFORE they burn it. A penalty that only
+    becomes visible once it's charged teaches nothing and reads as arbitrary.
+    """
+    from services.cancellations import (
+        outstanding_dues, FREE_CANCELLATIONS, count_prior_worker_cancellations,
+    )
+
+    dues = await outstanding_dues(db, user)
+
+    wp = (await db.execute(
+        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
+    )).scalar_one_or_none()
+    prior = await count_prior_worker_cancellations(db, wp) if wp else 0
+
+    return {
+        "total_owed": float(sum((d.amount for d in dues), Decimal("0"))),
+        "free_cancellations_total": FREE_CANCELLATIONS,
+        "free_cancellations_remaining": max(0, FREE_CANCELLATIONS - prior),
+        "dues": [
+            {
+                "id": str(d.id),
+                "amount": float(d.amount),
+                "reason": d.reason,
+                "job_id": str(d.job_id) if d.job_id else None,
+                "created_at": d.created_at.isoformat(),
+            }
+            for d in dues
+        ],
+    }
+
+
 @router.get("/{job_id}", response_model=JobResponse)
 async def get_job(
     job_id: uuid.UUID,
@@ -833,17 +898,29 @@ async def cancel_job(
         new_score = max(Decimal("0.00"), (wp.cancellation_score or Decimal("1.00")) - score_deduct)
         wp.cancellation_score = new_score
 
-        # Record penalty record (pending collection)
-        penalty_amount = await get_config(db, "penalty_worker_cancel_amount", Decimal("100.00"))
-        penalty = CancellationPenalty(
+        # Penalty: first two cancellations are FORGIVEN (and the worker is told
+        # how many remain), after which the charge is the job's whole base fare
+        # carried forward as a PenaltyDue and settled from their next payout.
+        # Replaces the old flat ₹100, which under-punished an abandoned ₹2000
+        # job and over-punished a ₹200 one.
+        from services.cancellations import apply_worker_cancellation_penalty
+        penalty_outcome = await apply_worker_cancellation_penalty(db, wp, user, job)
+
+        # CancellationPenalty is still written for EVERY cancellation, forgiven
+        # or not — it's what count_prior_worker_cancellations() counts, so the
+        # grace counter and the historical record can never disagree.
+        db.add(CancellationPenalty(
             job_id       = job.id,
             charged_to   = user.id,
             charged_role = "worker",
-            amount       = penalty_amount,
-            reason       = "Worker cancelled an assigned job",
-            status       = "pending",
-        )
-        db.add(penalty)
+            amount       = penalty_outcome["amount"],
+            reason       = (
+                "Worker cancelled an assigned job"
+                if penalty_outcome["charged"]
+                else "Worker cancelled an assigned job (forgiven — free cancellation)"
+            ),
+            status       = "pending" if penalty_outcome["charged"] else "waived",
+        ))
 
         # Reset worker to online (they were "busy")
         wp.status = "online"
@@ -906,6 +983,41 @@ async def cancel_job(
                     reason=f"Customer cancellation — repeat offense, {hours_to_arrival:.1f}h before arrival",
                     pct=repeat_offense_pct,
                 )
+
+    # ── Instant, cancelled BEFORE any worker was assigned ────────────────────
+    # No penalty (nobody has been inconvenienced), but capture WHY. Previously
+    # the reason was written only onto the refund record, where it could never
+    # be aggregated.
+    if not is_worker and job.worker_id is None and (job.job_type or "instant") == "instant":
+        from models import InstantCancellation
+        from services.cancellations import is_valid_reason_code
+
+        code = (getattr(body, "reason_code", None) or "").strip()
+        if not is_valid_reason_code(code):
+            code = "other"
+
+        seconds_searching = None
+        if job.created_at:
+            seconds_searching = int((now - job.created_at).total_seconds())
+
+        # sa_func, not func — `func` is aliased at the top of this module.
+        # JobWorkerRequest is imported locally, same pattern as elsewhere here.
+        from models import JobWorkerRequest as _JWR
+        workers_notified = int((await db.execute(
+            select(sa_func.count(_JWR.id)).where(_JWR.job_id == job.id)
+        )).scalar() or 0)
+
+        db.add(InstantCancellation(
+            job_id            = job.id,
+            user_id           = user.id,
+            reason_code       = code,
+            reason_text       = (body.reason or None),
+            category_id       = job.category_id,
+            service_id        = job.service_id,
+            quoted_price      = job.quoted_price,
+            seconds_searching = seconds_searching,
+            workers_notified  = workers_notified,
+        ))
 
     # ── Trigger refund if payment was held ────────────────────────────────────
     pay_result = await db.execute(select(Payment).where(Payment.job_id == job.id))
@@ -1032,7 +1144,9 @@ async def accept_job(
 @router.post("/{job_id}/reject", response_model=SuccessResponse)
 async def reject_job(
     job_id: uuid.UUID,
-    body: JobCancel,
+    # Optional body: declining an instant dispatch needs no reason, and the
+    # push-notification Decline button has no way to collect one.
+    body: JobReject | None = None,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1049,7 +1163,7 @@ async def reject_job(
         raise HTTPException(400, "No pending request")
 
     req.status = "rejected"
-    req.rejection_reason = body.reason[:50] if body.reason else None
+    req.rejection_reason = (body.reason[:50] if body and body.reason else None)
     req.responded_at = datetime.now(timezone.utc)
     await _recompute_acceptance_rate(db, wp)
 
