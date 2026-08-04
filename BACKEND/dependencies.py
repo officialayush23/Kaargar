@@ -105,6 +105,65 @@ async def require_worker(
     return user
 
 
+async def require_approved_worker(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """
+    Like require_worker, but the profile must be APPROVED.
+
+    THE DISTINCTION, and why both exist:
+
+      require_worker          — "you have a worker profile". Use for READ and
+                                self-service screens a PENDING worker must
+                                still reach: their own profile, documents,
+                                verification status, reapply. Locking those
+                                behind approval would trap someone in a state
+                                where they can't do the very thing that gets
+                                them approved.
+
+      require_approved_worker — "an admin has verified you". Use for anything
+                                that touches the marketplace: publishing
+                                services, packages, offers, availability and
+                                slots, going online, taking jobs.
+
+    Before this existed, `require_worker` checked only that a WorkerProfile row
+    EXISTED, and silently promoted `user.role` to 'worker' as a side effect —
+    so merely starting onboarding made an unverified account look and behave
+    like a working one. The money paths (dispatch, search, going online, job
+    acceptance) each carried their own `verification_status == 'approved'`
+    check, so nobody unapproved could actually be booked or paid; but
+    everything else — publishing services, creating packages and offers,
+    setting slots — was open. That's the gap this closes.
+    """
+    if user.role == "admin":
+        return user
+
+    result = await db.execute(
+        select(WorkerProfile.verification_status).where(WorkerProfile.user_id == user.id)
+    )
+    status = result.scalar_one_or_none()
+
+    if status is None:
+        raise HTTPException(status_code=403, detail="Worker access required")
+
+    if status != "approved":
+        # 403 with a status-specific message so the client can show the right
+        # thing rather than a generic "forbidden" — a rejected worker needs to
+        # be pointed at reapply, a pending one just needs to wait.
+        detail = {
+            "pending": "Your worker profile is still being verified. You'll be able to do this once approved.",
+            "rejected": "Your worker application was not approved. Update your profile and reapply.",
+            "suspended": "Your worker account is suspended. Contact support.",
+        }.get(status, "Your worker profile is not approved yet.")
+        raise HTTPException(status_code=403, detail=detail)
+
+    if user.role != "worker":
+        user.role = "worker"
+        await db.commit()
+    return user
+
+
 async def require_admin(user: User = Depends(get_current_user)) -> User:
     if user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")

@@ -39,7 +39,7 @@ from schemas import (
     TagResponse, TagCreate, ServiceTagsSet,
     ServiceCatalogResponse, WorkerAreaSet,
 )
-from dependencies import get_current_user
+from dependencies import get_current_user, require_approved_worker
 from services.storage import get_signed_url, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
 from services.translation import translate_and_store
 from services.config import get_config
@@ -345,7 +345,7 @@ async def get_my_areas(
 @router.put("/me/areas", response_model=WorkerAreaSet)
 async def set_my_areas(
     body: WorkerAreaSet,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """Full-replacement set of areas a worker serves. Strictly enforced at
@@ -519,7 +519,7 @@ async def get_my_services(
 async def create_service(
     body: ServiceCreate,
     background: BackgroundTasks,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -634,7 +634,7 @@ async def update_service(
     service_id: uuid.UUID,
     body: ServiceUpdate,
     background: BackgroundTasks,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -797,7 +797,7 @@ async def _regenerate_slots_background(service_id_str: str, wp_id_str: str, from
 @router.delete("/me/services/{service_id}", response_model=SuccessResponse)
 async def delete_service(
     service_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -839,7 +839,7 @@ async def list_tags(
 @router.post("/tags", response_model=TagResponse, status_code=201)
 async def create_tag(
     body: TagCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """Create a new tag (auto-slugify). Returns existing if slug already exists."""
@@ -861,7 +861,7 @@ async def create_tag(
 async def set_service_tags(
     service_id: uuid.UUID,
     body: ServiceTagsSet,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """Replace all tags on a service. Creates new tags on-the-fly from new_tag_names."""
@@ -1110,7 +1110,7 @@ async def get_my_packages(
 async def create_package(
     body: PackageCreate,
     background: BackgroundTasks,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     wp = await _get_worker_profile(user, db)
@@ -1165,7 +1165,7 @@ async def update_package(
     package_id: uuid.UUID,
     body: PackageUpdate,
     background: BackgroundTasks,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     wp = await _get_worker_profile(user, db)
@@ -1221,7 +1221,7 @@ async def update_package(
 @router.delete("/me/packages/{package_id}", response_model=SuccessResponse)
 async def delete_package(
     package_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     wp = await _get_worker_profile(user, db)
@@ -1258,7 +1258,7 @@ async def get_my_offers(
 async def create_offer(
     body: OfferCreate,
     background: BackgroundTasks,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     wp = await _get_worker_profile(user, db)
@@ -1309,7 +1309,7 @@ async def update_offer(
     offer_id: uuid.UUID,
     body: OfferUpdate,
     background: BackgroundTasks,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     wp = await _get_worker_profile(user, db)
@@ -1338,7 +1338,7 @@ async def update_offer(
 @router.delete("/me/offers/{offer_id}", response_model=SuccessResponse)
 async def delete_offer(
     offer_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     wp = await _get_worker_profile(user, db)
@@ -1360,6 +1360,9 @@ async def delete_offer(
 @router.post("/packages/{package_id}/order")
 async def purchase_package(
     package_id: uuid.UUID,
+    # NOT a worker endpoint despite living in workers.py — this is a CUSTOMER
+    # buying a worker's package. Gating it on worker approval would have
+    # blocked every package purchase in the app.
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1719,7 +1722,7 @@ async def get_my_availability(
 @router.put("/me/availability", response_model=list[WorkerAvailabilityResponse])
 async def set_availability(
     payload: list[WorkerAvailabilitySet],
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -1793,7 +1796,7 @@ async def get_my_time_off(
 @router.post("/me/time-off", response_model=WorkerTimeOffResponse, status_code=201)
 async def create_time_off(
     payload: WorkerTimeOffCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
@@ -1816,7 +1819,7 @@ async def create_time_off(
 @router.delete("/me/time-off/{toff_id}", response_model=SuccessResponse)
 async def delete_time_off(
     toff_id: uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     wp_result = await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))
@@ -1910,7 +1913,7 @@ async def get_slot_config(
 async def upsert_slot_config(
     service_id: uuid.UUID,
     body: SlotConfigCreate,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """Create or update slot configuration for a service. Also enables requires_slot on the service."""
@@ -2102,7 +2105,7 @@ async def _generate_slots_core(
 async def generate_slots(
     service_id: uuid.UUID,
     body: SlotGenerateRequest,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -2128,7 +2131,7 @@ async def block_slot(
     service_id: uuid.UUID,
     slot_id:    uuid.UUID,
     reason: str = Query("Blocked by worker"),
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """Block a slot so it can't be booked."""
@@ -2150,7 +2153,7 @@ async def block_slot(
 async def unblock_slot(
     service_id: uuid.UUID,
     slot_id:    uuid.UUID,
-    user: User = Depends(get_current_user),
+    user: User = Depends(require_approved_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """Unblock a slot, making it bookable again."""
