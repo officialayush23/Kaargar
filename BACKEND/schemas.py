@@ -676,13 +676,32 @@ class JobCompletionCodeResponse(BaseModel):
 
 class JobContactResponse(BaseModel):
     """
-    Never carries a plaintext phone number. `iv`/`ciphertext` are AES-256-GCM
-    output (base64) decryptable only with the shared PHONE_CALL_CIPHER_KEY /
-    VITE_PHONE_CALL_KEY — see services/crypto.py.
+    Phone delivery for the "Call" button. Masked WHEN POSSIBLE.
+
+    Preferred path: `iv`/`ciphertext` are AES-256-GCM output (base64),
+    decryptable only with the shared PHONE_CALL_CIPHER_KEY /
+    VITE_PHONE_CALL_KEY / EXPO_PUBLIC_PHONE_CALL_KEY — see services/crypto.py.
+
+    Fallback path: if that key is NOT configured, `phone` carries the plain
+    number and iv/ciphertext are empty. This is a deliberate product decision
+    (calling working matters more than masking in the current stage) but it IS
+    a downgrade, and worth being explicit about what's lost:
+
+      - the number appears in API responses, so it's visible in any network
+        inspector and in anything that logs response bodies;
+      - it can end up in server/proxy access logs.
+
+    It does NOT change what the recipient sees — masking never hid the number
+    from the dialer or call log; that needs a telephony provider. So the
+    exposure is to infrastructure, not to the other party.
+
+    Set PHONE_CALL_CIPHER_KEY (base64, exactly 32 bytes) to re-enable masking;
+    no code change needed, the encrypted path resumes automatically.
     """
     name: Optional[str] = None
-    iv: str
-    ciphertext: str
+    iv: str = ""
+    ciphertext: str = ""
+    phone: Optional[str] = None
 
 
 class JobWorkerLocationResponse(BaseModel):

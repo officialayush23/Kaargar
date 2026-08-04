@@ -587,23 +587,30 @@ async def get_job_contact(
     if not row or not row.phone:
         raise HTTPException(404, "Phone number not available")
 
+    # ── Mask if we can, don't block the call if we can't ──────────────────────
+    # Product decision: masking is a nice-to-have, calling is the feature.
+    # `services/crypto._get_key()` raises RuntimeError when
+    # PHONE_CALL_CIPHER_KEY is unset or doesn't decode to exactly 32 bytes;
+    # previously that became an opaque 500 and the Call button just failed.
+    #
+    # Now the key's presence is what decides:
+    #   key present -> encrypted iv/ciphertext, `phone` omitted (masked)
+    #   key absent  -> plain `phone`, iv/ciphertext empty (unmasked)
+    #
+    # Logged at WARNING (not ERROR) because it's now an expected,
+    # configuration-driven mode rather than a failure — but still worth
+    # noticing in logs, since it means numbers are travelling in the clear.
     from services.crypto import encrypt_phone
     try:
         enc = encrypt_phone(row.phone)
+        return JobContactResponse(name=row.full_name, iv=enc["iv"], ciphertext=enc["ciphertext"])
     except RuntimeError as exc:
-        # services/crypto._get_key() raises RuntimeError when
-        # PHONE_CALL_CIPHER_KEY is unset or doesn't decode to exactly 32
-        # bytes. Unhandled, that surfaced as an opaque 500 and the client
-        # showed a generic "Could not get the worker's number right now" —
-        # giving no hint that the cause is a missing/mis-sized env var rather
-        # than a missing phone number or a permissions problem.
-        logger.error("Phone encryption failed for job %s: %s", job_id, exc)
-        raise HTTPException(
-            503,
-            "Calling is temporarily unavailable — the phone-masking key is not "
-            "configured correctly on the server. Use chat in the meantime.",
+        logger.warning(
+            "PHONE_CALL_CIPHER_KEY unusable (%s) — returning the number unmasked for job %s. "
+            "Set a base64 32-byte key to re-enable masking.",
+            exc, job_id,
         )
-    return JobContactResponse(name=row.full_name, iv=enc["iv"], ciphertext=enc["ciphertext"])
+        return JobContactResponse(name=row.full_name, phone=row.phone)
 
 
 @router.get("/{job_id}/worker-location", response_model=JobWorkerLocationResponse)
