@@ -26,7 +26,7 @@ from models import (
     Category, Tag, ServiceTag, WorkerLocation, ServiceMedia,
 )
 from schemas import SearchResult, SearchResponseWrapper
-from dependencies import get_current_user
+from dependencies import get_current_user, get_optional_user
 from services.config import get_config
 from decimal import Decimal
 
@@ -461,6 +461,9 @@ async def recommendations(
 async def trending_services(
     limit: int = Query(12, le=20),
     db: AsyncSession = Depends(get_db),
+    # Optional, same reasoning as browse_workers — keeps the endpoint public
+    # while still hiding the viewer's own listings when signed in.
+    user=Depends(get_optional_user),
 ):
     """
     Trending SERVICES (not workers) for the Discovery home "Trending" section.
@@ -481,6 +484,8 @@ async def trending_services(
         .join(Category, Category.id == Service.category_id)
         .where(Service.is_active == True)
         .where(WorkerProfile.verification_status == "approved")
+        # Hide the viewer's own services from Trending (dual-role accounts).
+        .where(WorkerProfile.user_id != user.id if user is not None else True)
         .order_by(Service.total_bookings.desc(), Service.avg_rating.desc())
         .limit(limit)
     )).all()
@@ -513,6 +518,11 @@ async def browse_workers(
     lon: Optional[float] = Query(None),
     page: int = Query(1, ge=1),
     db: AsyncSession = Depends(get_db),
+    # get_optional_user, NOT get_current_user: this endpoint is currently
+    # reachable without auth and turning it auth-only would be a behaviour
+    # change beyond hiding your own card. When signed out `user` is None and
+    # nothing is filtered.
+    user=Depends(get_optional_user),
 ):
     offset = (page - 1) * 20
     q = (
@@ -521,6 +531,10 @@ async def browse_workers(
         .where(WorkerProfile.verification_status == "approved")
         .where(WorkerProfile.is_discovery_available == True)
     )
+
+    # Hide the viewer's own profile from Discovery browse (dual-role accounts).
+    if user is not None:
+        q = q.where(WorkerProfile.user_id != user.id)
 
     if category:
         from models import WorkerCategory, Category as CatModel
