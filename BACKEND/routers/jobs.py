@@ -352,6 +352,13 @@ async def frequently_booked(
         .join(CatModel, CatModel.id == Service.category_id)
         .where(Service.id.in_(service_ids))
         .where(WP.id.in_(worker_ids))
+        # Never surface the viewer's own listing. This endpoint was missed in
+        # the first self-exclusion pass (which covered search, recommendations,
+        # browse and trending) — it lives in jobs.py rather than search.py, so
+        # a grep of search.py didn't reveal it. It powers Discovery's
+        # "Frequently booked" row, which is where Ayush could still see
+        # himself.
+        .where(WP.user_id != user.id)
     )).all()
     detail_map = {(wp.id, svc.id): (svc, wp, u, cat) for svc, wp, u, cat in detail_rows}
 
