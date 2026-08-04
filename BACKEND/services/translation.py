@@ -108,9 +108,9 @@ async def translate_text(text: str, target_lang: str) -> str:
 
 
 SARVAM_TRANSLATE_URL = "https://api.sarvam.ai/translate"
-# Sarvam's mayura:v1 model caps input at 1000 chars; service/package titles
-# and descriptions are short, so this is generous headroom, not a real limit.
-SARVAM_MAX_CHARS = 1000
+# sarvam-translate:v1 caps input at 2000 chars (mayura:v1 is 1000). UI strings
+# and service/package copy are far shorter, so this is headroom, not a limit.
+SARVAM_MAX_CHARS = 2000
 
 
 async def _call_sarvam(text: str, target_lang: str) -> str:
@@ -138,7 +138,16 @@ async def _call_sarvam(text: str, target_lang: str) -> str:
                 },
                 json={
                     "input": text,
-                    "source_language_code": "auto",
+                    # "en-IN", NOT "auto". Per Sarvam's docs, automatic source
+                    # detection ("auto") is a **mayura:v1-only** feature — this
+                    # request uses sarvam-translate:v1, for which "auto" isn't a
+                    # valid enum value, so every call 400'd. translate_text
+                    # degrades by returning its input unchanged, so the failure
+                    # was completely silent and the "translations" written to
+                    # content_translations were untranslated English.
+                    # We always translate FROM English here, so there is nothing
+                    # to detect anyway.
+                    "source_language_code": "en-IN",
                     "target_language_code": SARVAM_LANG_CODES[target_lang],
                     "model": "sarvam-translate:v1",
                     "mode": "formal",
