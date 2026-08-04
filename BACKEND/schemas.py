@@ -1462,3 +1462,16 @@ class WorkerOnboardingPublish(WorkerProfileCreate):
     services: list[ServiceCreate] = []
     instant_area_ids: list[UUID] = []
     availability: list[WorkerAvailabilitySet] = []
+    # Identity documents and the intro video, uploaded to Storage BEFORE the
+    # profile exists (both /upload endpoints allow that deliberately) and
+    # registered here, in the same transaction that creates the profile.
+    #
+    # They have to be registered here because a `worker_documents` row needs a
+    # worker_id. `POST /upload/verification-video` tries to create one itself
+    # but guards on `if wp:` — during onboarding there IS no profile yet, so it
+    # silently skipped, and `POST /upload/document` never registered at all
+    # (its docstring defers to "later registration via POST /workers/documents",
+    # which the mobile client never called). Net effect: files sat orphaned in
+    # the buckets and admin's verification queue showed "No documents uploaded
+    # yet" for every worker.
+    documents: list[DocumentUpload] = []

@@ -23,7 +23,7 @@ from models import (
     Package, PackageService as PackageServiceModel, Offer, PackageOrder,
     WorkerAvailability, WorkerTimeOff, WorkerScheduleBlock,
     ServiceSlotConfig, ServiceSlot, Tag, ServiceTag, ServiceCatalog,
-    PuneArea, WorkerArea,
+    PuneArea, WorkerArea, WorkerDocument,
 )
 from schemas import (
     WorkerProfileCreate, WorkerProfileUpdate, WorkerProfileResponse, WorkerOnboardingPublish,
@@ -154,6 +154,22 @@ async def create_profile(
         except HTTPException as exc:
             label = (item.title or "service").strip()
             raise HTTPException(exc.status_code, f"{label}: {exc.detail}") from exc
+
+    # ── Identity documents + intro video ──────────────────────────────────
+    # Files are already in Storage; this is what makes them VISIBLE to admin.
+    # Bucket is inferred from the type so the signed-URL lookup in
+    # routers/admin.py resolves against the right one.
+    for doc in body.documents:
+        doc_type = (doc.type or "").strip().lower()
+        if not doc_type or not doc.cloudinary_id:
+            continue
+        db.add(WorkerDocument(
+            worker_id=wp.id,
+            type=doc_type,
+            cloudinary_url=doc.cloudinary_url,
+            cloudinary_id=doc.cloudinary_id.lstrip("/"),
+            file_size_kb=doc.file_size_kb,
+        ))
 
     # ── Weekly availability ───────────────────────────────────────────────
     from datetime import time as _time
