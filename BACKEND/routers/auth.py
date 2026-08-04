@@ -35,7 +35,7 @@ from sqlalchemy import select
 from database import get_db
 from models import User, WorkerProfile
 from schemas import UserResponse, SuccessResponse
-from dependencies import get_current_user
+from dependencies import get_current_user, user_response_with_prefs
 from config import get_settings
 
 settings = get_settings()
@@ -131,7 +131,7 @@ async def provision_user(
 
     await db.commit()
     await db.refresh(user)
-    return UserResponse.model_validate(user)
+    return await user_response_with_prefs(db, user)
 
 
 @router.get("/me", response_model=UserResponse)
@@ -152,7 +152,7 @@ async def get_me(
 
     await db.commit()
     await db.refresh(user)
-    return UserResponse.model_validate(user)
+    return await user_response_with_prefs(db, user)
 
 
 @router.post("/logout", response_model=SuccessResponse)

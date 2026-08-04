@@ -784,6 +784,15 @@ class UserPreference(Base):
     top_categories: Mapped[dict] = mapped_column(JSONB, default=[])
     top_tags: Mapped[dict] = mapped_column(JSONB, default=[])
     preferred_mode: Mapped[str | None] = mapped_column(String(20), default="instant")
+    # UI preferences — see migration 20260825_prefs_ui for why these live on
+    # the user rather than in device storage.
+    #
+    # `active_mode` ('customer' | 'worker') is NOT `preferred_mode`
+    # ('instant' | 'discovery'). Different questions, deliberately different
+    # names: preferred_mode is how a customer likes to book, active_mode is
+    # which side of the app they are currently using.
+    language: Mapped[str] = mapped_column(String(5), default="en", server_default="en")
+    active_mode: Mapped[str] = mapped_column(String(16), default="customer", server_default="customer")
     home_lat: Mapped[Decimal | None] = mapped_column(Numeric(10, 8))
     home_lon: Mapped[Decimal | None] = mapped_column(Numeric(11, 8))
     home_address: Mapped[str | None] = mapped_column(Text)

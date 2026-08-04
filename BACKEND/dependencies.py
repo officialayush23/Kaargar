@@ -195,3 +195,31 @@ def get_optional_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(HTTPBearer(auto_error=False)),
 ):
     return credentials
+
+
+async def user_response_with_prefs(db: AsyncSession, user: User) -> "UserResponse":
+    """
+    Serialise a User together with their UI preferences (language, active_mode).
+
+    Exists because `UserResponse.model_validate(user)` silently succeeds without
+    them: `language` and `active_mode` live on `user_preferences`, not on the
+    User row, and both fields have defaults on the schema — so every response
+    would have quietly claimed "en"/"customer" forever, and the client would
+    never learn the user's real choice. A wrong-but-valid payload is the worst
+    kind, so this is centralised rather than repeated at the four call sites
+    (/auth/provision, /auth/me, /users/me, PATCH /users/me).
+
+    A user with no preferences row yet is normal (the row is created lazily on
+    first write), and the schema defaults are correct for that case.
+    """
+    from models import UserPreference
+    from schemas import UserResponse
+
+    payload = UserResponse.model_validate(user)
+    prefs = (await db.execute(
+        select(UserPreference).where(UserPreference.user_id == user.id)
+    )).scalar_one_or_none()
+    if prefs:
+        payload.language = prefs.language or "en"
+        payload.active_mode = prefs.active_mode or "customer"
+    return payload

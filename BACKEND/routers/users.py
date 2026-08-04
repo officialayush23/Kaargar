@@ -15,15 +15,18 @@ from sqlalchemy import select
 from database import get_db
 from models import User, UserPreference
 from schemas import UserResponse, UserUpdate, SuccessResponse
-from dependencies import get_current_user
+from dependencies import get_current_user, user_response_with_prefs
 
 router = APIRouter()
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_me(user: User = Depends(get_current_user)):
-    """Return the current authenticated user."""
-    return user
+async def get_me(
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return the current authenticated user, with UI preferences attached."""
+    return await user_response_with_prefs(db, user)
 
 
 @router.patch("/me", response_model=UserResponse)
@@ -35,14 +38,14 @@ async def update_me(
     """Update mutable profile fields."""
     updates = body.model_dump(exclude_none=True)
     if not updates:
-        return user
+        return await user_response_with_prefs(db, user)
 
     for field, value in updates.items():
         setattr(user, field, value)
 
     await db.commit()
     await db.refresh(user)
-    return user
+    return await user_response_with_prefs(db, user)
 
 
 @router.put("/me/preferences", response_model=SuccessResponse)
@@ -68,6 +71,22 @@ async def update_preferences(
     for k, v in body.items():
         if k in allowed:
             setattr(prefs, k, v)
+
+    # UI preferences are validated against a fixed set rather than allow-listed
+    # by key alone. This endpoint takes an untyped `dict`, so without this a
+    # client could write any string into `language` and every subsequent
+    # translate call would ask Sarvam for a language that doesn't exist.
+    if "language" in body:
+        lang = str(body["language"]).strip().lower()
+        if lang not in {"en", "hi", "mr"}:
+            raise HTTPException(400, "Unsupported language")
+        prefs.language = lang
+
+    if "active_mode" in body:
+        mode = str(body["active_mode"]).strip().lower()
+        if mode not in {"customer", "worker"}:
+            raise HTTPException(400, "Invalid mode")
+        prefs.active_mode = mode
 
     await db.commit()
     return SuccessResponse(message="Preferences updated")

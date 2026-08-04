@@ -46,6 +46,12 @@ class UserResponse(KaargarBase):
     role: str
     referral_code: Optional[str] = None
     created_at: datetime
+    # UI preferences, carried on the user payload rather than needing a second
+    # request. The client already fetches this on every launch (GET /auth/me),
+    # so language arrives with the account and cannot be inherited from
+    # whoever used the phone last. Defaults keep older clients working.
+    language: str = "en"
+    active_mode: str = "customer"
 
 
 class UserUpdate(BaseModel):
