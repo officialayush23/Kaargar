@@ -4,6 +4,8 @@ Jobs router — create, status transitions, lifecycle endpoints.
 
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks, Query, UploadFile, File, Body
 from sqlalchemy.ext.asyncio import AsyncSession
+import logging
+
 from sqlalchemy import select, delete, func as sa_func, text
 # `array` builds a real Postgres ARRAY literal for JSONB `has_any` (the `?|`
 # operator) in the worker double-booking guard below.
@@ -44,6 +46,7 @@ from services.penalties import (
 from services.config import get_config
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 def _make_geom(lon: float, lat: float):
@@ -585,7 +588,21 @@ async def get_job_contact(
         raise HTTPException(404, "Phone number not available")
 
     from services.crypto import encrypt_phone
-    enc = encrypt_phone(row.phone)
+    try:
+        enc = encrypt_phone(row.phone)
+    except RuntimeError as exc:
+        # services/crypto._get_key() raises RuntimeError when
+        # PHONE_CALL_CIPHER_KEY is unset or doesn't decode to exactly 32
+        # bytes. Unhandled, that surfaced as an opaque 500 and the client
+        # showed a generic "Could not get the worker's number right now" —
+        # giving no hint that the cause is a missing/mis-sized env var rather
+        # than a missing phone number or a permissions problem.
+        logger.error("Phone encryption failed for job %s: %s", job_id, exc)
+        raise HTTPException(
+            503,
+            "Calling is temporarily unavailable — the phone-masking key is not "
+            "configured correctly on the server. Use chat in the meantime.",
+        )
     return JobContactResponse(name=row.full_name, iv=enc["iv"], ciphertext=enc["ciphertext"])
 
 
