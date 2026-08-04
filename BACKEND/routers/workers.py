@@ -26,7 +26,7 @@ from models import (
     PuneArea, WorkerArea,
 )
 from schemas import (
-    WorkerProfileCreate, WorkerProfileUpdate, WorkerProfileResponse,
+    WorkerProfileCreate, WorkerProfileUpdate, WorkerProfileResponse, WorkerOnboardingPublish,
     WorkerPublicResponse, WorkerStatusUpdate, WorkerLocationUpdate,
     WorkerDocumentResponse, DocumentUpload, ServiceCreate, ServiceUpdate,
     ServiceResponse, WorkerAnalyticsResponse, SuccessResponse,
@@ -77,10 +77,33 @@ async def get_my_profile(
 
 @router.post("/profile", response_model=WorkerProfileResponse)
 async def create_profile(
-    body: WorkerProfileCreate,
+    body: WorkerOnboardingPublish,
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Publish a worker profile — ATOMICALLY, including services, Instant coverage
+    areas and the weekly schedule.
+
+    WHY THIS TAKES EVERYTHING AT ONCE
+    ---------------------------------
+    Onboarding used to be four sequential calls from the client: create the
+    profile, then set areas, then POST each service, then set availability.
+    Every call after the first could fail independently, and the client wrapped
+    them in empty `catch {}` blocks — so a worker saw "Profile published!" while
+    their services, coverage areas and schedule silently saved nothing.
+
+    Making the client report those failures more honestly would have been the
+    wrong fix. "We saved your profile but not your services, please re-enter
+    them" is still data loss, just politely announced. The right fix is that a
+    partial outcome cannot happen: one request, one transaction. If any part is
+    invalid, NOTHING is written and the worker is told which field to correct
+    while they are still in the wizard looking at it.
+
+    Backwards compatible: every new field defaults to empty, so the web
+    frontend's existing profile-only payload behaves exactly as before.
+    """
     existing = await db.execute(
         select(WorkerProfile).where(WorkerProfile.user_id == user.id)
     )
@@ -102,9 +125,59 @@ async def create_profile(
 
     for cat_id in body.category_ids:
         db.add(WorkerCategory(worker_id=wp.id, category_id=cat_id))
+    # Categories must be visible to _build_service's "you can only list a
+    # service under a profession you've registered for" check, which queries
+    # WorkerCategory. They're in this transaction but not yet flushed.
+    await db.flush()
+
+    # ── Instant coverage areas ────────────────────────────────────────────
+    if body.instant_area_ids:
+        valid_ids = set((await db.execute(
+            select(PuneArea.id).where(
+                PuneArea.id.in_(body.instant_area_ids), PuneArea.is_active == True
+            )
+        )).scalars().all())
+        if len(valid_ids) != len(set(body.instant_area_ids)):
+            raise HTTPException(400, "One or more coverage areas are invalid or inactive")
+        for area_id in set(body.instant_area_ids):
+            db.add(WorkerArea(worker_id=wp.id, area_id=area_id))
+
+    # ── Services ──────────────────────────────────────────────────────────
+    # Errors from _build_service are already worker-readable ("Minimum price
+    # for Fan Repair is Rs 250. You entered Rs 180."). Prefixing with the
+    # service name so the wizard can point at the right row when several are
+    # being published at once.
+    built_services: list[Service] = []
+    for item in body.services:
+        try:
+            built_services.append(await _build_service(db, wp, item))
+        except HTTPException as exc:
+            label = (item.title or "service").strip()
+            raise HTTPException(exc.status_code, f"{label}: {exc.detail}") from exc
+
+    # ── Weekly availability ───────────────────────────────────────────────
+    from datetime import time as _time
+    for item in body.availability:
+        try:
+            t_start = _time.fromisoformat(item.start_time)
+            t_end = _time.fromisoformat(item.end_time)
+        except ValueError:
+            raise HTTPException(400, f"Invalid time on day {item.day_of_week}")
+        db.add(WorkerAvailability(
+            worker_id=wp.id,
+            day_of_week=item.day_of_week,
+            start_time=t_start,
+            end_time=t_end,
+            is_open=item.is_open,
+        ))
 
     await db.commit()
     await db.refresh(wp)
+
+    for svc in built_services:
+        await db.refresh(svc)
+        _queue_service_translation(background, svc)
+
     return wp
 
 
@@ -515,20 +588,21 @@ async def get_my_services(
     return responses
 
 
-@router.post("/me/services", response_model=ServiceResponse)
-async def create_service(
-    body: ServiceCreate,
-    background: BackgroundTasks,
-    user: User = Depends(require_worker),
-    db: AsyncSession = Depends(get_db),
-):
-    result = await db.execute(
-        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
-    )
-    wp = result.scalar_one_or_none()
-    if not wp:
-        raise HTTPException(404, "Worker profile not found")
-        
+async def _build_service(db: AsyncSession, wp: WorkerProfile, body: ServiceCreate) -> Service:
+    """
+    Validate a service payload and return an unsaved `Service` attached to `wp`.
+
+    DOES NOT COMMIT — the caller owns the transaction. That is the whole point:
+    `POST /me/services` commits one service, while onboarding's atomic publish
+    (`POST /profile`) builds several of these plus areas and availability and
+    commits them together, so a worker can never end up half-published.
+
+    Extracted rather than duplicated because this carries four separate
+    integrity rules (profession ownership, catalog/category match, price floor,
+    mutually-exclusive booking modes). A second copy of that in the onboarding
+    path would drift, and the failure mode of drift here is a worker being
+    dispatched for a profession they were never verified for.
+    """
     # Get the payload as a dictionary, ignoring None values
     dump = body.model_dump(exclude_none=True)
     
@@ -617,16 +691,36 @@ async def create_service(
 
     svc = Service(worker_id=wp.id, **dump)
     db.add(svc)
-    await db.commit()
-    await db.refresh(svc)
+    return svc
 
-    # Translate title + description to hi & mr in background (no latency)
+
+def _queue_service_translation(background: BackgroundTasks, svc: Service) -> None:
+    """Translate title + description to hi & mr in background (no latency)."""
     fields = {}
     if svc.title:       fields["title"] = svc.title
     if svc.description: fields["description"] = svc.description
     if fields:
         background.add_task(translate_and_store, "service", str(svc.id), fields)
 
+
+@router.post("/me/services", response_model=ServiceResponse)
+async def create_service(
+    body: ServiceCreate,
+    background: BackgroundTasks,
+    user: User = Depends(require_worker),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
+    )
+    wp = result.scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+
+    svc = await _build_service(db, wp, body)
+    await db.commit()
+    await db.refresh(svc)
+    _queue_service_translation(background, svc)
     return svc
 
 @router.patch("/me/services/{service_id}", response_model=ServiceResponse)

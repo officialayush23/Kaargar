@@ -1437,3 +1437,28 @@ class UserAddressResponse(KaargarBase):
     updated_at: datetime
 
     model_config = ConfigDict(from_attributes=True)
+
+# ── WORKER ONBOARDING: ONE ATOMIC PUBLISH ─────────────────────────────────────
+#
+# Defined down here rather than beside WorkerProfileCreate purely for ordering:
+# it references ServiceCreate (line ~239) and WorkerAvailabilitySet (~1051),
+# both of which are declared after it. Subclassing at the bottom avoids
+# forward-ref/model_rebuild() gymnastics.
+#
+# WHY IT EXISTS
+# -------------
+# Onboarding is ONE act from the worker's point of view — they fill in a wizard
+# and press Publish. It used to be four sequential HTTP calls (profile, areas,
+# each service, availability), which meant a partial success was possible, and
+# a partial success is not something you can report nicely: "we saved your
+# profile but not your services, please re-enter them" is a failure with extra
+# steps. Accepting the whole thing in one request lets the server commit it in
+# ONE transaction, so the outcome is all-or-nothing and there is nothing to
+# apologise for.
+#
+# Every field is optional and defaults empty, so the existing web frontend's
+# WorkerProfileCreate-shaped payload still validates unchanged.
+class WorkerOnboardingPublish(WorkerProfileCreate):
+    services: list[ServiceCreate] = []
+    instant_area_ids: list[UUID] = []
+    availability: list[WorkerAvailabilitySet] = []
