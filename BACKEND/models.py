@@ -1176,7 +1176,23 @@ class ContentTranslation(Base):
     entity_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
     language: Mapped[str] = mapped_column(String(5), nullable=False)     # 'en' | 'hi' | 'mr'
     field: Mapped[str] = mapped_column(String(50), nullable=False)       # e.g. 'title', 'description'
-    text: Mapped[str] = mapped_column(Text, nullable=False)
+    text: Mapped[str] = mapped_column(Text, nullable=False)              # machine translation
+    # ── Human override (migration 20260826_tx_override) ──────────────────
+    # `manual_text` wins over `text` when present. The machine translation is
+    # deliberately kept rather than overwritten, so an override can be undone
+    # without re-paying Sarvam, and so it's visible what was corrected.
+    #
+    # `source_text` is the English the row was translated FROM. UI rows key on
+    # uuid5(namespace, english), which is one-way — without this column a row
+    # cannot be traced back to its source, which makes both an admin editor and
+    # delta sync impossible. Nullable because pre-existing rows can't be
+    # backfilled; routers/translate.py fills them in as requests come through.
+    source_text: Mapped[str | None] = mapped_column(Text)
+    manual_text: Mapped[str | None] = mapped_column(Text)
+    manual_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    )
+    manual_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = now()
     updated_at: Mapped[datetime] = now()
 

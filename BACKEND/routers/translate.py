@@ -34,7 +34,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database import get_db
@@ -116,8 +116,20 @@ async def translate_ui(
     out: dict[str, str] = {}
     for row in rows:
         src = by_id.get(row.entity_id)
-        if src:
-            out[src] = row.text
+        if not src:
+            continue
+        # A human override always beats the machine translation. The machine
+        # text is kept in `text` so an override can be reverted without
+        # re-paying Sarvam.
+        out[src] = row.manual_text or row.text
+        # Opportunistic backfill: this request carries the English source, and
+        # rows written before `source_text` existed have no way to recover it
+        # (entity_id is a one-way uuid5 of the text). Filling it here closes the
+        # gap as the app is used, instead of a migration that cannot know the
+        # answer. Deliberately does not touch updated_at semantics beyond the
+        # normal flush — see the commit below.
+        if row.source_text is None:
+            row.source_text = src
 
     # 2. Misses go to Sarvam (which has its own Redis layer in front of it).
     misses = [s for s in strings if s not in out]
@@ -144,9 +156,128 @@ async def translate_ui(
             language=lang,
             field=FIELD,
             text=translated,
+            source_text=src,
         ))
 
-    if misses:
+    # Commit if there were misses to persist OR if the loop above backfilled a
+    # `source_text` on an existing row. Gating this on `misses` alone (as it
+    # was) would silently discard every backfill on a request that was a
+    # complete cache hit — which is the common case, so the column would have
+    # stayed empty almost forever.
+    if misses or db.dirty:
         await db.commit()
 
     return UITranslateResponse(lang=lang, translations=out)
+
+
+# ── DELTA SYNC ────────────────────────────────────────────────────────────────
+#
+# Lets a client hold its dictionary in local storage and ask "has anything
+# changed?" for the price of one tiny request, instead of either re-fetching
+# everything on launch or never learning about corrections at all.
+#
+# WHY max(updated_at) AND NOT A VERSION TABLE
+# A `translation_versions(language, version)` row would have to be bumped on
+# every write — a second thing to keep correct, and a new way for the version
+# to disagree with the rows it describes. `max(updated_at)` IS that number,
+# derived from the data itself, and it gives `WHERE updated_at > :since` for
+# free. Served as epoch milliseconds so the client can store a plain integer.
+#
+# Realtime is deliberately NOT used. Polling one integer on launch and on
+# foreground is enough for "a corrected string reaches phones within a
+# session", and it costs no socket, no subscription and no RLS surface.
+
+
+class TranslationVersionResponse(BaseModel):
+    lang: str
+    version: int
+
+
+class TranslationSyncResponse(BaseModel):
+    lang: str
+    version: int
+    translations: dict[str, str]
+    truncated: bool = False
+
+
+# Bounds one sync response. A client that is further behind than this simply
+# syncs again — `version` in the reply is the high-water mark of what was
+# actually sent, so the next call resumes from exactly there.
+SYNC_PAGE = 500
+
+
+def _version_ms(value) -> int:
+    return int(value.timestamp() * 1000) if value else 0
+
+
+@router.get("/version", response_model=TranslationVersionResponse)
+async def translation_version(
+    lang: str,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Cheapest possible "is my dictionary stale?" probe."""
+    lang = (lang or "").strip().lower()
+    if lang not in SUPPORTED_LANGS:
+        raise HTTPException(422, f"Unsupported language '{lang}'")
+
+    newest = await db.scalar(
+        select(func.max(ContentTranslation.updated_at)).where(
+            ContentTranslation.entity_type == ENTITY_TYPE,
+            ContentTranslation.language == lang,
+        )
+    )
+    return TranslationVersionResponse(lang=lang, version=_version_ms(newest))
+
+
+@router.get("/sync", response_model=TranslationSyncResponse)
+async def translation_sync(
+    lang: str,
+    since: int = 0,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Everything that changed after `since` (epoch ms). `since=0` returns the
+    whole dictionary, which is what a fresh install wants.
+
+    Only rows with a `source_text` can be returned: the client dictionary is
+    keyed by the English string, and a row without it cannot be placed. Rows
+    predating that column fill in as `/ui` serves them (see the backfill in
+    translate_ui), so this set grows to completeness on its own.
+    """
+    lang = (lang or "").strip().lower()
+    if lang not in SUPPORTED_LANGS:
+        raise HTTPException(422, f"Unsupported language '{lang}'")
+    if lang == "en":
+        return TranslationSyncResponse(lang=lang, version=0, translations={})
+
+    from datetime import datetime, timezone as _tz
+
+    cutoff = datetime.fromtimestamp(max(since, 0) / 1000, tz=_tz.utc)
+
+    rows = (await db.execute(
+        select(ContentTranslation)
+        .where(
+            ContentTranslation.entity_type == ENTITY_TYPE,
+            ContentTranslation.language == lang,
+            ContentTranslation.updated_at > cutoff,
+            ContentTranslation.source_text.is_not(None),
+        )
+        .order_by(ContentTranslation.updated_at)
+        .limit(SYNC_PAGE + 1)
+    )).scalars().all()
+
+    truncated = len(rows) > SYNC_PAGE
+    if truncated:
+        rows = rows[:SYNC_PAGE]
+
+    translations = {r.source_text: (r.manual_text or r.text) for r in rows if r.source_text}
+    # High-water mark of what was actually sent, NOT the table's max — sending
+    # the table max while withholding rows would make the client believe it is
+    # up to date and permanently skip the remainder.
+    version = _version_ms(rows[-1].updated_at) if rows else max(since, 0)
+
+    return TranslationSyncResponse(
+        lang=lang, version=version, translations=translations, truncated=truncated
+    )

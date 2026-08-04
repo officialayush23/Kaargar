@@ -46,6 +46,7 @@ import AdminServiceCatalog from '@/pages/admin/AdminServiceCatalog'
 import AdminServiceRankings from '@/pages/admin/AdminServiceRankings'
 import AdminPayouts from '@/pages/admin/AdminPayouts'
 import AdminUsers from '@/pages/admin/AdminUsers'
+import AdminTranslations from '@/pages/admin/AdminTranslations'
 
 function getDefaultRoute(user) {
   if (!user) return '/login'
@@ -248,6 +249,7 @@ export default function App() {
           <Route path="config" element={<AdminConfig />} />
           <Route path="categories" element={<AdminCategories />} />
           <Route path="services" element={<AdminServiceCatalog />} />
+          <Route path="translations" element={<AdminTranslations />} />
           <Route path="service-rankings" element={<AdminServiceRankings />} />
           <Route path="payouts" element={<AdminPayouts />} />
           <Route path="users" element={<AdminUsers />} />

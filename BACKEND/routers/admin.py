@@ -6,13 +6,14 @@ import logging
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, text
+from sqlalchemy import select, func, text, or_
 from sqlalchemy.orm import aliased
+from pydantic import BaseModel
 from decimal import Decimal
 from datetime import datetime, timezone
 
 from database import get_db
-from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category, JobEvent, JobItemReceipt, ServiceCatalog, Service, PenaltyDue
+from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category, JobEvent, JobItemReceipt, ServiceCatalog, Service, PenaltyDue, ContentTranslation
 from schemas import (
     AdminDashboard, AdminWorkerAction, AdminConfigUpdate, AdminConfigCreate, SuccessResponse,
     CategoryCreate, CategoryUpdate, CategoryResponse, PayoutMarkPaid, PayoutMarkFailed,
@@ -1883,3 +1884,124 @@ async def admin_set_section_services(
 
     await db.commit()
     return SuccessResponse(message=f"{len(ids)} service(s) assigned")
+
+
+# ── UI TRANSLATION OVERRIDES ─────────────────────────────────────────────────
+#
+# The escape hatch for machine translation. Sarvam handles ~99% of UI copy at
+# near-zero marginal cost, but it will occasionally produce something that is
+# technically correct and reads badly — "Book Worker" as a literal
+# "बुक कर्मचारी" rather than "कामगार बुक करें". Before this, the only remedy was
+# to change the English source and ship a new build.
+#
+# Setting `manual_text` overrides the machine output everywhere immediately;
+# clearing it falls back to the machine translation without re-paying Sarvam,
+# because `text` is never overwritten. Every edit bumps `updated_at`, which is
+# what the client's delta sync polls — so a correction reaches phones on their
+# next launch or foreground without a release.
+
+@router.get("/translations")
+async def list_ui_translations(
+    lang: str,
+    q: str | None = None,
+    only_overridden: bool = False,
+    limit: int = 100,
+    offset: int = 0,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Browse UI strings for a language: English source, machine output, and any
+    human override.
+
+    Rows with no `source_text` are excluded — they predate that column and
+    cannot be shown meaningfully (entity_id is a one-way hash of the English,
+    so there is nothing to display as "the original"). They fill in
+    automatically as the app requests them; see routers/translate.py.
+    """
+    lang = (lang or "").strip().lower()
+    if lang not in {"hi", "mr"}:
+        raise HTTPException(422, "Only 'hi' and 'mr' have translations to override")
+
+    query = select(ContentTranslation).where(
+        ContentTranslation.entity_type == "ui",
+        ContentTranslation.language == lang,
+        ContentTranslation.source_text.is_not(None),
+    )
+    if q:
+        like = f"%{q.strip()}%"
+        query = query.where(
+            or_(
+                ContentTranslation.source_text.ilike(like),
+                ContentTranslation.text.ilike(like),
+                ContentTranslation.manual_text.ilike(like),
+            )
+        )
+    if only_overridden:
+        query = query.where(ContentTranslation.manual_text.is_not(None))
+
+    total = await db.scalar(select(func.count()).select_from(query.subquery()))
+    rows = (await db.execute(
+        query.order_by(ContentTranslation.source_text).limit(min(limit, 200)).offset(offset)
+    )).scalars().all()
+
+    return {
+        "total": total or 0,
+        "items": [
+            {
+                "id": str(r.id),
+                "language": r.language,
+                "source_text": r.source_text,
+                "machine_translation": r.text,
+                "manual_translation": r.manual_text,
+                "is_overridden": r.manual_text is not None,
+                "updated_at": r.updated_at,
+            }
+            for r in rows
+        ],
+    }
+
+
+class TranslationOverrideBody(BaseModel):
+    # None / empty clears the override and falls back to the machine output.
+    manual_translation: str | None = None
+
+
+@router.put("/translations/{translation_id}", response_model=SuccessResponse)
+async def set_ui_translation_override(
+    translation_id: str,
+    body: TranslationOverrideBody,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    import uuid as _uuid
+    from datetime import datetime as _dt, timezone as _tz
+
+    row = (await db.execute(
+        select(ContentTranslation).where(ContentTranslation.id == _uuid.UUID(translation_id))
+    )).scalar_one_or_none()
+    if not row:
+        raise HTTPException(404, "Translation not found")
+
+    value = (body.manual_translation or "").strip()
+    now = _dt.now(_tz.utc)
+
+    if value:
+        row.manual_text = value
+        row.manual_by = admin.id
+        row.manual_at = now
+    else:
+        # Revert to machine output. `text` was never overwritten, so this costs
+        # nothing and needs no Sarvam call.
+        row.manual_text = None
+        row.manual_by = None
+        row.manual_at = None
+
+    # Explicit, because delta sync keys entirely off this column — an override
+    # that didn't move updated_at would never reach a single phone.
+    row.updated_at = now
+
+    await db.commit()
+    return SuccessResponse(
+        message="Override saved" if value else "Reverted to machine translation"
+    )
