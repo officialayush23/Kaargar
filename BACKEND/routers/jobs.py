@@ -86,7 +86,7 @@ async def _log_event(db, job_id, status, actor, actor_id, metadata=None):
     db.add(event)
 
 
-async def _validate_pinned_worker(db, worker_id, service_id=None, category_id=None):
+async def _validate_pinned_worker(db, worker_id, service_id=None, category_id=None, requesting_user_id=None):
     """
     Discovery bookings always pin a specific worker chosen by the customer
     (see CLAUDE.md — Discovery has no lazy/auto-match path). Before this
@@ -110,6 +110,25 @@ async def _validate_pinned_worker(db, worker_id, service_id=None, category_id=No
         raise HTTPException(404, "Selected worker not found")
     if wp.verification_status != "approved":
         raise HTTPException(422, "Selected worker is not currently available for booking")
+
+    # ── Self-booking guard ───────────────────────────────────────────────────
+    # Kaargar accounts are deliberately DUAL-ROLE (one user can be both a
+    # customer and a worker — see CLAUDE.md rule 6), so `role` cannot be used
+    # to prevent this. The actual invariant is narrower and has nothing to do
+    # with the account model: *the customer and the worker on a single job
+    # must be different people*.
+    #
+    # Nothing enforced that, so a dual-role user could book their own worker
+    # profile — creating a job where user_id == the worker's user_id. That
+    # then poisons everything downstream that assumes two parties:
+    # GET /jobs/:id/contact would hand you your own number, chat would be a
+    # thread with yourself, ratings would be self-issued, and the payout would
+    # move money from a user to themselves minus commission.
+    #
+    # Note this is a much smaller fix than making accounts single-role, and it
+    # keeps the legitimate case working: a plumber hiring an electrician.
+    if requesting_user_id is not None and wp.user_id == requesting_user_id:
+        raise HTTPException(422, "You can't book yourself for a job.")
 
     if service_id:
         svc_r = await db.execute(select(Service).where(Service.id == service_id))
@@ -1016,6 +1035,59 @@ async def reject_job(
     return SuccessResponse(message="Job rejected")
 
 
+@router.post("/{job_id}/start-journey", response_model=SuccessResponse)
+async def start_journey(
+    job_id: uuid.UUID,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Worker taps "Start job" — they're setting off. Moves the job to `en_route`.
+
+    WHY THIS DIDN'T EXIST: `en_route` has been referenced in every
+    trackable/assigned status set in this file since forever, but **no
+    endpoint ever wrote it** — a repo-wide grep confirms it only ever appeared
+    in membership checks. The worker went straight from `assigned`/`confirmed`
+    to `arrived`, which is why the customer's timeline could never show "on the
+    way", and why web's JobStatusTimeline folds `en_route` into the "arrived"
+    bucket with a comment saying nothing transitions into it.
+
+    That also made the worker's own flow backwards: the only action available
+    was "I've arrived", so navigation appeared *after* they claimed to be
+    on-site. Now: Start job → en_route (navigation shown) → I've arrived
+    (geofenced) → Start work.
+
+    Deliberately NOT geofenced — the whole point is that the worker is still
+    far away. The geofence stays on `mark_arrived`, which is the claim that
+    actually matters.
+    """
+    wp, job = await _get_worker_for_job(job_id, user, db)
+    if job.worker_id != wp.id:
+        raise HTTPException(403)
+
+    if job.status not in ("assigned", "confirmed", "worker_assigned", "scheduled"):
+        raise HTTPException(
+            400,
+            "You can only start the journey for a job that's assigned and not yet under way.",
+        )
+
+    job.status = "en_route"
+    # Use the shared helper — JobEvent's columns are status/actor/actor_id,
+    # not event_type/actor_user_id.
+    await _log_event(db, job.id, "en_route", "worker", user.id)
+
+    db.add(Notification(
+        user_id=job.user_id,
+        type="job_assigned",
+        title="Your worker is on the way",
+        body=f"{user.full_name or 'Your worker'} has set off for your booking.",
+        data={"job_id": str(job.id)},
+    ))
+
+    await db.commit()
+    return SuccessResponse(message="Journey started")
+
+
 @router.post("/{job_id}/arrived", response_model=SuccessResponse)
 async def mark_arrived(
     job_id: uuid.UUID,
@@ -1685,7 +1757,7 @@ async def create_scheduled_job(
 
     # Server-side check that the pinned worker actually exists, is approved,
     # and really offers this service/category — see _validate_pinned_worker.
-    await _validate_pinned_worker(db, body.preferred_worker_id, body.service_id, category_id)
+    await _validate_pinned_worker(db, body.preferred_worker_id, body.service_id, category_id, requesting_user_id=user.id)
 
     # Double-booking guard — same rule the multi-day endpoint applies. A
     # single scheduled booking had exactly the same hole: the worker could
@@ -1996,7 +2068,7 @@ async def create_multi_day_booking(
 
     # Same pinned-worker validation as create_scheduled_job — see
     # _validate_pinned_worker's docstring for the exploit this closes.
-    await _validate_pinned_worker(db, body.preferred_worker_id, body.service_id, category_id)
+    await _validate_pinned_worker(db, body.preferred_worker_id, body.service_id, category_id, requesting_user_id=user.id)
 
     total_price = None
     if svc is not None:
@@ -2200,6 +2272,19 @@ async def book_slot(
     # cost of a raw IntegrityError instead of a clean 409).
     if slot.booked_count >= slot.capacity:
         raise HTTPException(409, "This slot is fully booked — please pick another time")
+
+    # ── Self-booking guard ────────────────────────────────────────────────────
+    # book_slot derives worker_id from the server-verified slot rather than
+    # trusting the client, so it never calls _validate_pinned_worker and needs
+    # its own copy of this check. Same invariant: the customer and the worker
+    # on one job must be different people. See _validate_pinned_worker's
+    # comment for why this is NOT solved by making accounts single-role.
+    slot_wp_r = await db.execute(
+        select(WorkerProfile.user_id).where(WorkerProfile.id == slot.worker_id)
+    )
+    slot_worker_user_id = slot_wp_r.scalar_one_or_none()
+    if slot_worker_user_id == user.id:
+        raise HTTPException(422, "You can't book yourself for a job.")
 
     # ── Load service ──────────────────────────────────────────────────────────
     svc_result = await db.execute(select(Service).where(Service.id == body.service_id))

@@ -407,6 +407,11 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
                     wp.status = 'online'
                     AND wp.verification_status = 'approved'
                     AND wp.is_instant_available = true
+                    -- Self-booking guard: never dispatch a job back to the
+                    -- customer who created it. Kaargar accounts are dual-role
+                    -- (CLAUDE.md rule 6), so a user with a worker profile was
+                    -- otherwise a perfectly valid match for their own job.
+                    AND wp.user_id <> :customer_user_id
                     -- Defense in depth: a Service row's catalog_service_id is
                     -- supposed to only ever be set when its category_id
                     -- matches the catalog entry's category (enforced at
@@ -472,6 +477,8 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
             "catalog_service_id": catalog_service_id,
             "category_id": job.category_id,
             "area_id": area_id,
+            # Bound for the self-booking guard in the WHERE clause above.
+            "customer_user_id": job.user_id,
         }
     else:
         sql = text("""
@@ -498,6 +505,8 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
                 wp.status = 'online'
                 AND wp.verification_status = 'approved'
                 AND wp.is_instant_available = true
+                -- Self-booking guard — see the catalog-service path above.
+                AND wp.user_id <> :customer_user_id
                 -- Matching used to be category-blind — any online/approved/
                 -- instant-available worker within radius was eligible for
                 -- dispatch regardless of what services they actually registered
@@ -547,6 +556,8 @@ async def _find_workers(db: AsyncSession, job: Job, radius_km: int) -> list:
             "radius_m": radius_km * 1000,
             "category_id": job.category_id,
             "area_id": area_id,
+            # Bound for the self-booking guard in the WHERE clause above.
+            "customer_user_id": job.user_id,
         }
 
     result = await db.execute(sql, params)
