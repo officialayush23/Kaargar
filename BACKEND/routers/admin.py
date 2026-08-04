@@ -1730,3 +1730,156 @@ async def waive_penalty_due(
         )
     await db.commit()
     return SuccessResponse(message="Penalty waived")
+
+
+# ── SERVICE SECTIONS (admin CRUD) ─────────────────────────────────────────────
+# The SET of sections is ours to define (Ayush: "the thing that this falls
+# under will be given by us"); which services sit in them can be assigned here
+# too. Sections are presentational only — they never touch dispatch.
+
+@router.get("/sections")
+async def admin_list_sections(
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """All sections INCLUDING empty and inactive ones — the opposite of the
+    customer endpoint, which hides them. An admin needs to see the empty shelf
+    in order to fill it."""
+    from models import ServiceSection, ServiceSectionItem
+
+    sections = (await db.execute(
+        select(ServiceSection).order_by(ServiceSection.sort_order, ServiceSection.name)
+    )).scalars().all()
+
+    counts = dict((await db.execute(
+        select(ServiceSectionItem.section_id, func.count(ServiceSectionItem.catalog_service_id))
+        .group_by(ServiceSectionItem.section_id)
+    )).all())
+
+    return [
+        {
+            "id": str(s.id),
+            "name": s.name,
+            "slug": s.slug,
+            "description": s.description,
+            "icon_emoji": s.icon_emoji,
+            "icon_url": s.icon_url,
+            "sort_order": s.sort_order,
+            "is_active": s.is_active,
+            "service_count": counts.get(s.id, 0),
+        }
+        for s in sections
+    ]
+
+
+@router.post("/sections", response_model=SuccessResponse)
+async def admin_create_section(
+    body: dict,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    import re
+    from models import ServiceSection
+
+    name = ((body or {}).get("name") or "").strip()
+    if not name:
+        raise HTTPException(422, "name is required")
+
+    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
+    if (await db.execute(select(ServiceSection).where(ServiceSection.slug == slug))).scalar_one_or_none():
+        raise HTTPException(409, f"A section with slug '{slug}' already exists")
+
+    db.add(ServiceSection(
+        name=name,
+        slug=slug,
+        description=(body.get("description") or None),
+        icon_emoji=(body.get("icon_emoji") or None),
+        sort_order=int(body.get("sort_order") or 0),
+        is_active=bool(body.get("is_active", True)),
+    ))
+    await db.commit()
+    return SuccessResponse(message=f"Section '{name}' created")
+
+
+@router.patch("/sections/{section_id}", response_model=SuccessResponse)
+async def admin_update_section(
+    section_id: str,
+    body: dict,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    import uuid as _uuid
+    from models import ServiceSection
+
+    s = (await db.execute(
+        select(ServiceSection).where(ServiceSection.id == _uuid.UUID(section_id))
+    )).scalar_one_or_none()
+    if not s:
+        raise HTTPException(404, "Section not found")
+
+    for field in ("name", "description", "icon_emoji", "icon_url"):
+        if field in (body or {}):
+            setattr(s, field, body[field] or None)
+    if "sort_order" in (body or {}):
+        s.sort_order = int(body["sort_order"] or 0)
+    if "is_active" in (body or {}):
+        s.is_active = bool(body["is_active"])
+
+    s.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    return SuccessResponse(message="Section updated")
+
+
+@router.delete("/sections/{section_id}", response_model=SuccessResponse)
+async def admin_delete_section(
+    section_id: str,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """Deletes the shelf, not the services on it — `service_section_items` is
+    ON DELETE CASCADE from the section, and `service_catalog` is untouched."""
+    import uuid as _uuid
+    from models import ServiceSection
+
+    s = (await db.execute(
+        select(ServiceSection).where(ServiceSection.id == _uuid.UUID(section_id))
+    )).scalar_one_or_none()
+    if not s:
+        raise HTTPException(404, "Section not found")
+    await db.delete(s)
+    await db.commit()
+    return SuccessResponse(message="Section deleted")
+
+
+@router.put("/sections/{section_id}/services", response_model=SuccessResponse)
+async def admin_set_section_services(
+    section_id: str,
+    body: dict,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Replace a section's service list wholesale.
+
+    PUT-with-full-list rather than add/remove endpoints: the admin UI edits
+    this as a multi-select, so a diff on the client plus two endpoints would be
+    more moving parts and more ways to end up out of sync than just sending the
+    intended final state.
+    """
+    import uuid as _uuid
+    from sqlalchemy import delete as sa_delete
+    from models import ServiceSection, ServiceSectionItem
+
+    sid = _uuid.UUID(section_id)
+    if not (await db.execute(select(ServiceSection).where(ServiceSection.id == sid))).scalar_one_or_none():
+        raise HTTPException(404, "Section not found")
+
+    ids = [(_uuid.UUID(x) if not isinstance(x, _uuid.UUID) else x)
+           for x in ((body or {}).get("catalog_service_ids") or [])]
+
+    await db.execute(sa_delete(ServiceSectionItem).where(ServiceSectionItem.section_id == sid))
+    for i, cid in enumerate(ids):
+        db.add(ServiceSectionItem(section_id=sid, catalog_service_id=cid, sort_order=i))
+
+    await db.commit()
+    return SuccessResponse(message=f"{len(ids)} service(s) assigned")

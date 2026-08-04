@@ -19,7 +19,7 @@ import secrets
 
 from database import get_db
 from models import (
-    User, Job, JobEvent, SOSEvent, ServiceSlot, Service,
+    User, Job, JobEvent, SOSEvent, ServiceSlot, Service, ServiceCatalog,
     WorkerCategory, WorkerProfile, WorkerScheduleBlock, WorkerTimeOff,
     CancellationPenalty, Payment, Notification, JobItemReceipt,
 )
@@ -549,6 +549,20 @@ async def get_job(
     # Enrich with category name
     cat = await db.execute(select(CatModel.name).where(CatModel.id == job.category_id))
     resp.category_name = cat.scalar_one_or_none()
+
+    # The actual service booked. Checked BOTH sources because an instant job
+    # references the admin-curated ServiceCatalog while a discovery job
+    # references the worker's own Service — reading only one leaves half the
+    # jobs showing bare "Electrician".
+    if job.service_id:
+        resp.service_title = (await db.execute(
+            select(Service.title).where(Service.id == job.service_id)
+        )).scalar_one_or_none()
+    if not resp.service_title and getattr(job, "catalog_service_id", None):
+        resp.service_title = (await db.execute(
+            select(ServiceCatalog.name).where(ServiceCatalog.id == job.catalog_service_id)
+        )).scalar_one_or_none()
+
     resp.arrival_geofence_m = int(await get_config(db, "arrival_geofence_meters", Decimal("150")))
     # Enrich with worker name + avatar
     if job.worker_id:

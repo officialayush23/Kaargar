@@ -1241,3 +1241,55 @@ class PenaltyDue(Base):
     waived_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     waived_reason: Mapped[str | None] = mapped_column(Text)
     created_at: Mapped[datetime] = now()
+
+
+# ── 46. SERVICE SECTIONS (customer-facing browse shelves) ─────
+class ServiceSection(Base):
+    """
+    A cross-profession browsing shelf on Discovery: "Fan", "Beauty", "Salon".
+
+    NOT a Category. Category = the profession a worker is verified for; it
+    drives dispatch, approval and who may offer what. A Section is purely
+    presentational and cuts ACROSS professions — "Fan" pulls fan installation
+    (Electrician) and fan cleaning (Cleaner) onto one row, because a customer
+    thinking "my fan is broken" doesn't think in professions.
+
+    Kept structurally separate on purpose: making sections a second kind of
+    category would drag a cosmetic grouping into the dispatch path.
+    """
+    __tablename__ = "service_sections"
+
+    id: Mapped[uuid.UUID] = uuid_pk()
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    slug: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
+    description: Mapped[str | None] = mapped_column(Text)
+    icon_url: Mapped[str | None] = mapped_column(Text)
+    icon_emoji: Mapped[str | None] = mapped_column(String(16))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = now()
+    updated_at: Mapped[datetime] = now()
+
+
+class ServiceSectionItem(Base):
+    """
+    Many-to-many: which SYSTEM services (service_catalog) sit in which section.
+
+    Many-to-many rather than a `section_id` column on service_catalog because a
+    service can legitimately belong to more than one shelf — "deep clean" is
+    both "Cleaning" and "Home". A single column would force a false choice and
+    guarantee a migration later.
+
+    Keyed on service_catalog, never on `services`: only admin-curated system
+    services appear in these shelves.
+    """
+    __tablename__ = "service_section_items"
+
+    section_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("service_sections.id", ondelete="CASCADE"), primary_key=True
+    )
+    catalog_service_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("service_catalog.id", ondelete="CASCADE"), primary_key=True
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    created_at: Mapped[datetime] = now()

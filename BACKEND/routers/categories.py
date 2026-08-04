@@ -152,3 +152,88 @@ async def list_category_services(
         resp.photo_url = photo_map.get(e.id) or e.icon_url
         out.append(resp)
     return out
+
+
+# ── SERVICE SECTIONS (Discovery browse shelves) ───────────────────────────────
+
+@router.get("/sections")
+async def list_service_sections(
+    limit_per_section: int = 12,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Discovery's cross-profession shelves: "Fan", "Beauty", "Salon"…
+
+    Fully DB-driven — add a section row and assign services to it and the row
+    appears in the app on the next fetch; no deploy. Ayush: *"if it updates in
+    the database, it gets shown in the UI."*
+
+    **Empty sections are omitted here rather than flagged in the table.** A
+    stored `is_visible` boolean goes stale the instant the last service in a
+    section is deactivated, and the app then renders an empty shelf. Deriving
+    it from the actual join is always right by construction.
+
+    Only APPROVED, ACTIVE catalog services count — a section whose only members
+    are pending worker submissions is still empty from a customer's point of
+    view.
+    """
+    from models import ServiceSection, ServiceSectionItem, ServiceCatalog
+
+    sections = (await db.execute(
+        select(ServiceSection)
+        .where(ServiceSection.is_active == True)  # noqa: E712
+        .order_by(ServiceSection.sort_order.asc(), ServiceSection.name.asc())
+    )).scalars().all()
+    if not sections:
+        return {"sections": []}
+
+    rows = (await db.execute(
+        select(
+            ServiceSectionItem.section_id,
+            ServiceCatalog.id,
+            ServiceCatalog.name,
+            ServiceCatalog.description,
+            ServiceCatalog.icon_url,
+            ServiceCatalog.base_price,
+            ServiceCatalog.category_id,
+            ServiceSectionItem.sort_order,
+        )
+        .join(ServiceCatalog, ServiceCatalog.id == ServiceSectionItem.catalog_service_id)
+        .where(
+            ServiceSectionItem.section_id.in_([s.id for s in sections]),
+            ServiceCatalog.is_active == True,     # noqa: E712
+            ServiceCatalog.status == "approved",
+        )
+        .order_by(ServiceSectionItem.sort_order.asc(), ServiceCatalog.name.asc())
+    )).all()
+
+    by_section: dict = {}
+    for section_id, sid, name, desc, icon, price, cat_id, _ in rows:
+        bucket = by_section.setdefault(section_id, [])
+        if len(bucket) >= limit_per_section:
+            continue
+        bucket.append({
+            "id": str(sid),
+            "name": name,
+            "description": desc,
+            "icon_url": icon,
+            "base_price": float(price) if price is not None else None,
+            "category_id": str(cat_id),
+        })
+
+    return {
+        "sections": [
+            {
+                "id": str(s.id),
+                "name": s.name,
+                "slug": s.slug,
+                "description": s.description,
+                "icon_url": s.icon_url,
+                "icon_emoji": s.icon_emoji,
+                "services": by_section[s.id],
+            }
+            for s in sections
+            # The whole "don't show empty shelves" rule, in one line.
+            if by_section.get(s.id)
+        ]
+    }

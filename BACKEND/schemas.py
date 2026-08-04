@@ -562,6 +562,11 @@ class JobResponse(KaargarBase):
     created_at: datetime
     # Populated by the endpoint, not stored on the model
     category_name: Optional[str] = None
+    # The actual SERVICE booked, not just the profession. Without this the
+    # client can only show `title || category_name`, so a job with no custom
+    # title renders as bare "Electrician" — the customer can't see WHAT they
+    # booked while waiting for someone to accept it.
+    service_title: Optional[str] = None
     worker_name: Optional[str] = None
     client_name: Optional[str] = None
     client_avatar_url: Optional[str] = None
