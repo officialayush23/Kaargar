@@ -11,7 +11,8 @@ import { motion, AnimatePresence } from 'framer-motion'
 import {
   CheckCircle, XCircle, Eye, Search, BadgeCheck, Clock, AlertTriangle,
   FileText, Video, ChevronRight, User, MapPin, Briefcase, Star,
-  ShieldAlert, RefreshCw, X, ExternalLink, Loader2, Phone, Mail,
+  ShieldAlert, ShieldCheck, RefreshCw, X, ExternalLink, Loader2, Phone, Mail,
+  MessageSquare, Flag, EyeOff,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { formatRelativeTime, getErrorMessage } from '@/lib/utils'
@@ -110,6 +111,26 @@ function DocCard({ doc }) {
   const label = DOC_LABEL[doc.type] || doc.type?.replace(/_/g, ' ')
   const isVideo = doc.type === 'verification_video'
   const isImage = doc.url && !isVideo
+
+  // Approving or rejecting a worker deletes their ID docs and verification
+  // video from Storage on purpose (trust model fulfilled — see
+  // approve_worker/delete_worker_verification_files). The row survives as an
+  // audit trail, so the honest thing to render is "we deleted this", not a
+  // broken thumbnail or a dead link.
+  if (doc.purged) {
+    return (
+      <div style={{
+        borderRadius: '12px', border: '1px dashed var(--card-border)',
+        background: 'var(--card-bg)', padding: '14px 12px', textAlign: 'center',
+      }}>
+        <ShieldCheck size={22} style={{ color: 'var(--text-muted)', margin: '0 auto 6px' }} />
+        <p style={{ fontSize: '12px', color: 'var(--text-secondary)', fontWeight: 500 }}>{label}</p>
+        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '3px', lineHeight: 1.4 }}>
+          Purged after {doc.status === 'rejected' ? 'rejection' : 'verification'}
+        </p>
+      </div>
+    )
+  }
 
   return (
     <div style={{
@@ -371,6 +392,69 @@ function WorkerDetailPanel({ workerId, onClose, onApprove, onReject, onSuspend, 
                   <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No documents uploaded yet</p>
                 </div>
               )}
+
+              {/* Reviews — this section didn't exist before, which is why
+                  "no reviews are being shown" was literally true. Admin sees
+                  hidden and flagged reviews too; moderating them is the point. */}
+              <div>
+                <p style={{ fontSize: '12px', fontWeight: 600, color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  Reviews ({detail.reviews?.length || 0})
+                  {detail.rating_count > 0 && (detail.reviews?.length || 0) !== detail.rating_count && (
+                    <span style={{ marginLeft: 8, color: 'var(--warning, #e0a800)', textTransform: 'none', letterSpacing: 0 }}>
+                      — profile counter says {detail.rating_count}, mismatch
+                    </span>
+                  )}
+                </p>
+
+                {(detail.reviews?.length || 0) === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '24px', borderRadius: '12px', background: 'var(--card-bg)', border: '1px solid var(--card-border)' }}>
+                    <MessageSquare size={28} style={{ color: 'var(--text-secondary)', margin: '0 auto 8px' }} />
+                    <p style={{ fontSize: '13px', color: 'var(--text-muted)' }}>No reviews yet</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {detail.reviews.map(r => (
+                      <div key={r.id} style={{
+                        padding: '12px', borderRadius: '12px',
+                        background: 'var(--card-bg)', border: '1px solid var(--card-border)',
+                        opacity: r.is_visible ? 1 : 0.6,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 4 }}>
+                          <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                            {r.reviewer_name || 'Customer'}
+                          </span>
+                          <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                            {r.is_flagged && (
+                              <span title={r.flag_reason || 'Flagged'} style={{ display: 'inline-flex' }}>
+                                <Flag size={13} style={{ color: 'var(--danger, #d64545)' }} />
+                              </span>
+                            )}
+                            {!r.is_visible && (
+                              <span title="Hidden from the public profile" style={{ display: 'inline-flex' }}>
+                                <EyeOff size={13} style={{ color: 'var(--text-muted)' }} />
+                              </span>
+                            )}
+                            <span style={{ fontSize: '13px', color: 'var(--text-secondary)' }}>
+                              {r.rating.toFixed(1)} ★
+                            </span>
+                          </span>
+                        </div>
+                        {r.text && (
+                          <p style={{ fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.55 }}>{r.text}</p>
+                        )}
+                        {r.reply && (
+                          <p style={{ fontSize: '12.5px', color: 'var(--text-muted)', lineHeight: 1.5, marginTop: 6, paddingLeft: 10, borderLeft: '2px solid var(--card-border)' }}>
+                            <strong style={{ color: 'var(--text-secondary)' }}>Worker replied:</strong> {r.reply}
+                          </p>
+                        )}
+                        <p style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: 6 }}>
+                          {formatRelativeTime(r.created_at)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           ) : null}
         </div>

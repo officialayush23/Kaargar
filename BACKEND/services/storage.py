@@ -72,6 +72,34 @@ def get_signed_url(bucket: str, path: str, expires_in: int = SIGNED_URL_TTL_SECO
     return f"{settings.supabase_url}/storage/v1{signed}"
 
 
+def try_signed_url(bucket: str, path: str, expires_in: int = SIGNED_URL_TTL_SECONDS) -> str:
+    """
+    get_signed_url that returns "" instead of raising when the object is gone.
+
+    Needed because signing is NOT a pure metadata operation — Supabase Storage
+    validates that the object exists and raises StorageApiError ("Object not
+    found") if it doesn't. That is a completely normal state here: approving or
+    rejecting a worker calls delete_worker_verification_files(), which removes
+    the ID docs and verification video from Storage while intentionally KEEPING
+    the worker_documents rows as an audit trail. So every approved worker has
+    document rows whose files no longer exist.
+
+    Before this existed, the admin worker-detail endpoint signed each document
+    URL inline, so the first purged document raised and took the ENTIRE response
+    down with a 500 — the admin panel showed a blank detail panel for every
+    approved worker, which read as "verification broke the page" rather than
+    "these files were deliberately deleted". Callers should treat "" as
+    "purged / unavailable" and say so in the UI.
+    """
+    try:
+        return get_signed_url(bucket, path, expires_in)
+    except Exception:
+        # Deliberately broad: supabase-py has raised StorageApiError, plain
+        # Exception, and httpx errors across versions for the not-found case,
+        # and an unsignable URL must never be able to fail an entire request.
+        return ""
+
+
 def upload_file(bucket: str, path: str, file_bytes: bytes, content_type: str) -> str:
     supabase.storage.from_(bucket).upload(
         path=path,

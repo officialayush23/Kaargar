@@ -19,7 +19,7 @@ from schemas import (
     ServiceCatalogCreate, ServiceCatalogUpdate, ServiceCatalogResponse,
 )
 from dependencies import require_admin
-from services.storage import get_public_url, get_signed_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
+from services.storage import get_public_url, get_signed_url, try_signed_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
 from services.config import get_config
 
 router = APIRouter()
@@ -91,7 +91,7 @@ async def pending_workers(
         )
         for doc in docs_result.scalars().all():
             doc_path = (doc.cloudinary_id or "").lstrip("/")
-            doc_url = get_signed_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
+            doc_url = try_signed_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
             docs_by_worker.setdefault(str(doc.worker_id), []).append(
                 {
                     "id": str(doc.id),
@@ -166,6 +166,9 @@ async def approve_worker(
         body="Your Kaargar worker profile has been approved. You can now go online and start accepting jobs.",
         data={},
     )
+    # create_notification only flushes; get_db never commits on teardown, so
+    # without this the notification is rolled back and silently lost.
+    await db.commit()
     return SuccessResponse(message="Worker approved")
 
 
@@ -216,6 +219,9 @@ async def reject_worker(
         body=body.reason or "Your worker profile was rejected. Please re-upload documents and try again.",
         data={},
     )
+    # create_notification only flushes; get_db never commits on teardown, so
+    # without this the notification is rolled back and silently lost.
+    await db.commit()
     return SuccessResponse(message="Worker rejected")
 
 
@@ -256,6 +262,9 @@ async def suspend_worker(
         body=body.reason or "Your account has been suspended. Contact support for details.",
         data={},
     )
+    # create_notification only flushes; get_db never commits on teardown, so
+    # without this the notification is rolled back and silently lost.
+    await db.commit()
     return SuccessResponse(message="Worker suspended")
 
 
@@ -296,6 +305,9 @@ async def request_reupload(
         body=body.reason or "Please re-upload your documents to complete verification.",
         data={"doc_type": doc_type},
     )
+    # create_notification only flushes; get_db never commits on teardown, so
+    # without this the notification is rolled back and silently lost.
+    await db.commit()
     return SuccessResponse(message="Re-upload request sent")
 
 
@@ -324,17 +336,27 @@ async def get_worker_detail(
         select(WorkerDocument).where(WorkerDocument.worker_id == wp.id)
         .order_by(WorkerDocument.created_at.desc())
     )
+    # NOTE: signing is best-effort per document, never fatal. Approving or
+    # rejecting a worker purges the underlying files from Storage (see
+    # approve_worker / reject_worker -> delete_worker_verification_files) but
+    # KEEPS these rows as an audit trail. Signing a purged path raises, and
+    # doing that inline previously 500'd this whole endpoint — which is exactly
+    # why the admin panel went blank the moment a worker was verified.
+    # `purged` lets the UI say "deleted after verification" instead of
+    # rendering a broken image.
     documents = []
     for doc in docs_result.scalars().all():
         doc_path = (doc.cloudinary_id or "").lstrip("/")
         bucket = BUCKET_VERIFICATION_VIDEO if doc.type == "verification_video" else BUCKET_DOCUMENTS
-        doc_url = get_signed_url(bucket, doc_path) if doc_path else doc.cloudinary_url
+        doc_url = try_signed_url(bucket, doc_path) if doc_path else (doc.cloudinary_url or "")
         documents.append({
             "id": str(doc.id),
             "type": doc.type,
             "url": doc_url,
+            "purged": bool(doc_path) and not doc_url,
             "status": doc.status,
             "rejection_reason": doc.rejection_reason,
+            "reviewed_at": doc.reviewed_at.isoformat() if doc.reviewed_at else None,
             "created_at": doc.created_at.isoformat(),
         })
 
@@ -364,6 +386,36 @@ async def get_worker_detail(
         for s in svcs_result.scalars().all()
     ]
 
+    # Reviews. The panel previously had no reviews section at all — "no reviews
+    # are being shown" was literally true because nothing ever queried them.
+    # Admin sees flagged/hidden ones too (unlike the public /reviews/worker/{id}
+    # endpoint, which filters on is_visible) — moderating them is the whole
+    # point of looking here.
+    from models import Review
+    Reviewer = aliased(User)
+    rev_result = await db.execute(
+        select(Review, Reviewer.full_name)
+        .join(Reviewer, Reviewer.id == Review.reviewer_id)
+        .where(Review.worker_id == wp.id)
+        .order_by(Review.created_at.desc())
+        .limit(50)
+    )
+    reviews = [
+        {
+            "id": str(r.id),
+            "job_id": str(r.job_id),
+            "reviewer_name": reviewer_name,
+            "rating": float(r.rating),
+            "text": r.text,
+            "reply": r.reply,
+            "is_flagged": r.is_flagged,
+            "flag_reason": r.flag_reason,
+            "is_visible": r.is_visible,
+            "created_at": r.created_at.isoformat(),
+        }
+        for r, reviewer_name in rev_result.all()
+    ]
+
     return {
         "id": str(wp.id),
         "user_id": str(wp.user_id),
@@ -387,6 +439,11 @@ async def get_worker_detail(
         "documents": documents,
         "categories": categories,
         "services": services,
+        "reviews": reviews,
+        # Mirrors recompute_worker_rating's source of truth so the admin can
+        # spot a counter/rows mismatch (we hit exactly that once: rating_count
+        # said 1 while the reviews table was empty).
+        "rating_count": wp.rating_count,
     }
 
 
@@ -679,7 +736,7 @@ async def list_workers(
     worker_ids = [wp.id for wp, _ in rows]
     docs_by_worker: dict = {}
     if worker_ids and status == "pending":
-        from services.storage import get_signed_url, BUCKET_DOCUMENTS
+        from services.storage import try_signed_url, BUCKET_DOCUMENTS
         docs_result = await db.execute(
             select(WorkerDocument)
             .where(WorkerDocument.worker_id.in_(worker_ids))
@@ -687,7 +744,7 @@ async def list_workers(
         )
         for doc in docs_result.scalars().all():
             doc_path = (doc.cloudinary_id or "").lstrip("/")
-            doc_url = get_signed_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
+            doc_url = try_signed_url(BUCKET_DOCUMENTS, doc_path) if doc_path else doc.cloudinary_url
             docs_by_worker.setdefault(str(doc.worker_id), []).append({
                 "id": str(doc.id),
                 "type": doc.type,

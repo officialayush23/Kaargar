@@ -15,6 +15,26 @@ from dependencies import get_current_user, require_admin
 
 router = APIRouter()
 
+
+def _msg_dict(m: SupportMessage) -> dict:
+    """
+    One shape for a support message, used by every endpoint that returns them.
+
+    `id` matters more than it looks: the mobile support chat subscribes to
+    support_messages over Supabase Realtime AND refetches over REST, so it needs
+    a stable key to de-duplicate the same message arriving twice. Returning only
+    (sender_role, content, created_at) — as this router originally did — left
+    the client with nothing reliable to dedupe on.
+    """
+    return {
+        "id": str(m.id),
+        "sender_id": str(m.sender_id),
+        "sender_role": m.sender_role,
+        "content": m.content,
+        "created_at": m.created_at.isoformat(),
+    }
+
+
 @router.post("/tickets", response_model=TicketResponse)
 async def create_ticket(
     body: TicketCreate,
@@ -75,7 +95,7 @@ async def get_ticket(
     
     return {
         "ticket": TicketResponse.model_validate(ticket),
-        "messages": [{"sender_role": m.sender_role, "content": m.content, "created_at": m.created_at.isoformat()} for m in messages]
+        "messages": [_msg_dict(m) for m in messages],
     }
 
 @router.post("/tickets/{ticket_id}/messages", response_model=SuccessResponse)
@@ -125,6 +145,104 @@ async def admin_list_tickets(
         q = q.where(SupportTicket.status == status)
     result = await db.execute(q)
     return result.scalars().all()
+
+
+@router.get("/admin/tickets/{ticket_id}")
+async def admin_get_ticket(
+    ticket_id: UUID,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin: read a ticket thread.
+
+    Needed as a separate endpoint because the customer-facing GET /tickets/{id}
+    filters on `SupportTicket.user_id == user.id` — an admin opening someone
+    else's ticket got a 404 there, which made it impossible to answer a ticket
+    at all without blind-firing the resolve endpoint.
+    """
+    ticket = (await db.execute(
+        select(SupportTicket).where(SupportTicket.id == ticket_id)
+    )).scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+
+    requester = (await db.execute(
+        select(User).where(User.id == ticket.user_id)
+    )).scalar_one_or_none()
+
+    messages = (await db.execute(
+        select(SupportMessage)
+        .where(SupportMessage.ticket_id == ticket.id)
+        .order_by(SupportMessage.created_at.asc())
+    )).scalars().all()
+
+    return {
+        "ticket": TicketResponse.model_validate(ticket),
+        "requester": {
+            "id": str(ticket.user_id),
+            "full_name": requester.full_name if requester else None,
+            "email": requester.email if requester else None,
+            "phone": requester.phone if requester else None,
+        },
+        "messages": [_msg_dict(m) for m in messages],
+    }
+
+
+@router.post("/admin/tickets/{ticket_id}/messages", response_model=SuccessResponse)
+async def admin_reply_ticket(
+    ticket_id: UUID,
+    body: TicketMessageCreate,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Admin: reply to a ticket WITHOUT resolving it.
+
+    Previously the only way an admin could write into a thread was
+    PATCH .../resolve, which closed the ticket as a side effect. That made a
+    genuine back-and-forth impossible — every clarifying question marked the
+    issue solved. Support is a conversation; resolving is a separate act.
+    """
+    ticket = (await db.execute(
+        select(SupportTicket).where(SupportTicket.id == ticket_id)
+    )).scalar_one_or_none()
+    if not ticket:
+        raise HTTPException(404, "Ticket not found")
+
+    content = (body.content or "").strip()
+    if not content:
+        raise HTTPException(422, "Message cannot be empty")
+
+    db.add(SupportMessage(
+        ticket_id=ticket.id,
+        sender_id=admin.id,
+        sender_role="admin",
+        content=content,
+    ))
+
+    # An admin reply puts the ball back in the user's court. Don't touch
+    # resolved/closed tickets' status — replying to a closed ticket to add a
+    # note shouldn't silently reopen it.
+    if ticket.status in ("open", "in_progress"):
+        ticket.status = "awaiting_user"
+    ticket.updated_at = datetime.now(timezone.utc)
+
+    await db.commit()
+
+    from services.notifications import create_notification
+    await create_notification(
+        db=db,
+        user_id=ticket.user_id,
+        type="support_reply",
+        title="Support replied",
+        body=content[:140],
+        data={"ticket_id": str(ticket.id)},
+    )
+    # create_notification only flushes; get_db never commits on teardown, so
+    # without this the notification is rolled back and silently lost.
+    await db.commit()
+    return SuccessResponse(message="Reply sent")
 
 
 @router.patch("/admin/tickets/{ticket_id}/resolve", response_model=SuccessResponse)
