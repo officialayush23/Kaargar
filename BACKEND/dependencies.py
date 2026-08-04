@@ -123,9 +123,8 @@ async def require_approved_worker(
                                 them approved.
 
       require_approved_worker — "an admin has verified you". Use for anything
-                                that touches the marketplace: publishing
-                                services, packages, offers, availability and
-                                slots, going online, taking jobs.
+                                that SELLS: packages, offers, bookable slot
+                                inventory, going online, taking jobs.
 
     Before this existed, `require_worker` checked only that a WorkerProfile row
     EXISTED, and silently promoted `user.role` to 'worker' as a side effect —
@@ -135,6 +134,28 @@ async def require_approved_worker(
     check, so nobody unapproved could actually be booked or paid; but
     everything else — publishing services, creating packages and offers,
     setting slots — was open. That's the gap this closes.
+
+    CORRECTION 2026-08-25 — this was applied TOO BROADLY and broke onboarding.
+    -------------------------------------------------------------------------
+    Services, coverage areas and weekly availability were put behind
+    `require_approved_worker`. But those are declared DURING onboarding, by
+    definition before approval, so all three calls 403'd the moment a worker
+    published — the exact trap the paragraph above warns about, just applied to
+    documents and not to these. The mobile client wrapped each call in an empty
+    `catch {}`, so it reported success and silently saved nothing.
+
+    They are now `require_worker`. That is safe, and it was verified rather
+    than assumed: a pending worker's rows are unreachable because EVERY
+    marketplace path filters on approval independently —
+    `routers/search.py` (5 filters), `services/matching.py` (16),
+    `routers/jobs.py` booking creation, and the go-online toggle in this
+    router. A service row that exists but cannot be searched, dispatched,
+    booked or brought online is a declaration, not an offer.
+
+    Rule of thumb when adding a route: gate on `require_approved_worker` only
+    if the action puts something in front of a customer or moves money. If it
+    only describes the worker, `require_worker` — otherwise you strand people
+    in a state where they cannot complete the thing that gets them approved.
     """
     if user.role == "admin":
         return user

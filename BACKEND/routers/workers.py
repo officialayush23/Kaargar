@@ -39,7 +39,7 @@ from schemas import (
     TagResponse, TagCreate, ServiceTagsSet,
     ServiceCatalogResponse, WorkerAreaSet,
 )
-from dependencies import get_current_user, require_approved_worker
+from dependencies import get_current_user, require_approved_worker, require_worker
 from services.storage import get_signed_url, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO
 from services.translation import translate_and_store
 from services.config import get_config
@@ -345,7 +345,7 @@ async def get_my_areas(
 @router.put("/me/areas", response_model=WorkerAreaSet)
 async def set_my_areas(
     body: WorkerAreaSet,
-    user: User = Depends(require_approved_worker),
+    user: User = Depends(require_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """Full-replacement set of areas a worker serves. Strictly enforced at
@@ -519,7 +519,7 @@ async def get_my_services(
 async def create_service(
     body: ServiceCreate,
     background: BackgroundTasks,
-    user: User = Depends(require_approved_worker),
+    user: User = Depends(require_worker),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -634,7 +634,7 @@ async def update_service(
     service_id: uuid.UUID,
     body: ServiceUpdate,
     background: BackgroundTasks,
-    user: User = Depends(require_approved_worker),
+    user: User = Depends(require_worker),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -797,7 +797,7 @@ async def _regenerate_slots_background(service_id_str: str, wp_id_str: str, from
 @router.delete("/me/services/{service_id}", response_model=SuccessResponse)
 async def delete_service(
     service_id: uuid.UUID,
-    user: User = Depends(require_approved_worker),
+    user: User = Depends(require_worker),
     db: AsyncSession = Depends(get_db),
 ):
     result = await db.execute(
@@ -861,7 +861,7 @@ async def create_tag(
 async def set_service_tags(
     service_id: uuid.UUID,
     body: ServiceTagsSet,
-    user: User = Depends(require_approved_worker),
+    user: User = Depends(require_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """Replace all tags on a service. Creates new tags on-the-fly from new_tag_names."""
@@ -1722,7 +1722,7 @@ async def get_my_availability(
 @router.put("/me/availability", response_model=list[WorkerAvailabilityResponse])
 async def set_availability(
     payload: list[WorkerAvailabilitySet],
-    user: User = Depends(require_approved_worker),
+    user: User = Depends(require_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -2223,7 +2223,7 @@ async def get_public_service_slots(
 @router.get("/me/services/{service_id}/sections")
 async def get_service_sections(
     service_id: uuid.UUID,
-    user: User = Depends(require_approved_worker),
+    user: User = Depends(require_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """
@@ -2292,7 +2292,7 @@ async def get_service_sections(
 async def set_service_sections(
     service_id: uuid.UUID,
     body: dict,
-    user: User = Depends(require_approved_worker),
+    user: User = Depends(require_worker),
     db: AsyncSession = Depends(get_db),
 ):
     """
