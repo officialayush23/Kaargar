@@ -219,6 +219,27 @@ async def translate_and_store(
                     else:
                         translated = await translate_text(original_text, lang)
 
+                        # translate_text degrades gracefully by returning the
+                        # INPUT unchanged whenever it can't translate — no
+                        # SARVAM_API_KEY, an HTTP error, text over the length
+                        # cap. Persisting that fallback poisons the cache: the
+                        # row then exists, so this entity is never retried, and
+                        # the "Hindi" copy is English forever even after the key
+                        # is fixed.
+                        #
+                        # Verified live on 2026-08-23 — every hi/mr row in
+                        # content_translations held untranslated English,
+                        # meaning dynamic-content translation had never once
+                        # worked. See docs note; those rows need deleting so
+                        # they get re-translated.
+                        if translated == original_text:
+                            logger.warning(
+                                "Skipping %s/%s %s (%s) — translation returned the source "
+                                "unchanged; not caching an untranslated value.",
+                                entity_type, entity_id, field_name, lang,
+                            )
+                            continue
+
                     # Upsert into content_translations
                     await db.execute(
                         sql_text("""

@@ -38,7 +38,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from routers import auth, categories, workers, jobs, upload, search, chat, payments, reviews, notifications, admin, support, users, geocode, addresses
+from routers import auth, categories, workers, jobs, upload, search, chat, payments, reviews, notifications, admin, support, users, geocode, addresses, translate
 
 
 @asynccontextmanager
@@ -110,6 +110,7 @@ app.include_router(admin.router,         prefix="/v1/admin",         tags=["admi
 app.include_router(users.router,         prefix="/v1/users",         tags=["users"])
 app.include_router(geocode.router,       prefix="/v1/geocode",       tags=["geocode"])
 app.include_router(addresses.router,     prefix="/v1/addresses",     tags=["addresses"])
+app.include_router(translate.router,      prefix="/v1/translate",     tags=["translate"])
 
 @app.get("/")
 async def root():
