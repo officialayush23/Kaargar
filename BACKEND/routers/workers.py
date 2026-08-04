@@ -658,6 +658,30 @@ async def update_service(
     from models import ServiceCatalog as SC
     final_catalog_id = updates.get("catalog_service_id", svc.catalog_service_id)
     final_cat_id = updates.get("category_id", svc.category_id)
+
+    # ── Profession guard on UPDATE ────────────────────────────────────────────
+    # create_service already refuses a category the worker isn't registered
+    # for, but this endpoint did NOT — it only validated the catalog link. So
+    # the create-time guard was trivially bypassable: create the listing under
+    # a category you ARE registered for, then PATCH category_id to any other
+    # one. The category-fallback path in services/matching.py dispatches on
+    # exactly this field, so the result is a worker receiving instant jobs for
+    # a profession they were never verified or onboarded for.
+    #
+    # Only checked when the update actually changes the category — otherwise a
+    # worker whose registration was revoked couldn't edit the price on an
+    # existing listing, which is a separate concern (deactivation) and not
+    # something to enforce via a field they didn't touch.
+    if "category_id" in updates and str(updates["category_id"]) != str(svc.category_id):
+        from models import WorkerCategory as WC
+        has_cat = await db.scalar(
+            select(WC.worker_id)
+            .where(WC.worker_id == svc.worker_id, WC.category_id == updates["category_id"])
+            .limit(1)
+        )
+        if not has_cat:
+            raise HTTPException(400, "You can only list services under a profession you've registered for.")
+
     cat_svc = None
     if final_catalog_id:
         cat_svc = await db.scalar(select(SC).where(SC.id == final_catalog_id))

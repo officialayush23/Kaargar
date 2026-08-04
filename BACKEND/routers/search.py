@@ -146,6 +146,13 @@ async def search(
         .join(Category, Category.id == Service.category_id)
         .where(Service.is_active == True)
         .where(WorkerProfile.verification_status == "approved")
+        # Never surface the searcher's own listings. Kaargar accounts are
+        # dual-role (CLAUDE.md rule 6), so a user with a worker profile would
+        # otherwise see themselves in Discovery and be able to open their own
+        # booking flow. The POST-side guards now reject a self-booking with a
+        # 422, but letting someone browse to a dead end and only fail at
+        # submit is a worse experience than simply not showing it.
+        .where(WorkerProfile.user_id != user.id)
     )
 
     # Tag matching uses a correlated EXISTS subquery rather than an outer join
@@ -413,6 +420,7 @@ async def recommendations(
                 .join(User, User.id == WorkerProfile.user_id)
                 .where(Service.is_active == True)
                 .where(WorkerProfile.verification_status == "approved")
+                .where(WorkerProfile.user_id != user.id)
                 .where(Service.category_id.in_(cat_uuids))
                 .order_by(Service.avg_rating.desc(), Service.total_bookings.desc())
                 .limit(12)
@@ -430,6 +438,7 @@ async def recommendations(
             .join(User, User.id == WorkerProfile.user_id)
             .where(Service.is_active == True)
             .where(WorkerProfile.verification_status == "approved")
+            .where(WorkerProfile.user_id != user.id)
             .order_by(Service.avg_rating.desc(), Service.total_bookings.desc())
             .limit(40)
         )).fetchall()
