@@ -12,7 +12,7 @@ from decimal import Decimal
 from datetime import datetime, timezone
 
 from database import get_db
-from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category, JobEvent, JobItemReceipt, ServiceCatalog, Service
+from models import Job, WorkerProfile, Payment, Payout, WorkerDocument, PlatformConfig, User, Category, JobEvent, JobItemReceipt, ServiceCatalog, Service, PenaltyDue
 from schemas import (
     AdminDashboard, AdminWorkerAction, AdminConfigUpdate, AdminConfigCreate, SuccessResponse,
     CategoryCreate, CategoryUpdate, CategoryResponse, PayoutMarkPaid, PayoutMarkFailed,
@@ -440,6 +440,21 @@ async def get_worker_detail(
         "categories": categories,
         "services": services,
         "reviews": reviews,
+        # Outstanding cancellation penalties, so an admin can see and waive
+        # them from the same panel rather than needing SQL.
+        "penalty_dues": [
+            {
+                "id": str(d.id),
+                "amount": float(d.amount),
+                "reason": d.reason,
+                "created_at": d.created_at.isoformat(),
+            }
+            for d in (await db.execute(
+                select(PenaltyDue)
+                .where(PenaltyDue.worker_id == wp.id, PenaltyDue.status == "pending")
+                .order_by(PenaltyDue.created_at.asc())
+            )).scalars().all()
+        ],
         # Moderation state — so the admin can see WHY a rating looks low before
         # deciding whether to restore it. Without these, avg_rating alone can't
         # distinguish "bad reviews" from "standing penalty".
@@ -1661,3 +1676,57 @@ async def moderate_worker(
     await db.commit()
 
     return SuccessResponse(message=f"Applied '{action}'")
+
+
+@router.post("/penalty-dues/{due_id}/waive", response_model=SuccessResponse)
+async def waive_penalty_due(
+    due_id: str,
+    body: dict,
+    admin: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Waive an outstanding cancellation penalty.
+
+    The counterpart to the automatic charge. Penalties here are raised without
+    a human in the loop, so there must be a way to reverse one — otherwise a
+    worker penalised for an emergency, a duplicate, or a bug has no recourse
+    and support has no tool but raw SQL.
+
+    Waived (status='waived') rather than deleted: the row is the evidence of
+    both the charge AND the decision to drop it.
+    """
+    import uuid as _uuid
+    from datetime import datetime, timezone
+
+    reason = ((body or {}).get("reason") or "").strip()
+    if not reason:
+        raise HTTPException(422, "A reason is required to waive a penalty")
+
+    due = (await db.execute(
+        select(PenaltyDue).where(PenaltyDue.id == _uuid.UUID(due_id))
+    )).scalar_one_or_none()
+    if not due:
+        raise HTTPException(404, "Penalty due not found")
+    if due.status != "pending":
+        raise HTTPException(409, f"This penalty is already '{due.status}'")
+
+    due.status = "waived"
+    due.waived_by = admin.id
+    due.waived_reason = reason
+    due.settled_at = datetime.now(timezone.utc)
+
+    logger.info("ADMIN WAIVED penalty_due=%s by=%s reason=%r", due_id, admin.id, reason)
+
+    if due.user_id:
+        from services.notifications import create_notification
+        await create_notification(
+            db=db,
+            user_id=due.user_id,
+            type="penalty_waived",
+            title="Cancellation penalty waived",
+            body=f"A ₹{due.amount} penalty was waived. {reason}",
+            data={"due_id": str(due.id)},
+        )
+    await db.commit()
+    return SuccessResponse(message="Penalty waived")

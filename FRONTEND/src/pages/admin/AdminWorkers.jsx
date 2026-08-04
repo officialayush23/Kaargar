@@ -610,6 +610,24 @@ function ModerationPanel({ detail, workerId }) {
     }
   }
 
+  async function waiveDue(dueId) {
+    if (!reason.trim()) {
+      toast.error('Enter a reason first — waivers are audited too')
+      return
+    }
+    setBusy(`waive-${dueId}`)
+    try {
+      await api.post(`/admin/penalty-dues/${dueId}/waive`, { reason: reason.trim() })
+      toast.success('Penalty waived')
+      setReason('')
+      qc.invalidateQueries(['admin', 'worker-detail', workerId])
+    } catch (e) {
+      toast.error(getErrorMessage(e) || 'Could not waive')
+    } finally {
+      setBusy(null)
+    }
+  }
+
   const Btn = ({ action, amount, label, danger }) => (
     <Button
       onClick={() => run(action, amount)}
@@ -656,6 +674,37 @@ function ModerationPanel({ detail, workerId }) {
           className="w-full text-sm rounded-lg px-3 py-2 resize-none mb-2"
           style={{ background: 'var(--bg-surface)', border: '1px solid var(--card-border)', color: 'var(--text-primary)', outline: 'none' }}
         />
+
+        {/* Outstanding cancellation penalties. Charged automatically, so
+            there must be a way to reverse one here — otherwise a worker
+            penalised for an emergency or a bug has no recourse and support's
+            only tool is raw SQL. */}
+        {(detail.penalty_dues || []).length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <p style={{ fontSize: 11.5, color: 'var(--text-muted)', marginBottom: 6 }}>
+              Outstanding cancellation penalties
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {detail.penalty_dues.map(d => (
+                <div key={d.id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '8px 10px', borderRadius: 10,
+                  background: 'var(--bg-surface)', border: '1px solid var(--card-border)',
+                }}>
+                  <span style={{ fontSize: 12.5, color: 'var(--text-secondary)', flex: 1 }}>{d.reason}</span>
+                  <strong style={{ fontSize: 12.5, color: 'var(--danger, #d64545)' }}>₹{d.amount}</strong>
+                  <Button
+                    onClick={() => waiveDue(d.id)}
+                    disabled={!!busy}
+                    style={{ height: 26, fontSize: 11.5, background: 'var(--card-bg)', color: 'var(--text-primary)', border: '1px solid var(--card-border)' }}
+                  >
+                    {busy === `waive-${d.id}` ? '…' : 'Waive'}
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {(penalty > 0 || cancelScore < 1 || suspended) && (

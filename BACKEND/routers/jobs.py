@@ -1349,7 +1349,36 @@ async def _finalize_job_completion(db, job, wp, user_id):
 
     if job.worker_payout:
         wp.total_earnings = (wp.total_earnings or Decimal("0")) + job.worker_payout
-        wp.pending_payout = (wp.pending_payout or Decimal("0")) + job.worker_payout
+
+        # Settle any outstanding cancellation penalties out of THIS payout
+        # before it lands in pending_payout. Oldest debt first; a due larger
+        # than this payout is left whole for the next one rather than split
+        # (see services/cancellations.settle_dues_against_payout for why).
+        #
+        # total_earnings is deliberately NOT reduced — the worker did earn that
+        # money, and netting it off gross earnings would make their lifetime
+        # total quietly wrong. The debt comes out of what's PAYABLE.
+        from services.cancellations import settle_dues_against_payout
+        from services.notifications import create_notification
+        worker_user = (await db.execute(
+            select(User).where(User.id == wp.user_id)
+        )).scalar_one_or_none()
+
+        payable = job.worker_payout
+        if worker_user is not None:
+            payable = await settle_dues_against_payout(db, worker_user, job, job.worker_payout)
+            if payable != job.worker_payout:
+                deducted = job.worker_payout - payable
+                await create_notification(
+                    db=db,
+                    user_id=wp.user_id,
+                    type="penalty_settled",
+                    title="Cancellation penalty deducted",
+                    body=f"₹{deducted} was deducted from this payout to clear an outstanding cancellation penalty.",
+                    data={"job_id": str(job.id), "amount": str(deducted)},
+                )
+
+        wp.pending_payout = (wp.pending_payout or Decimal("0")) + payable
 
     score_recover = await get_config(db, "cancellation_score_recover", Decimal("0.02"))
     new_score = min(Decimal("1.00"), (wp.cancellation_score or Decimal("1.00")) + score_recover)
