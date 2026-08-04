@@ -2216,3 +2216,129 @@ async def get_public_service_slots(
 
     # Filter out fully booked slots
     return [s for s in slots if s.booked_count < s.capacity]
+
+
+# ── SERVICE SECTIONS (worker-facing) ──────────────────────────────────────────
+
+@router.get("/me/services/{service_id}/sections")
+async def get_service_sections(
+    service_id: uuid.UUID,
+    user: User = Depends(require_approved_worker),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Which browse shelves this worker's service currently appears under, plus
+    every shelf available to pick from.
+
+    Ayush: *"better will be to give the workers themselves the ability to
+    choose what this falls under. The thing that this falls under will be given
+    by us."* So the SET of sections is admin-owned and read-only here; the
+    worker only chooses membership.
+
+    Sections attach to the CATALOG service, not the worker's own `Service` row.
+    That's why this reads through `Service.catalog_service_id` — a worker's
+    priced offering is an instance of a system service, and the shelf belongs
+    to the system service. Consequence worth stating: two workers offering the
+    same catalog service share its section membership. That's correct — the
+    shelf is "Fan", not "Ramesh's fan work" — but it does mean one worker's
+    change is visible to the other, so this is a curation act, not a personal
+    setting.
+    """
+    from models import ServiceSection, ServiceSectionItem
+
+    svc = (await db.execute(
+        select(Service).where(Service.id == service_id)
+    )).scalar_one_or_none()
+    if not svc:
+        raise HTTPException(404, "Service not found")
+
+    wp = (await db.execute(
+        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
+    )).scalar_one_or_none()
+    if not wp or svc.worker_id != wp.id:
+        raise HTTPException(403, "Not your service")
+
+    if not svc.catalog_service_id:
+        # A fully custom service has no system service to hang a shelf on.
+        return {
+            "eligible": False,
+            "reason": "This is a custom service. Browse sections only apply to system services.",
+            "selected_ids": [],
+            "sections": [],
+        }
+
+    all_sections = (await db.execute(
+        select(ServiceSection)
+        .where(ServiceSection.is_active == True)  # noqa: E712
+        .order_by(ServiceSection.sort_order, ServiceSection.name)
+    )).scalars().all()
+
+    selected = [str(r) for r in (await db.execute(
+        select(ServiceSectionItem.section_id)
+        .where(ServiceSectionItem.catalog_service_id == svc.catalog_service_id)
+    )).scalars().all()]
+
+    return {
+        "eligible": True,
+        "selected_ids": selected,
+        "sections": [
+            {"id": str(s.id), "name": s.name, "icon_emoji": s.icon_emoji, "description": s.description}
+            for s in all_sections
+        ],
+    }
+
+
+@router.put("/me/services/{service_id}/sections", response_model=SuccessResponse)
+async def set_service_sections(
+    service_id: uuid.UUID,
+    body: dict,
+    user: User = Depends(require_approved_worker),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Set which shelves this service appears under.
+
+    Only ACTIVE, admin-defined sections are accepted — a worker cannot invent a
+    shelf, and cannot resurrect one an admin has deactivated. Unknown ids are
+    dropped silently rather than 422'ing the whole request: a stale client
+    holding a section that was just deleted shouldn't fail to save the rest.
+    """
+    from sqlalchemy import delete as sa_delete
+    from models import ServiceSection, ServiceSectionItem
+
+    svc = (await db.execute(
+        select(Service).where(Service.id == service_id)
+    )).scalar_one_or_none()
+    if not svc:
+        raise HTTPException(404, "Service not found")
+
+    wp = (await db.execute(
+        select(WorkerProfile).where(WorkerProfile.user_id == user.id)
+    )).scalar_one_or_none()
+    if not wp or svc.worker_id != wp.id:
+        raise HTTPException(403, "Not your service")
+
+    if not svc.catalog_service_id:
+        raise HTTPException(
+            409, "Browse sections only apply to system services, not custom ones."
+        )
+
+    requested = {str(x) for x in ((body or {}).get("section_ids") or [])}
+    valid = [s for s in (await db.execute(
+        select(ServiceSection.id)
+        .where(ServiceSection.is_active == True)  # noqa: E712
+    )).scalars().all() if str(s) in requested]
+
+    await db.execute(
+        sa_delete(ServiceSectionItem)
+        .where(ServiceSectionItem.catalog_service_id == svc.catalog_service_id)
+    )
+    for i, sid in enumerate(valid):
+        db.add(ServiceSectionItem(
+            section_id=sid,
+            catalog_service_id=svc.catalog_service_id,
+            sort_order=i,
+        ))
+
+    await db.commit()
+    return SuccessResponse(message=f"Listed under {len(valid)} section(s)")
