@@ -1653,6 +1653,15 @@ async def get_worker(worker_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     # Service mode — derive from worker's is_instant_available / is_discovery_available
     # or from a direct service_mode field if it exists
     data.service_mode = getattr(wp, "service_mode", None)
+    data.service_radius_km = wp.service_radius_km
+    if wp.pune_area:
+        from models import PuneArea
+        from sqlalchemy import func as _f
+        area = (await db.execute(
+            select(PuneArea.lat, PuneArea.lon).where(_f.lower(PuneArea.name) == wp.pune_area.strip().lower()).limit(1)
+        )).first()
+        if area:
+            data.area_lat, data.area_lon = float(area[0]), float(area[1])
     return data
 
 

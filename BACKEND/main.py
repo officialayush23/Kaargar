@@ -4,6 +4,7 @@ Kaargar — FastAPI application entry point.
 
 from config import get_settings
 from services.logging_config import setup_logging, RequestIDMiddleware
+from services.rate_limit import RateLimitMiddleware
 
 settings = get_settings()
 
@@ -67,7 +68,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Kaargar API",
     version="1.0.0",
-    docs_url="/docs",
+    # Interactive docs + schema are a free map of every route for an attacker —
+    # only served outside production.
+    docs_url=None if settings.app_env == "production" else "/docs",
+    openapi_url=None if settings.app_env == "production" else "/openapi.json",
     redoc_url=None,
     lifespan=lifespan,
 )
@@ -80,11 +84,17 @@ _allowed_origins = [
 ]
 if settings.frontend_url and settings.frontend_url not in _allowed_origins:
     _allowed_origins.append(settings.frontend_url)
+for _o in (o.strip().rstrip("/") for o in settings.cors_extra_origins.split(",")):
+    if _o and _o not in _allowed_origins:
+        _allowed_origins.append(_o)
+
+# No origin regex. The old `https://kaargar.*\.vercel\.app` matched ANY Vercel
+# project whose name starts with "kaargar" (anyone can create one) while
+# allow_credentials=True. Add real origins via FRONTEND_URL / CORS_EXTRA_ORIGINS.
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_allowed_origins,
-    allow_origin_regex=r"https://kaargar.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -93,6 +103,9 @@ app.add_middleware(
 # Assigns/propagates X-Request-ID and tags every log line + Sentry event
 # emitted during a request with it — see services/logging_config.py.
 app.add_middleware(RequestIDMiddleware)
+
+# Per-IP limits, fail-open without Redis — see services/rate_limit.py.
+app.add_middleware(RateLimitMiddleware)
 
 # All routers under /v1
 app.include_router(auth.router,          prefix="/v1/auth",          tags=["auth"])

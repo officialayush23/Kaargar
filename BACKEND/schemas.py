@@ -55,9 +55,48 @@ class UserResponse(KaargarBase):
 
 
 class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
+    """
+    Client-editable profile fields — validated, because PATCH /users/me used
+    to accept any string: a 10 KB "name", a phone of "lol", or an avatar_url
+    pointing at any host (rendered in the admin panel and other users' apps).
+    """
+    full_name: Optional[str] = Field(None, max_length=100)
     phone: Optional[str] = None
-    avatar_url: Optional[str] = None
+    avatar_url: Optional[str] = Field(None, max_length=1000)
+
+    @field_validator("full_name")
+    @classmethod
+    def _name(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        v = " ".join(v.split())
+        if not (1 <= len(v) <= 100):
+            raise ValueError("Name must be 1-100 characters")
+        if any(ord(c) < 32 for c in v):
+            raise ValueError("Name contains invalid characters")
+        return v
+
+    @field_validator("phone")
+    @classmethod
+    def _phone(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        import re
+        digits = re.sub(r"[^\d+]", "", v)
+        if not re.fullmatch(r"\+91[6-9]\d{9}", digits):
+            raise ValueError("Enter a valid Indian mobile number")
+        return digits
+
+    @field_validator("avatar_url")
+    @classmethod
+    def _avatar(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return v
+        from config import get_settings
+        base = get_settings().supabase_url.rstrip("/") + "/storage/v1/object/"
+        if not v.startswith(base):
+            raise ValueError("Avatar must be uploaded through /upload/profile-photo")
+        return v
 
 
 # ── CATEGORIES ────────────────────────────────────────────────
@@ -209,6 +248,12 @@ class WorkerPublicResponse(KaargarBase):
     communication_rating: Optional[Decimal] = None
     value_rating: Optional[Decimal] = None
     allow_multi_day_booking: bool = False
+    # Service-area map on the public profile. The CENTROID of the worker's
+    # named home area (pune_areas), never their live or home position — a
+    # public page must not reveal where someone actually is.
+    area_lat: Optional[float] = None
+    area_lon: Optional[float] = None
+    service_radius_km: Optional[int] = None
 
 
 class WorkerStatusUpdate(BaseModel):
@@ -1209,7 +1254,7 @@ class MultiDayBookingCreate(BaseModel):
     # (default 10) and is enforced in routers/jobs.py:create_multi_day_booking.
     # Keep this generous so raising the config key doesn't require a code
     # deploy — lowering it is what the config is for.
-    num_days: int = Field(..., ge=1, le=90)
+    num_days: int = Field(..., ge=1, le=30)  # hard outer bound; real cap is platform_config (default 10)
     window_start: str = Field(..., pattern=r"^\d{2}:\d{2}$")
     window_end: str   = Field(..., pattern=r"^\d{2}:\d{2}$")
     # Optional extras

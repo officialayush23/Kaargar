@@ -50,7 +50,10 @@ def _decode_token(token: str) -> dict:
             token,
             secret,
             algorithms=["HS256"],
-            options={"verify_aud": False},  # Supabase sets aud='authenticated'
+            # Supabase user sessions carry aud='authenticated'. Verifying it
+            # rejects other tokens signed with the same project secret (e.g.
+            # the anon / service-role API keys) being replayed as a user.
+            audience="authenticated",
         )
         return payload
     except JWTError as e:

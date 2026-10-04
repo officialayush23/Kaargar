@@ -23,6 +23,8 @@ from dependencies import require_admin
 from services.storage import get_public_url, get_signed_url, try_signed_url, delete_worker_verification_files, upload_file, BUCKET_DOCUMENTS, BUCKET_VERIFICATION_VIDEO, BUCKET_PROFILE
 from services.config import get_config
 
+from services.notifications import create_notification  # noqa: E402 — every notification also pushes
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -1120,13 +1122,13 @@ async def admin_create_service_catalog(
     )).scalars().all()
 
     for uid in worker_user_ids:
-        db.add(Notification(
+        await create_notification(db=db,
             user_id=uid,
             type="new_instant_service",
             title=f"New Instant service: {entry.name}",
             body=f"\"{entry.name}\" is now available in Instant mode for {cat.name}. Add it from your Services page to start getting matched for it.",
             data={"category_id": str(body.category_id), "catalog_service_id": str(entry.id)},
-        ))
+        )
 
     await db.commit()
     await db.refresh(entry)

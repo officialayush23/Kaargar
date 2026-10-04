@@ -3,7 +3,7 @@ Chat router — messages for active jobs.
 """
 
 import re
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import uuid
@@ -96,6 +96,7 @@ async def get_messages(
 async def send_message(
     job_id: uuid.UUID,
     body: MessageCreate,
+    background: BackgroundTasks,
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -121,7 +122,61 @@ async def send_message(
     db.add(msg)
     await db.commit()
     await db.refresh(msg)
+    # Push the OTHER party — after the commit and off the request path, so a
+    # slow Expo call never delays the sender's bubble.
+    background.add_task(
+        _push_chat_message, str(chat.id), str(job_id), sender_role,
+        user.full_name or ("Your pro" if sender_role == "worker" else "Customer"), clean,
+    )
     return msg
+
+
+_redis_client = None
+
+
+async def _throttled(key: str, seconds: int) -> bool:
+    """True if a push for `key` already went out within `seconds` (Redis; fails open)."""
+    global _redis_client
+    try:
+        from config import get_settings
+        settings = get_settings()
+        if not getattr(settings, "redis_url", None):
+            return False
+        if _redis_client is None:
+            import redis.asyncio as aioredis
+            _redis_client = aioredis.from_url(settings.redis_url, socket_timeout=0.5, socket_connect_timeout=0.5)
+        # SET NX EX: first message in the window wins, the rest are suppressed.
+        return not await _redis_client.set(key, "1", nx=True, ex=seconds)
+    except Exception:
+        return False
+
+
+async def _push_chat_message(chat_id: str, job_id: str, sender_role: str, sender_name: str, text: str):
+    """
+    Chat push. Deliberately NOT an in-app notification row: a conversation
+    would flood the bell. Throttled to one push per recipient per chat per
+    45s so a burst of messages is one buzz, not ten.
+    """
+    try:
+        from database import async_session
+        from services.push import push_to_user
+        async with async_session() as db:
+            chat = (await db.execute(select(Chat).where(Chat.id == uuid.UUID(chat_id)))).scalar_one_or_none()
+            if not chat:
+                return
+            if sender_role == "worker":
+                recipient = chat.user_id
+            else:
+                wp = (await db.execute(select(WorkerProfile).where(WorkerProfile.id == chat.worker_id))).scalar_one_or_none()
+                recipient = wp.user_id if wp else None
+            if not recipient or await _throttled(f"chatpush:{chat_id}:{recipient}", 45):
+                return
+            preview = text if len(text) <= 120 else text[:117] + "…"
+            await push_to_user(db, recipient, sender_name, preview, {"type": "chat_message", "job_id": job_id})
+            await db.commit()
+    except Exception:  # noqa: BLE001 — push is best-effort
+        import logging
+        logging.getLogger(__name__).exception("chat push failed")
 
 
 @router.patch("/{job_id}/read", response_model=SuccessResponse)

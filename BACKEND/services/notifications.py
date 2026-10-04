@@ -152,7 +152,7 @@ async def send_otp_email(email: str, otp: str):
 
 
 # ── In-app notifications (Supabase inserts) ───────────────────────────────────
-async def create_notification(db, user_id, type: str, title: str, body: str, data: dict):
+async def create_notification(db, user_id, type: str, title: str, body: str, data: dict | None = None):
     """
     Create the in-app notification row AND push it to the user's devices.
 

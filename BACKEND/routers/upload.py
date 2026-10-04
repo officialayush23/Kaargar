@@ -31,6 +31,26 @@ MAX_IMAGE_SIZE = 10 * 1024 * 1024
 MAX_VIDEO_SIZE = 100 * 1024 * 1024
 
 
+def _require_signature(data: bytes, content_type: str) -> None:
+    """
+    The Content-Type header is whatever the client says it is. Check the file's
+    leading magic bytes match the declared type, so an HTML/SVG/script can't be
+    stored in a PUBLIC bucket labelled image/png and served from our domain.
+    """
+    head = data[:16]
+    ok = {
+        "image/jpeg": head.startswith(b"\xff\xd8\xff"),
+        "image/png": head.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/webp": head[:4] == b"RIFF" and head[8:12] == b"WEBP",
+        "application/pdf": head.startswith(b"%PDF-"),
+        "video/mp4": head[4:8] == b"ftyp",
+        "video/quicktime": head[4:8] in (b"ftyp", b"moov", b"wide", b"mdat", b"free"),
+        "video/webm": head.startswith(b"\x1a\x45\xdf\xa3"),
+    }.get(content_type, False)
+    if not ok:
+        raise HTTPException(400, "File content does not match its declared type")
+
+
 def _safe_upload(bucket: str, path: str, data: bytes, content_type: str) -> str:
     """
     upload_file() was raising an unhandled exception straight out of every
@@ -61,6 +81,7 @@ async def upload_profile_photo(
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(400, "Only JPEG/PNG/WebP images allowed")
     data = await file.read()
+    _require_signature(data, file.content_type)
     max_image_mb = int(await get_config(db, "max_image_upload_mb", 10))
     if len(data) > max_image_mb * 1024 * 1024:
         raise HTTPException(400, f"Image must be under {max_image_mb}MB")
@@ -87,6 +108,7 @@ async def upload_worker_post(
         raise HTTPException(400, "Only images or videos allowed")
 
     data = await file.read()
+    _require_signature(data, file.content_type)
     max_image_mb = int(await get_config(db, "max_image_upload_mb", 10))
     max_video_mb = int(await get_config(db, "max_video_upload_mb", 100))
     max_size = (max_video_mb if is_video else max_image_mb) * 1024 * 1024
@@ -143,6 +165,7 @@ async def upload_document_file(
         raise HTTPException(400, "Only JPEG/PNG/WebP/PDF files allowed")
 
     data = await file.read()
+    _require_signature(data, file.content_type)
     if len(data) > MAX_IMAGE_SIZE:
         raise HTTPException(400, "Document must be under 10MB")
 
@@ -169,6 +192,7 @@ async def upload_verification_video(
         raise HTTPException(400, "Only MP4/MOV/WebM video files allowed")
 
     data = await file.read()
+    _require_signature(data, file.content_type)
     max_verif_video_mb = int(await get_config(db, "max_verification_video_mb", 200))
     if len(data) > max_verif_video_mb * 1024 * 1024:
         raise HTTPException(400, f"Video must be under {max_verif_video_mb}MB")

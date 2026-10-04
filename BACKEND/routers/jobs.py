@@ -45,6 +45,8 @@ from services.penalties import (
 )
 from services.config import get_config
 
+from services.notifications import create_notification  # noqa: E402 — every notification also pushes
+
 router = APIRouter()
 logger = logging.getLogger(__name__)
 
@@ -952,13 +954,13 @@ async def cancel_job(
                 job.status = "scheduled"   # back to scheduler queue
                 await _log_event(db, job.id, "scheduled", "system", user.id, {"reason": "worker_cancel_requeue"})
                 # Notify the customer
-                db.add(Notification(
+                await create_notification(db=db,
                     user_id = job.user_id,
                     type    = "job_worker_cancelled",
                     title   = "Worker cancelled — finding a replacement",
                     body    = "We're finding another worker for your booking. You'll hear from us soon.",
                     data    = {"job_id": str(job.id)},
-                ))
+                )
                 await db.commit()
                 return SuccessResponse(message="Job returned to queue for reassignment")
 
@@ -1045,35 +1047,35 @@ async def cancel_job(
     # ── Notify the other party ────────────────────────────────────────────────
     if is_worker:
         # Notify the customer
-        db.add(Notification(
+        await create_notification(db=db,
             user_id = job.user_id,
             type    = "job_cancelled_by_worker",
             title   = "Your booking was cancelled",
             body    = f"The worker has cancelled your booking. Reason: {body.reason or 'Not specified'}. A refund will be processed if applicable.",
             data    = {"job_id": str(job.id)},
-        ))
+        )
     else:
         # Notify the assigned worker (if any)
         if wp and job.worker_id == wp.id:
-            db.add(Notification(
+            await create_notification(db=db,
                 user_id = wp.user_id,
                 type    = "job_cancelled_by_user",
                 title   = "Booking cancelled by customer",
                 body    = f"The customer has cancelled the booking. Reason: {body.reason or 'Not specified'}.",
                 data    = {"job_id": str(job.id)},
-            ))
+            )
         elif job.worker_id:
             # worker_id set but caller is the user — look up worker's user_id
             other_wp = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
             other_wp = other_wp.scalar_one_or_none()
             if other_wp:
-                db.add(Notification(
+                await create_notification(db=db,
                     user_id = other_wp.user_id,
                     type    = "job_cancelled_by_user",
                     title   = "Booking cancelled by customer",
                     body    = f"The customer has cancelled the booking. Reason: {body.reason or 'Not specified'}.",
                     data    = {"job_id": str(job.id)},
-                ))
+                )
 
     job.status = "cancelled"
     job.cancelled_at = now
@@ -1235,13 +1237,13 @@ async def start_journey(
     # not event_type/actor_user_id.
     await _log_event(db, job.id, "en_route", "worker", user.id)
 
-    db.add(Notification(
+    await create_notification(db=db,
         user_id=job.user_id,
         type="job_assigned",
         title="Your worker is on the way",
         body=f"{user.full_name or 'Your worker'} has set off for your booking.",
         data={"job_id": str(job.id)},
-    ))
+    )
 
     await db.commit()
     return SuccessResponse(message="Journey started")
@@ -1421,13 +1423,13 @@ async def _finalize_job_completion(db, job, wp, user_id):
 
     await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
 
-    db.add(Notification(
+    await create_notification(db=db,
         user_id = job.user_id,
         type    = "job_completed",
         title   = "Service completed!",
         body    = "Your service has been completed. Please rate your experience.",
         data    = {"job_id": str(job.id)},
-    ))
+    )
 
     await _log_event(db, job.id, "completed", "worker", user_id)
 
@@ -1658,13 +1660,13 @@ async def submit_for_approval(
     job.submitted_for_approval_at = datetime.now(timezone.utc)
     await _log_event(db, job.id, "awaiting_approval", "worker", user.id)
 
-    db.add(Notification(
+    await create_notification(db=db,
         user_id=job.user_id,
         type="job_bill_ready",
         title="Bill ready for review",
         body="Your service provider has submitted the job for your approval.",
         data={"job_id": str(job.id)},
-    ))
+    )
     await post_system_message(db, job, "bill_submitted", "Bill submitted — waiting for customer approval.")
 
     await db.commit()
@@ -1746,13 +1748,13 @@ async def approve_job_bill(
         wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
         wp = wp_r.scalar_one_or_none()
         if wp:
-            db.add(Notification(
+            await create_notification(db=db,
                 user_id=wp.user_id,
                 type="job_bill_approved",
                 title="Bill approved!",
                 body="The customer approved the bill. Ask them for the completion code to finish the job.",
                 data={"job_id": str(job.id)},
-            ))
+            )
     await post_system_message(db, job, "bill_approved", "Customer approved the bill.")
 
     await _log_event(db, job.id, "approved", "user", user.id)
@@ -1789,13 +1791,13 @@ async def reject_job_bill(
         wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
         wp = wp_r.scalar_one_or_none()
         if wp:
-            db.add(Notification(
+            await create_notification(db=db,
                 user_id=wp.user_id,
                 type="job_bill_disputed",
                 title="Bill disputed",
                 body=f"The customer disputed the bill: {body.reason}",
                 data={"job_id": str(job.id)},
-            ))
+            )
     await post_system_message(db, job, "bill_disputed", f"Customer disputed the bill: {body.reason}")
 
     await _log_event(db, job.id, "disputed", "user", user.id, {"reason": body.reason})
@@ -2026,13 +2028,13 @@ async def create_scheduled_job(
         f"Your worker will arrive within this window."
     )
 
-    db.add(Notification(
+    await create_notification(db=db,
         user_id = user.id,
         type    = "job_scheduled_confirm",
         title   = "Booking confirmed!",
         body    = user_notif_body,
         data    = {"job_id": str(job.id)},
-    ))
+    )
 
     # ── Notify the chosen worker immediately ───────────────────────────────────
     wp_r = await db.execute(
@@ -2040,7 +2042,7 @@ async def create_scheduled_job(
     )
     wp = wp_r.scalar_one_or_none()
     if wp:
-        db.add(Notification(
+        await create_notification(db=db,
             user_id = wp.user_id,
             type    = "job_assigned",
             title   = "New Booking",
@@ -2049,7 +2051,7 @@ async def create_scheduled_job(
                 f"between {body.window_start} – {body.window_end}."
             ),
             data    = {"job_id": str(job.id)},
-        ))
+        )
 
     await db.commit()
     await db.refresh(job)
@@ -2327,19 +2329,19 @@ async def create_multi_day_booking(
         f"Your {body.num_days}-day booking is confirmed, {first_day_str} – {last_day_str}, "
         f"between {body.window_start} – {body.window_end} daily."
     )
-    db.add(Notification(
+    await create_notification(db=db,
         user_id = user.id,
         type    = "job_scheduled_confirm",
         title   = "Multi-day booking confirmed!",
         body    = user_body,
         data    = {"job_id": str(parent.id), "total_days": body.num_days},
-    ))
+    )
 
     if chosen_worker_id:
         wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == chosen_worker_id))
         wp = wp_r.scalar_one_or_none()
         if wp:
-            db.add(Notification(
+            await create_notification(db=db,
                 user_id = wp.user_id,
                 type    = "job_assigned",
                 title   = "New multi-day booking",
@@ -2348,7 +2350,7 @@ async def create_multi_day_booking(
                     f"between {body.window_start} – {body.window_end} daily."
                 ),
                 data    = {"job_id": str(parent.id), "total_days": body.num_days},
-            ))
+            )
 
     await db.commit()
     for j in jobs:
@@ -2533,13 +2535,13 @@ async def book_slot(
     )
     wp = wp_r.scalar_one_or_none()
     if wp:
-        db.add(Notification(
+        await create_notification(db=db,
             user_id = wp.user_id,
             type    = "job_assigned",
             title   = "New Slot Booking",
             body    = f"You have a new booking on {slot.slot_date} at {slot.slot_start}.",
             data    = {"job_id": str(job.id)},
-        ))
+        )
         await db.commit()
 
     return job
@@ -2681,23 +2683,23 @@ async def reschedule_job(
         "window": f"{body.window_start}–{body.window_end}",
     })
 
-    db.add(Notification(
+    await create_notification(db=db,
         user_id=job.user_id,
         type="job_rescheduled",
         title="Booking rescheduled",
         body="Your booking has been moved to your new preferred time.",
         data={"job_id": str(job.id)},
-    ))
+    )
     wp_r = await db.execute(select(WorkerProfile).where(WorkerProfile.id == job.worker_id))
     wp = wp_r.scalar_one_or_none()
     if wp:
-        db.add(Notification(
+        await create_notification(db=db,
             user_id=wp.user_id,
             type="job_rescheduled",
             title="Booking rescheduled",
             body="A customer moved their booking with you to a new time.",
             data={"job_id": str(job.id)},
-        ))
+        )
 
     await db.commit()
     await db.refresh(job)
@@ -2780,7 +2782,7 @@ async def report_no_show(
         penalty_applied = False
         if wp:
             penalty_applied = await apply_no_show_rating_penalty(db, wp)
-            db.add(Notification(
+            await create_notification(db=db,
                 user_id=wp.user_id,
                 type="job_no_show_confirmed",
                 title="No-show confirmed",
@@ -2791,15 +2793,15 @@ async def report_no_show(
                        "This is your first no-show — forgiven, no penalty.")
                 ),
                 data={"job_id": str(job.id)},
-            ))
+            )
 
-        db.add(Notification(
+        await create_notification(db=db,
             user_id=job.user_id,
             type="job_no_show_confirmed",
             title="No-show confirmed",
             body="We've confirmed the worker didn't show up. You can rebook for free.",
             data={"job_id": str(job.id)},
-        ))
+        )
         await db.commit()
         return NoShowReportResponse(
             outcome="confirmed",
@@ -2867,7 +2869,7 @@ async def flag_customer_unavailable(
     await db.execute(delete(WorkerScheduleBlock).where(WorkerScheduleBlock.job_id == job.id))
     wp.status = "online"
 
-    db.add(Notification(
+    await create_notification(db=db,
         user_id=job.user_id,
         type="job_customer_unavailable",
         title="Booking cancelled — you weren't reachable",
@@ -2878,7 +2880,7 @@ async def flag_customer_unavailable(
             "time, a 50% charge applies."
         ),
         data={"job_id": str(job.id)},
-    ))
+    )
 
     await db.commit()
     return SuccessResponse(message="Booking cancelled — customer was unavailable")

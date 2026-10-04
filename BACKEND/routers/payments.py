@@ -89,14 +89,17 @@ async def razorpay_webhook(request: Request, db: AsyncSession = Depends(get_db))
     body = await request.body()
     signature = request.headers.get("X-Razorpay-Signature", "")
 
-    if settings.razorpay_webhook_secret:
-        expected = hmac.new(
-            settings.razorpay_webhook_secret.encode(),
-            body,
-            hashlib.sha256,
-        ).hexdigest()
-        if not hmac.compare_digest(expected, signature):
-            raise HTTPException(400, "Invalid signature")
+    # Fail CLOSED: without a secret we cannot tell a real Razorpay event from a
+    # forged "payment.captured", so refuse rather than process it unsigned.
+    if not settings.razorpay_webhook_secret:
+        raise HTTPException(503, "Webhook not configured")
+    expected = hmac.new(
+        settings.razorpay_webhook_secret.encode(),
+        body,
+        hashlib.sha256,
+    ).hexdigest()
+    if not hmac.compare_digest(expected, signature):
+        raise HTTPException(400, "Invalid signature")
 
     import json
     payload = json.loads(body)

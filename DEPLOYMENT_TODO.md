@@ -55,3 +55,27 @@ Reference implementation: [render-examples/celery](https://github.com/render-exa
 - [ ] Wire promo campaign CRUD + delivery (admin endpoints, models/schemas already exist)
 - [ ] Design feature/entity-based module boundaries (auth/, worker/, customer/, booking/, payment/, notification/, support/, admin/)
 - [ ] Incrementally migrate routers into the new feature modules, one at a time, verifying the app still boots after each move
+
+## 6. Security hardening (2026-10-04) — code done, needs push + Render env
+
+Code changes in BACKEND (py_compile clean, not yet deployed):
+- `services/rate_limit.py` + middleware in `main.py`: per-IP limits via existing Redis, fails open.
+- `/docs` and `/openapi.json` disabled when `ENVIRONMENT=production`.
+- CORS: removed the `kaargar.*\.vercel\.app` regex; extra origins now via `CORS_EXTRA_ORIGINS`.
+- Razorpay webhook refuses (503) when `RAZORPAY_WEBHOOK_SECRET` is unset.
+- JWT `aud=authenticated` verified.
+- Uploads: magic-byte check against declared content-type.
+
+Render steps (Ayush):
+- [ ] Push the repo (Render auto-deploys).
+- [ ] Set `CORS_EXTRA_ORIGINS=https://kaargar-app.vercel.app` (the Expo PWA's URL) — REQUIRED once
+      this deploy is live, or the PWA's browser requests are blocked.
+- [ ] Set `ENVIRONMENT=production` on Render.
+- [ ] Confirm `RAZORPAY_WEBHOOK_SECRET` is set on Render (webhook now fails closed without it).
+
+## 7. 2026-10-05 backend changes (deploy with next push)
+- New `DELETE /users/me` (account deletion). No migration needed. Requires `SUPABASE_SERVICE_ROLE_KEY` (already set) for auth-user removal.
+- `PATCH /users/me` now validates input — old clients sending a non-Storage `avatar_url` will get 422 (mobile only sends name/phone).
+- Multi-day `num_days` max 30 at schema level (platform_config cap still governs, default 10).
+- Push now fires for all job lifecycle notifications + chat messages (no new env; uses existing Expo push + REDIS_URL for chat throttle, fails open without Redis).
+- `GET /workers/{id}` adds `area_lat`, `area_lon`, `service_radius_km` (read-only, no migration).
