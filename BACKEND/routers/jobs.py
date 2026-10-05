@@ -2092,79 +2092,29 @@ async def _assert_worker_free(
     window_start,
     window_end,
 ) -> None:
-    """Raise 409 if `worker_id` already has an overlapping window booking.
-
-    Called before creating any pinned-worker window booking. Deliberately a
-    read-then-write check rather than a DB constraint: a plain unique index
-    can't express time-range overlap, and an exclusion constraint would need
-    the date+range materialised into real columns (preferred_days is JSONB).
-    The residual race between check and insert is narrow and both writes land
-    in the same transaction; if it ever matters, the durable fix is a
-    generated `tstzrange` column + `EXCLUDE USING gist`.
     """
+    409 if this window booking would overlap ANYTHING on the worker's shared
+    timeline — slot bookings, other window/multi-day bookings, a live instant
+    job, time off, manual blocks — or fall outside their working hours.
+
+    Previously this only compared against other WINDOW bookings, so a window
+    booking could land on top of a slot booking (and vice versa). Delegates to
+    services/worker_calendar.assert_free, which also takes a per-worker
+    advisory lock so two simultaneous bookings can't both pass the check.
+    """
+    from datetime import datetime as _dt
+    from services.worker_calendar import assert_free
     if not dates:
         return
-
-    iso_dates = [d.isoformat() for d in dates]
-
-    result = await db.execute(
-        select(Job).where(
-            Job.worker_id == worker_id,
-            Job.status.notin_(_NON_BLOCKING_STATUSES),
-            Job.window_start.isnot(None),
-            Job.window_end.isnot(None),
-            # JSONB array overlap — any of this booking's days already present
-            # on an existing job for the same worker.
-            #
-            # `.has_any(array(...))` rather than `.op("?|")(...)`: the raw `?|`
-            # operator is risky to hand-write because `?` is a parameter
-            # placeholder in several DBAPIs, and SQLAlchemy has to escape it.
-            # The typed JSONB comparator emits the same operator safely.
-            Job.preferred_days.has_any(pg_array(iso_dates)),
-            # Half-open overlap on the time window.
-            Job.window_start < window_end,
-            Job.window_end > window_start,
-        )
+    await assert_free(
+        db,
+        worker_id,
+        [(_dt.combine(d, window_start), _dt.combine(d, window_end)) for d in dates],
+        # Pinned window bookings have never been held to the worker's generic
+        # weekly hours (round-the-clock guard bookings, 06:00–07:00 dailies —
+        # see reschedule_job). Overlaps, time off and blocks still apply.
+        check_hours=False,
     )
-    clash = result.scalars().first()
-    if clash:
-        clash_days = clash.preferred_days or []
-        overlap = sorted(set(iso_dates) & set(clash_days)) or clash_days
-        raise HTTPException(
-            409,
-            "This worker is already booked for "
-            f"{', '.join(overlap)} between "
-            f"{clash.window_start.strftime('%H:%M')} and "
-            f"{clash.window_end.strftime('%H:%M')}. "
-            "Pick different days or times, or choose another worker.",
-        )
-
-    # ── Worker's own time off ────────────────────────────────────────────────
-    # A worker can block out days they're not available (WorkerTimeOff). Those
-    # were previously honoured only when ASSIGNING scheduled jobs
-    # (services/scheduling.py) and, since the recent fix, when generating
-    # slots — but a pinned-worker window booking could still be created
-    # straight over the top of them. A customer could book a worker for a day
-    # the worker had explicitly declared themselves unavailable for.
-    off_rows = await db.execute(
-        select(WorkerTimeOff).where(WorkerTimeOff.worker_id == worker_id)
-    )
-    time_off = off_rows.scalars().all()
-    if time_off:
-        blocked = sorted(
-            {
-                d.isoformat()
-                for d in dates
-                for t in time_off
-                if t.start_datetime.date() <= d <= t.end_datetime.date()
-            }
-        )
-        if blocked:
-            raise HTTPException(
-                409,
-                f"This worker is unavailable on {', '.join(blocked)}. "
-                "Pick different days, or choose another worker.",
-            )
 
 
 @router.post("/scheduled/multi-day", response_model=JobBundleResponse, status_code=201)
@@ -2481,16 +2431,32 @@ async def book_slot(
     svc = svc_result.scalar_one_or_none()
     if not svc:
         raise HTTPException(404, "Service not found")
+    # The price comes from `svc`, the worker from `slot` — they MUST be the
+    # same service, or a customer could pair a cheap service's price with an
+    # expensive service's slot (or another worker's slot entirely).
+    if svc.id != slot.service_id:
+        raise HTTPException(422, "That time slot doesn't belong to this service")
 
+    # Slot times are Pune wall-clock. They were being stamped as UTC, which
+    # stored every slot booking 5½ hours late and let a slot that had already
+    # started (in IST) still be booked.
+    from services.worker_calendar import IST, assert_free
     now_utc = datetime.now(timezone.utc)
-    slot_dt = datetime.combine(slot.slot_date, slot.slot_start, tzinfo=timezone.utc)
+    slot_dt = datetime.combine(slot.slot_date, slot.slot_start, tzinfo=IST).astimezone(timezone.utc)
     if slot_dt <= now_utc:
-        # Server-side "not in the past" guard — a slot listing fetched
-        # earlier (e.g. when "today" was still yesterday, or simply left
-        # open in a background tab) could otherwise still be submitted after
-        # its date/time has already passed. This must be enforced here,
-        # independent of any client-side date-picker validation.
+        # Server-side "not in the past" guard, independent of the client.
         raise HTTPException(400, "This slot is in the past — please pick another time")
+
+    # Shared timeline: the slot row only knows about ITS service. A booking on
+    # another service, a window/multi-day booking, a live instant job, time
+    # off or a manual block can all cover this hour.
+    await assert_free(
+        db,
+        slot.worker_id,
+        [(datetime.combine(slot.slot_date, slot.slot_start), datetime.combine(slot.slot_date, slot.slot_end))],
+        check_hours=False,      # the slot itself was generated from working hours
+        add_buffer=False,       # slot rows are already duration + buffer long
+    )
     price   = svc.base_price if svc.base_price is not None else svc.price
 
     # ── Create job (worker pre-assigned from slot) ────────────────────────────
@@ -2608,9 +2574,15 @@ async def reschedule_job(
             raise HTTPException(409, "That slot is no longer available")
         if new_slot.booked_count >= new_slot.capacity:
             raise HTTPException(409, "That slot is fully booked — please pick another time")
-        new_slot_dt = datetime.combine(new_slot.slot_date, new_slot.slot_start, tzinfo=timezone.utc)
+        from services.worker_calendar import IST, assert_free
+        new_slot_dt = datetime.combine(new_slot.slot_date, new_slot.slot_start, tzinfo=IST).astimezone(timezone.utc)
         if new_slot_dt <= now:
             raise HTTPException(400, "That slot is in the past")
+        await assert_free(
+            db, new_slot.worker_id,
+            [(datetime.combine(new_slot.slot_date, new_slot.slot_start), datetime.combine(new_slot.slot_date, new_slot.slot_end))],
+            exclude_job_id=job.id, check_hours=False, add_buffer=False,
+        )
 
         # trg_slot_booking (see 007_slot_scheduling.sql) increments the NEW
         # slot's booked_count on commit because slot_id is changing, but it
@@ -2652,9 +2624,20 @@ async def reschedule_job(
     # Mon–Fri had 39 confirmed bookings for a 06:00–07:00 daily window).
     # exclude_job_id=job.id also stops this job's OWN current schedule block
     # (if it has one) from being misread as a conflict with itself.
+    # Shared timeline first: slot bookings, live instant jobs and manual
+    # blocks aren't visible to check_worker_availability below.
+    from services.worker_calendar import build_timeline as _tl, find_conflict as _fc, lock_worker as _lock
+    from services.config import get_config as _gc
+    await _lock(db, job.worker_id)
+    _days = [date.fromisoformat(x) for x in body.preferred_days]
+    _timeline = await _tl(db, job.worker_id, min(_days), max(_days), exclude_job_id=job.id)
+    _buf = timedelta(minutes=int(await _gc(db, "slot_duration_buffer_min", 60)))
+
     valid_days = []
     for d_str in body.preferred_days:
         d = date.fromisoformat(d_str)
+        if _fc(_timeline, datetime.combine(d, new_window_start), datetime.combine(d, new_window_end) + _buf):
+            continue
         if await check_worker_availability(
             db, job.worker_id, d, new_window_start, new_window_end,
             require_weekly_hours=False, exclude_job_id=job.id,

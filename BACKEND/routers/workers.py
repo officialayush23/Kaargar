@@ -2333,8 +2333,29 @@ async def get_public_service_slots(
     result = await db.execute(stmt)
     slots  = result.scalars().all()
 
-    # Filter out fully booked slots
-    return [s for s in slots if s.booked_count < s.capacity]
+    # Drop full slots, past slots (in IST) and — shared timeline — any slot
+    # that overlaps something else on the worker's day: a booking on another
+    # service, a window/multi-day booking, a live instant job, time off or a
+    # manual block. Previously only this service's own slot rows counted.
+    from datetime import datetime as _dt, timedelta as _td
+    from services.worker_calendar import build_timeline, find_conflict, now_ist
+    open_slots = [s for s in slots if s.booked_count < s.capacity]
+    if not open_slots:
+        return []
+    tl = await build_timeline(db, worker_id, open_slots[0].slot_date, open_slots[-1].slot_date)
+    cutoff = now_ist() + _td(minutes=30)
+    out = []
+    for s in open_slots:
+        st, en = _dt.combine(s.slot_date, s.slot_start), _dt.combine(s.slot_date, s.slot_end)
+        if st < cutoff:
+            continue
+        hit = find_conflict(tl, st, en)
+        # A slot's own bookings appear on the timeline too; with capacity > 1
+        # those mustn't hide the slot while spots remain.
+        if hit and not (hit.kind == "job" and s.capacity > 1 and hit.start == st):
+            continue
+        out.append(s)
+    return out
 
 
 # ── SERVICE SECTIONS (worker-facing) ──────────────────────────────────────────
@@ -2461,3 +2482,220 @@ async def set_service_sections(
 
     await db.commit()
     return SuccessResponse(message=f"Listed under {len(valid)} section(s)")
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# WORKER CALENDAR — one shared timeline per worker (services/worker_calendar.py)
+# /me routes are registered BEFORE /{worker_id} ones so "me" never hits the
+# UUID path parameter.
+# ══════════════════════════════════════════════════════════════════════════════
+
+_CAL_MAX_DAYS = 62
+
+
+def _parse_range(date_from: str | None, date_to: str | None, default_days: int = 35):
+    from datetime import date as _date, timedelta as _td
+    from services.worker_calendar import today_ist
+    today = today_ist()
+    try:
+        d_from = _date.fromisoformat(date_from) if date_from else today
+    except ValueError:
+        raise HTTPException(422, "date_from must be YYYY-MM-DD")
+    try:
+        d_to = _date.fromisoformat(date_to) if date_to else d_from + _td(days=default_days - 1)
+    except ValueError:
+        raise HTTPException(422, "date_to must be YYYY-MM-DD")
+    if d_to < d_from:
+        raise HTTPException(422, "date_to must be on or after date_from")
+    if (d_to - d_from).days >= _CAL_MAX_DAYS:
+        raise HTTPException(422, f"Ask for at most {_CAL_MAX_DAYS} days at a time")
+    return d_from, d_to
+
+
+@router.get("/me/calendar")
+async def my_calendar(
+    date_from: str | None = None,
+    date_to: str | None = None,
+    user: User = Depends(require_worker),
+    db: AsyncSession = Depends(get_db),
+):
+    """The worker's own timeline: hours, every busy item (with job titles), per-day load."""
+    from datetime import timedelta as _td
+    from services.worker_calendar import build_timeline, day_grid, day_state, service_slot_params
+
+    wp = (await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))).scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    d_from, d_to = _parse_range(date_from, date_to, default_days=7)
+    tl = await build_timeline(db, wp.id, d_from, d_to)
+    slot_len, cap = await service_slot_params(db, None)
+
+    days = []
+    d = d_from
+    while d <= d_to:
+        days.append(day_state(tl, d, day_grid(tl, d, slot_len, cap, lead_min=0)))
+        d += _td(days=1)
+
+    return {
+        "hours": {str(k): ([v[0].strftime("%H:%M"), v[1].strftime("%H:%M")] if v else None) for k, v in tl.hours.items()},
+        "days": days,
+        "items": [
+            {
+                "start": b.start.isoformat(timespec="minutes"),
+                "end": b.end.isoformat(timespec="minutes"),
+                "kind": b.kind,
+                "job_id": str(b.job_id) if b.job_id else None,
+                "block_id": str(b.block_id) if b.block_id else None,
+                "label": b.label,
+            }
+            for b in tl.busy
+            if b.end.date() >= d_from and b.start.date() <= d_to
+        ],
+        "status": wp.status,
+    }
+
+
+@router.post("/me/blocks", status_code=201)
+async def create_block(
+    body: dict,
+    user: User = Depends(require_worker),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Block a time range on one day ("not taking bookings 2–4 PM"). Refuses if
+    it would cover an existing booking — cancelling a customer is a separate,
+    deliberate action, never a side effect of tidying the calendar.
+    """
+    from datetime import date as _date, datetime as _dt, time as _time
+    from services.worker_calendar import build_timeline, find_conflict, today_ist
+
+    wp = (await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))).scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    try:
+        d = _date.fromisoformat(str(body.get("date")))
+        start = _time.fromisoformat(str(body.get("start")))
+        end = _time.fromisoformat(str(body.get("end")))
+    except ValueError:
+        raise HTTPException(422, "date must be YYYY-MM-DD and start/end HH:MM")
+    if end <= start:
+        raise HTTPException(422, "End time must be after start time")
+    if d < today_ist():
+        raise HTTPException(422, "You can't block a day in the past")
+    if (d - today_ist()).days > 180:
+        raise HTTPException(422, "Blocks can be at most 6 months ahead")
+
+    tl = await build_timeline(db, wp.id, d, d)
+    s_dt, e_dt = _dt.combine(d, start), _dt.combine(d, end)
+    clash = find_conflict(tl, s_dt, e_dt)
+    if clash and clash.kind in ("job", "instant"):
+        raise HTTPException(409, f"You have a booking at {clash.start.strftime('%I:%M %p').lstrip('0')} in that time. Reschedule or cancel it first.")
+    blk = WorkerScheduleBlock(worker_id=wp.id, job_id=None, date=d, window_start=start, window_end=end)
+    db.add(blk)
+    await db.commit()
+    return {"id": str(blk.id), "date": d.isoformat(), "start": start.strftime("%H:%M"), "end": end.strftime("%H:%M")}
+
+
+@router.delete("/me/blocks/{block_id}", response_model=SuccessResponse)
+async def delete_block(
+    block_id: uuid.UUID,
+    user: User = Depends(require_worker),
+    db: AsyncSession = Depends(get_db),
+):
+    wp = (await db.execute(select(WorkerProfile).where(WorkerProfile.user_id == user.id))).scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker profile not found")
+    blk = (await db.execute(
+        select(WorkerScheduleBlock).where(
+            WorkerScheduleBlock.id == block_id,
+            WorkerScheduleBlock.worker_id == wp.id,
+            WorkerScheduleBlock.job_id.is_(None),   # job reservations aren't the worker's to delete here
+        )
+    )).scalar_one_or_none()
+    if not blk:
+        raise HTTPException(404, "Block not found")
+    await db.delete(blk)
+    await db.commit()
+    return SuccessResponse(message="Block removed")
+
+
+async def _public_worker_and_service(db: AsyncSession, worker_id: uuid.UUID, service_id: uuid.UUID | None):
+    wp = (await db.execute(
+        select(WorkerProfile).where(WorkerProfile.id == worker_id, WorkerProfile.verification_status == "approved")
+    )).scalar_one_or_none()
+    if not wp:
+        raise HTTPException(404, "Worker not found")
+    svc = None
+    if service_id:
+        svc = (await db.execute(
+            select(Service).where(Service.id == service_id, Service.worker_id == wp.id)
+        )).scalar_one_or_none()
+        if not svc:
+            raise HTTPException(404, "Service not found for this worker")
+    return wp, svc
+
+
+@router.get("/{worker_id}/calendar")
+async def public_calendar(
+    worker_id: uuid.UUID,
+    service_id: uuid.UUID | None = None,
+    date_from: str | None = None,
+    date_to: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Customer-facing month view: one state per day
+    (available / few / full / day_off / leave / past) + live status + next free slot.
+    Never exposes who booked or why a worker is away.
+    """
+    from datetime import timedelta as _td
+    from services.worker_calendar import build_timeline, day_grid, day_state, live_status, next_free, service_slot_params, today_ist
+
+    wp, svc = await _public_worker_and_service(db, worker_id, service_id)
+    d_from, d_to = _parse_range(date_from, date_to)
+    tl = await build_timeline(db, wp.id, min(d_from, today_ist()), max(d_to, today_ist() + _td(days=7)))
+    slot_len, cap = await service_slot_params(db, svc)
+    from services.worker_calendar import slot_grid, slot_rows
+    rows = await slot_rows(db, svc, d_from, d_to) if (svc and svc.requires_slot) else None
+    days = []
+    d = d_from
+    while d <= d_to:
+        grid = slot_grid(tl, d, rows.get(d, [])) if rows is not None else day_grid(tl, d, slot_len, cap)
+        days.append(day_state(tl, d, grid))
+        d += _td(days=1)
+    return {
+        "slot_minutes": slot_len,
+        "mode": "slot" if rows is not None else "window",
+        "max_per_day": cap,
+        "days": days,
+        "live": await live_status(db, wp, tl),
+        "next_free": await next_free(db, tl, svc),
+    }
+
+
+@router.get("/{worker_id}/calendar/day")
+async def public_calendar_day(
+    worker_id: uuid.UUID,
+    date: str,
+    service_id: uuid.UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """One day's start times for this service, each free / booked / unavailable / full / past."""
+    from datetime import date as _date
+    from services.worker_calendar import build_timeline, day_grid, day_state, service_slot_params
+
+    wp, svc = await _public_worker_and_service(db, worker_id, service_id)
+    try:
+        d = _date.fromisoformat(date)
+    except ValueError:
+        raise HTTPException(422, "date must be YYYY-MM-DD")
+    tl = await build_timeline(db, wp.id, d, d)
+    slot_len, cap = await service_slot_params(db, svc)
+    if svc and svc.requires_slot:
+        from services.worker_calendar import slot_grid, slot_rows
+        grid = slot_grid(tl, d, (await slot_rows(db, svc, d, d)).get(d, []))
+        mode = "slot"
+    else:
+        grid = day_grid(tl, d, slot_len, cap)
+        mode = "window"
+    return {**day_state(tl, d, grid), "slot_minutes": slot_len, "mode": mode, "slots": grid}

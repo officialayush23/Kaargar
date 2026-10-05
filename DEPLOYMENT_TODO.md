@@ -79,3 +79,8 @@ Render steps (Ayush):
 - Multi-day `num_days` max 30 at schema level (platform_config cap still governs, default 10).
 - Push now fires for all job lifecycle notifications + chat messages (no new env; uses existing Expo push + REDIS_URL for chat throttle, fails open without Redis).
 - `GET /workers/{id}` adds `area_lat`, `area_lon`, `service_radius_km` (read-only, no migration).
+
+## 8. Worker calendar (2026-10-05)
+- Run `alembic upgrade head` (adds `instant_job_default_minutes` config + indexes on jobs(worker_id,status) and worker_schedule_blocks(worker_id,date)).
+- New endpoints under /workers (calendar, calendar/day, me/calendar, me/blocks). Booking paths now 409 on any overlap across slot/window/instant/time-off/blocks.
+- Slot bookings now store scheduled_at correctly in UTC from IST slot times; older slot jobs in the DB are 5h30m late in scheduled_at (the calendar reads slot rows, not scheduled_at, so it's unaffected).

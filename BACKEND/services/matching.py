@@ -88,6 +88,14 @@ async def _run_dispatch(db: AsyncSession, job_id: str):
 
     for radius_km in radii:
         workers = await _find_workers(db, job, radius_km)
+        # Shared timeline: don't offer an instant job to someone it would
+        # make late for a booking they already have (estimated job length +
+        # travel buffer, both admin-configurable). Ayush's rule, 2026-10-05.
+        if workers:
+            from services.worker_calendar import busy_worker_ids_for_instant
+            guard_min = int(await get_config(db, "instant_job_default_minutes", 90)) + int(await get_config(db, "slot_duration_buffer_min", 60))
+            blocked = await busy_worker_ids_for_instant(db, [w[0].id for w in workers], guard_min)
+            workers = [w for w in workers if w[0].id not in blocked]
         if not workers:
             continue
 
