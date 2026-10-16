@@ -7,7 +7,7 @@ class Settings(BaseSettings):
     # App
     app_env: str = Field("development", alias="ENVIRONMENT")
     app_name: str = "Kaargar"
-    frontend_url: str = Field("https://kaargar1.vercel.app", alias="FRONTEND_URL")
+    frontend_url: str = Field("https://kaargarapp-kaargar.vercel.app", alias="FRONTEND_URL")
     # Comma-separated extra browser origins allowed by CORS, e.g. the Expo web
     # PWA's deploy URL ("https://app.kaargar.in,https://kaargar-app.vercel.app").
     # Native apps send no Origin header and are unaffected by CORS.
